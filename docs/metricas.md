@@ -8,7 +8,7 @@ Nunca otimizar antes de medir a versão simples. Preencher "Antes" na versão in
 | Negócio | Economia | — | R$ __ / __% | 6 |
 | Negócio | Exposição ao PLD (MWh descobertos ou sobrando) | __ | __ | 6 |
 | Ciência | MAPE mensal da previsão de carga (12 meses à frente, rolling origin) | baseline: __% | modelo: __% | 5 |
-| Engenharia | Dados lidos por consulta típica | 0,037 GB (37,3 MB processados; 37,7 MB faturados), ONS, raw sem partição | __ GB | 1 → 2 |
+| Engenharia | Dados lidos por consulta típica | 0,037 GB (ONS, raw STRING sem partição: 37,3 MB processados; 37,7 MB faturados) | passo intermediário (tipado, sem partição): **0,018 GB** (18,3 MB processados; 18,9 MB faturados); particionado e clusterizado: __ GB (tarefa 2.6) | 1 → 2 |
 | Engenharia | Tempo de carga diária | full: **9,3 min** (ONS 4,9 + CCEE 1,2 + INMET 3,1 + feriados 0,2; sem o tempo do download manual) | incremental: __ min | 1 → 4 |
 | Engenharia | Tempo do backfill completo (2021–hoje) | — | __ min | 4 |
 | Engenharia | Problemas de dados capturados pelos testes | — | __ registros (tipos: __) | 3 |
@@ -237,4 +237,90 @@ do mart da Sprint 2. A estimativa feita antes da carga (~60 MB) acertou.
 `uv run python -m ingestion.feriados`: 285 linhas (feriados nacionais de 2000 a 2030, biblioteca
 `holidays` 0.105), 1 job `TRUNCATE`, 9,5 s no total (6,9 s no BigQuery), validação de contagem,
 datas únicas e ausência de nulos ok. Uma data com dois feriados numa linha só (2000-04-21).
+
+---
+
+## Sprint 2: staging (tarefa 2.2)
+
+Medido em 02/10/2026 depois do primeiro `dbt run` dos 6 modelos de staging (tabelas, sem partição,
+dataset `staging`).
+
+### Tempo do `dbt run` e do `dbt test`
+
+`dbt run`: **6 modelos em 12,22 s** (4 threads; PASS=6). O tempo total é praticamente o do maior
+modelo (INMET), porque os modelos rodam em paralelo.
+
+| Modelo | Linhas | Lido do raw | Tempo |
+|---|---|---|---|
+| `stg_feriados` | 285 | 11,2 KiB | 2,43 s |
+| `stg_ccee__pld_semanal` | 12.312 | 1,2 MiB | 2,62 s |
+| `stg_ccee__consumo_ramo_atividade` | 435 | 75,1 KiB | 2,65 s |
+| `stg_ccee__pld_horario` | 201.696 | 19,0 MiB | 3,16 s |
+| `stg_ons__curva_carga` | 937.796 | 98,1 MiB | 3,82 s |
+| `stg_inmet__estacoes_horario` | 1.837.272 | 349,1 MiB | 4,68 s |
+| **Total** | 2.989.596 | **467,5 MiB (490 MB)** | **12,22 s** |
+
+Os 490 MB lidos são exatamente a estimativa do dry-run feito antes da execução e ficam sob o teto
+de 1 GiB por job do perfil (o maior job leu 349 MiB). `dbt test`: **30 testes em 13,85 s**, todos
+passam (27 do YAML e 3 singulares: `ons_descarta_so_horas_conhecidas`,
+`ons_linhas_conferem_com_raw` e `ccee_pld_semanal_tres_linhas_por_semana`).
+
+### O ponto intermediário: consulta típica no raw (STRING) contra o staging (tipado, sem partição)
+
+Resultado idêntico nas três (24 linhas iguais): a conversão de fuso do staging está certa (ONS e CCEE
+com hora local, INMET em UTC). Cache desligado.
+
+| Consulta | Raw: processados | Staging: processados | Efeito da tipagem | Raw: faturados | Staging: faturados |
+|---|---|---|---|---|---|
+| ONS: carga média por hora do SE em 2024 | 37,3 MB | **18,3 MB** | **−51,0%** | 37,7 MB | 18,9 MB (−50,0%) |
+| INMET: temperatura média por hora (UTC) em SP em 2024 | 58,3 MB | **36,5 MB** | **−37,3%** | 58,7 MB | 36,7 MB (−37,5%) |
+| CCEE: PLD médio por hora do SUDESTE em 2024 | 5,4 MB | 6,4 MB | **+18,6%** | 10,5 MB | 10,5 MB (0%, piso) |
+
+Esse é o efeito **só da tipagem** (nenhuma partição ainda). A tarefa 2.6 mede o terceiro ponto
+(particionada e clusterizada); a diferença entre esse ponto e este é o efeito da partição.
+
+**Por que a tipagem reduz o ONS e o INMET** (bytes por linha lida; no BigQuery um texto ocupa o
+tamanho em bytes mais 2, e um NULL não ocupa nada):
+
+| | Raw (texto) | Staging (tipado) |
+|---|---|---|
+| ONS | 39,8 B/linha: id 3,5 + data-hora como texto 21 + valor como texto ~15 | **19,5 B/linha**: id 3,5 + TIMESTAMP 8 + FLOAT64 8 |
+| INMET | 31,7 B/linha: UF 4 + data 12 + hora 10 + temperatura ~5 | **19,9 B/linha**: UF 4 + TIMESTAMP 8 + FLOAT64 8 |
+
+Os textos longos (data-hora de 19 caracteres, hora `0000 UTC`) viram um TIMESTAMP de 8 bytes, e
+isso explica quase todo o ganho.
+
+**Por que a CCEE aumentou 18,6%.** O staging da CCEE lê **31,75 bytes por linha**
+(submercado 7,75 + instante TIMESTAMP 8 + preço NUMERIC 16), contra **26,76** no raw
+(`mes_referencia` 8 + submercado 7,75 + `hora` ~3,6 + preço como texto ~7,4). O NUMERIC ocupa
+16 bytes, contra ~7 bytes de um texto curto como `61.07`, e isso (+8,5 B) pesa mais que o ganho de
+juntar mês e hora num TIMESTAMP (−3,6 B): saldo de +5,0 B por linha, ou +1,0 MB nas 201.696
+linhas. Com FLOAT64 (8 bytes) o staging leria 23,75 B/linha (−11% contra o raw), então o NUMERIC custa
+8 bytes por linha (1,6 MB nesta consulta). **É um trade-off aceito** (ver `decisoes.md`): a
+precisão monetária do preço vale mais que 1,6 MB, e a diferença é invisível no faturado, que fica
+no piso de 10 MiB (10,5 MB nos dois). Para essa tabela compare sempre os bytes processados.
+
+### Armazenamento: raw contra staging
+
+| Tabela | Raw | Staging |
+|---|---|---|
+| ONS | 102,8 MB | 83,8 MB (−19%) |
+| CCEE PLD horário | 19,9 MB | 20,7 MB (+4%) |
+| CCEE PLD semanal | 1,3 MB | 1,5 MB (+19%) |
+| INMET | 366,0 MB | 398,4 MB (+9%) |
+| **Total (6 tabelas)** | **490,1 MB** | **504,5 MB (+3%)** |
+
+**A tipagem não encolhe tudo.** O ONS cai 19% (texto longo vira 8 bytes), mas o INMET **cresce
+9%**: as 17 medidas são textos curtos (`0`, `19,5` ocupam de 3 a 6 bytes) que viram FLOAT64 de 8
+bytes cada. O ganho da tipagem em bytes lidos depende de **quais colunas a consulta toca**: a
+consulta típica do INMET lê só 3 colunas (a data-hora, que encolhe muito) e por isso cai 37%, mas
+uma consulta que lesse todas as medidas leria mais que no raw. O armazenamento custa centavos; o
+que importa para o custo é o que cada consulta lê.
+
+### Previsão para a 2.6 (não medida)
+
+A consulta típica do ONS particionada por data e clusterizada por subsistema leria só as linhas de
+2024 do SE: ~8.784 linhas × 19,5 B, cerca de **0,2 MB processados** (projeção). Mas o **faturado só
+pode cair até o piso de 10,5 MB** (−44% contra os 18,9 MB de hoje), então, como na CCEE, o ganho da
+partição só aparecerá nos bytes **processados**. Registrar os dois na 2.6.
 

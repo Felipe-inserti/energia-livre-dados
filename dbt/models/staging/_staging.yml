@@ -1,0 +1,131 @@
+version: 2
+
+# Testes básicos da 2.2 (chave única, chaves não nulas, valores aceitos e contagem contra o raw).
+# Os testes de faixa, freshness e relacionamentos são da Sprint 3; as descrições completas das
+# colunas, da 2.7.
+models:
+  - name: stg_ons__curva_carga
+    description: >
+      Curva de carga horária do ONS por subsistema, em UTC. Descarta as 20 linhas de horas locais
+      inexistentes (00:00 do início do horário de verão em 2014-2018) antes de converter o fuso.
+      Mantém os valores nulos dos dias inteiros sem dado. Uma linha por (subsistema, hora UTC).
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [id_subsistema, instante_utc]
+    columns:
+      - name: id_subsistema
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["N", "NE", "S", "SE"]
+      - name: instante_utc
+        data_tests:
+          - not_null
+      - name: carga_mwmed
+        description: "Carga média da hora em MWmed. Nulo nos dias inteiros sem dado de 2013-2015."
+
+  - name: stg_ccee__pld_horario
+    description: >
+      PLD horário por submercado, em UTC (convertido do horário de Brasília), com o preço em
+      NUMERIC. Uma linha por (submercado, hora UTC); não descarta nenhuma linha do raw.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [submercado, instante_utc]
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('raw', 'ccee_pld_horario')
+    columns:
+      - name: submercado
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["NORDESTE", "NORTE", "SUDESTE", "SUL"]
+      - name: instante_utc
+        data_tests:
+          - not_null
+      - name: pld_rs_mwh
+        data_tests:
+          - not_null
+
+  - name: stg_ccee__pld_semanal
+    description: >
+      PLD histórico semanal por patamar de carga (2001-2020). 3 linhas por (submercado, semana);
+      o patamar não é identificável, e as linhas idênticas são legítimas (não há deduplicação).
+    data_tests:
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('raw', 'ccee_pld_semanal')
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [submercado, data_inicio_semana, ordem_preco_na_semana]
+    columns:
+      - name: submercado
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["NORDESTE", "NORTE", "SUDESTE", "SUL"]
+      - name: data_inicio_semana
+        data_tests:
+          - not_null
+      - name: pld_rs_mwh
+        data_tests:
+          - not_null
+
+  - name: stg_ccee__consumo_ramo_atividade
+    description: >
+      Consumo mensal por ramo de atividade (CCEE). `mes` é o primeiro dia do mês. A unidade das
+      colunas de consumo está por confirmar.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [mes, ramo_atividade]
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('raw', 'ccee_consumo_ramo_atividade')
+    columns:
+      - name: mes
+        data_tests:
+          - not_null
+      - name: ramo_atividade
+        data_tests:
+          - not_null
+
+  - name: stg_inmet__estacoes_horario
+    description: >
+      Dados horários das 37 estações do SE/CO selecionadas, em UTC, com as medidas em FLOAT64 e
+      nomes padronizados. Nulo quando não houve medição.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [estacao_codigo, instante_utc]
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('raw', 'inmet_estacoes_horario')
+    columns:
+      - name: estacao_codigo
+        data_tests:
+          - not_null
+      - name: instante_utc
+        data_tests:
+          - not_null
+      - name: temperatura_c
+        description: "Temperatura do ar (bulbo seco), em °C. Nulo em ~1,35% das horas."
+
+  - name: stg_feriados
+    description: >
+      Feriados nacionais de 2000 a 2030 (biblioteca `holidays`). Uma data com dois feriados vem
+      numa linha só, com os nomes separados por "; ".
+    data_tests:
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('raw', 'feriados')
+    columns:
+      - name: data_feriado
+        data_tests:
+          - not_null
+          - unique

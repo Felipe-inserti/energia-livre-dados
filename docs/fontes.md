@@ -119,6 +119,10 @@ verão foi comparado, procurando o deslocamento em horas que melhor os alinha:
   oficial local, que no Sudeste e no Centro-Oeste teve horário de verão (UTC−2) até 2018. O
   `America/Sao_Paulo` do tzdata tem esse histórico, então a decisão de converter com o fuso
   nomeado (e não com offset fixo) está certa.
+- **Tratado no staging (tarefa 2.2):** o BigQuery converte a hora local inexistente para o mesmo
+  instante UTC da hora real seguinte, então as 20 linhas inexistentes são descartadas antes da
+  conversão (ver `decisoes.md`); o teste `ons_descarta_so_horas_conhecidas` avisa se aparecer
+  outra. O `stg_ons__curva_carga` tem 937.796 linhas e 240 nulos.
 - **Consequências para a conversão a UTC no staging (Sprint 2):** (1) as linhas de 00:00 nulas
   de 2014–2018 caem num horário local que **não existe**; precisam ser descartadas ou tratadas
   antes da conversão; (2) para cada ano com horário de verão há uma hora UTC sem dado (a
@@ -496,6 +500,13 @@ consumidor nem na previsão central de 12 meses (ver `premissas.md`, seção 3).
    hora, a hora fica ausente.
 
 Ver `decisoes.md` ("Estações do INMET e temperatura do submercado").
+
+### O que o staging do INMET revelou (tarefa 2.2)
+
+Os metadados da estação **mudam entre os arquivos**, e cada linha do raw leva os do seu ZIP:
+- **14 das 37 estações têm coordenadas diferentes entre os anos.** Na maioria é só precisão (6 casas em 2021, 8 em 2024), mas **duas mudaram de lugar**: a **A042 Brazlândia (DF) se mudou cerca de 9 km em 2026** (de −15,5997, −48,1311 para −15,6525, −48,2014) e a **A704 Três Lagoas (MS) cerca de 1,3 km em 2023** (de −20,7833 para −20,7950). Mudar de lugar quebra a continuidade da série da estação (outro microclima). A Três Lagoas é também uma das que degradaram em 2026.
+- **A A521 BH Pampulha aparece com dois nomes** (`BELO HORIZONTE (PAMPULHA)` e `BELO HORIZONTE - PAMPULHA`).
+- **Impacto na `dim_estacao` (tarefa 2.3):** a dimensão deve tomar o registro mais recente da estação (maior `instante_utc`), não um valor qualquer, e registrar que a Brazlândia (e, antes, a Três Lagoas) mudou de lugar.
 
 ### Carga no raw (`raw.inmet_estacoes_horario`, tarefa 1.8)
 
