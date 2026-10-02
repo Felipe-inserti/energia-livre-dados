@@ -29,6 +29,12 @@ models:
       +materialized: table
       +schema: staging
 
+    # Intermediate: junções e agregações entre as fontes. Tabelas no dataset `staging` (só existem os
+    # datasets raw, staging e marts).
+    intermediate:
+      +materialized: table
+      +schema: staging
+
     # Marts: dimensões e fatos, no dataset `marts`.
     marts:
       +materialized: table

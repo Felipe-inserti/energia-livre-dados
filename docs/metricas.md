@@ -8,7 +8,7 @@ Nunca otimizar antes de medir a versão simples. Preencher "Antes" na versão in
 | Negócio | Economia | — | R$ __ / __% | 6 |
 | Negócio | Exposição ao PLD (MWh descobertos ou sobrando) | __ | __ | 6 |
 | Ciência | MAPE mensal da previsão de carga (12 meses à frente, rolling origin) | baseline: __% | modelo: __% | 5 |
-| Engenharia | Dados lidos por consulta típica | 0,037 GB (ONS, raw STRING sem partição: 37,3 MB processados; 37,7 MB faturados) | passo intermediário (tipado, sem partição): **0,018 GB** (18,3 MB processados; 18,9 MB faturados); particionado e clusterizado: __ GB (tarefa 2.6) | 1 → 2 |
+| Engenharia | Dados lidos por consulta típica (**bytes processados**) | 0,037 GB (ONS, raw STRING sem partição: 37,3 MB processados; 37,7 MB faturados) | tipado sem partição: 0,018 GB (18,3 MB); **fato particionado por mês e clusterizado: 0,0007 GB (0,74 MB processados, −98,0% contra o raw)**. O faturado cai para 10,5 MB, o piso de 10 MiB do BigQuery, então a métrica de comparação são os bytes processados | 1 → 2 |
 | Engenharia | Tempo de carga diária | full: **9,3 min** (ONS 4,9 + CCEE 1,2 + INMET 3,1 + feriados 0,2; sem o tempo do download manual) | incremental: __ min | 1 → 4 |
 | Engenharia | Tempo do backfill completo (2021–hoje) | — | __ min | 4 |
 | Engenharia | Problemas de dados capturados pelos testes | — | __ registros (tipos: __) | 3 |
@@ -323,4 +323,109 @@ A consulta típica do ONS particionada por data e clusterizada por subsistema le
 2024 do SE: ~8.784 linhas × 19,5 B, cerca de **0,2 MB processados** (projeção). Mas o **faturado só
 pode cair até o piso de 10,5 MB** (−44% contra os 18,9 MB de hoje), então, como na CCEE, o ganho da
 partição só aparecerá nos bytes **processados**. Registrar os dois na 2.6.
+
+---
+
+## Sprint 2: intermediários, fatos e partição (tarefas 2.4 a 2.6)
+
+Medido em 02/10/2026 depois do `dbt run` dos 3 intermediários e dos 4 fatos (as 3 dimensões foram
+refeitas junto), do `dbt test` e de `scripts/medir_consultas.py --isolar-cluster`.
+
+> **A MÉTRICA DE COMPARAÇÃO SÃO OS BYTES PROCESSADOS, não os faturados.** O BigQuery fatura no mínimo
+> 10 MiB (10.485.760 bytes) por consulta, e com este volume (18 a 366 MB por tabela) todas as consultas
+> nos fatos terminam no piso de 10,5 MB: o faturado esconde o ganho da partição. O processado mostra o que
+> a consulta de fato leu.
+
+### Tempo do `dbt run` e do `dbt test`
+
+`dbt run`: **10 modelos em 22,30 s** (PASS=10, 4 threads), lendo 455 MiB (477 MB) no total.
+
+| Modelo | Linhas | Lido | Tempo |
+|---|---|---|---|
+| `dim_submercado` | 4 | 0 | 2,74 s |
+| `dim_estacao` | 37 | 86,2 MiB | 3,54 s |
+| `dim_tempo` | 271.752 | 7,9 KiB | 4,65 s |
+| `fct_clima_horario` | 1.837.272 | 269,2 MiB | 4,57 s |
+| `fct_pld_horario` | 201.696 | 7,6 MiB | 3,90 s |
+| `fct_pld_semanal` | 12.312 | 574 KiB | 2,94 s |
+| `fct_carga_horaria` | 937.796 | 24,6 MiB | 8,70 s |
+| `int_clima_estado_horario` | 347.592 | 36,9 MiB | 3,85 s |
+| `int_clima_submercado_horario` | 49.656 | 5,6 MiB | 2,25 s |
+| `int_submercado_horario` | 937.988 | 24,5 MiB | 6,65 s |
+
+O `dbt run` de staging (6 modelos) levou 12,22 s; este leva 22,30 s porque os 3 intermediários formam uma
+cadeia (`dim_tempo` → `int_clima_estado_horario` → `int_clima_submercado_horario` →
+`int_submercado_horario`, cerca de 17 s em sequência). O fato do ONS (8,70 s) levou mais que o staging dele
+(3,82 s); não isolei a causa (a escrita particionada e clusterizada, ou a concorrência das 4 threads).
+`dbt test`: **145 testes em 55,34 s**, todos passam (PASS=145, WARN=0).
+
+### O "depois": a consulta típica nos três pontos (raw, tipado sem partição, fato particionado)
+
+Resultado idêntico nos três pontos nas três fontes (24 linhas): a conversão de fuso, a tipagem e a
+tradução do submercado para código estão certas.
+
+| Consulta | Raw (STRING) | Tipado, sem partição | **Fato particionado e clusterizado** | Efeito total |
+|---|---|---|---|---|
+| **ONS**: carga média por hora do SE em 2024 | 37,32 MB | 18,29 MB (−51,0%) | **0,74 MB** (−95,9% contra o tipado) | **−98,0%** |
+| **CCEE**: PLD médio por hora do SUDESTE em 2024 | 5,40 MB | 6,40 MB (+18,6%) | **1,05 MB** (−83,6% contra o tipado) | **−80,6%** |
+| **INMET**: temperatura média por hora (UTC) em SP em 2024 | 58,26 MB | 36,55 MB (−37,3%) | **6,19 MB** (−83,1% contra o tipado) | **−89,4%** |
+
+Bytes **processados**. Os mesmos pontos, nos **faturados**: ONS 37,7 → 18,9 → **10,5 MB**; CCEE 10,5 → 10,5 →
+10,5 MB; INMET 58,7 → 36,7 → **10,5 MB**. No fato, todos estão no piso de 10 MiB; por isso o ganho real
+(−98%, −81%, −89%) só aparece nos bytes processados. A previsão feita antes da execução (ONS ~0,74 MB, CCEE ~1,1
+MB, INMET ~7 MB) acertou nas três.
+
+Configuração real das tabelas (conferida no BigQuery, não só no que o dbt pediu):
+
+| Fato | Partição | Cluster | Partições | Linhas |
+|---|---|---|---|---|
+| `fct_carga_horaria` | mensal em `instante_utc` | `codigo_submercado` | 322 | 937.796 |
+| `fct_pld_horario` | mensal em `instante_utc` | `codigo_submercado` | 70 | 201.696 |
+| `fct_clima_horario` | mensal em `instante_utc` | `uf`, `estacao_codigo` | 68 | 1.837.272 |
+
+### Experimento: isolando o efeito da partição e o do cluster
+
+Cópias temporárias do fato (sem nada, só partição mensal, só cluster), medidas com a mesma consulta e já apagadas.
+Bytes processados:
+
+| Fonte | Sem partição e sem cluster | Só partição | Só cluster | Partição e cluster (o fato) | Cluster sobre a partição |
+|---|---|---|---|---|---|
+| ONS | 18,29 MB | 0,74 MB (**−95,9%**) | 18,29 MB (+0,0%) | 0,74 MB (−95,9%) | +0,0% |
+| CCEE | 5,55 MB | 1,05 MB (**−81,1%**) | 5,55 MB (+0,0%) | 1,05 MB (−81,1%) | +0,0% |
+| INMET | 36,55 MB | 6,48 MB (−82,3%) | **5,93 MB (−83,8%)** | 6,19 MB (−83,1%) | **−4,4%** |
+
+**O que o experimento mostra**
+- **A partição é o que reduz os bytes** nas três fontes (−96%, −81%, −82%). O filtro de intervalo em
+  `instante_utc` poda as partições mensais (o ONS lê 13 de 322; o INMET, 13 de 68).
+- **No ONS e na CCEE o cluster não faz nada (+0,0%).** As tabelas são pequenas demais: a documentação do
+  BigQuery diz que clusterizar tabelas ou partições pequenas dá melhora "geralmente desprezível", e com ~60 KB
+  por partição mensal tudo cabe num bloco só, que é lido inteiro.
+- **No INMET o cluster sozinho reduz 83,8%, porque o filtro é em `uf` (`uf = 'SP'`), que é muito seletivo**
+  (4 das 37 estações) e a tabela inteira (36,5 MB, 68 meses) já é grande o bastante para ter vários blocos: o
+  BigQuery lê só os blocos de SP, 16,2% da tabela. **Mas por cima da partição mensal o cluster reduz só 4,4%**
+  (6,48 → 6,19 MB): cada partição mensal do INMET tem ~0,5 MB e cabe em um ou dois blocos, então não há bloco
+  de outra UF para podar dentro dela. Se o cluster funcionasse dentro de cada partição, a consulta leria
+  ~0,76 MB (13 de 68 meses × 4 de 37 estações); leu 6,19 MB. **Os dois efeitos se sobrepõem em vez de
+  somar** (partição 82,3%, cluster 83,8%, os dois 83,1%): para o INMET, no nosso tamanho, o cluster sozinho
+  rendeu até um pouco mais que a combinação (5,93 contra 6,19 MB).
+- **A estimativa do dry-run diverge do processado em tabela clusterizada**, como a documentação avisa ("não se
+  recebe uma estimativa de custo exata antes da execução porque o número de blocos lidos não é conhecido"):
+  no INMET só com cluster, a estimativa foi 36,55 MB (a tabela inteira) e o processado, 5,93 MB; no fato
+  (partição e cluster), 6,48 e 6,19 MB. Nas tabelas sem cluster (sem nada ou só partição) a estimativa é
+  exatamente igual ao processado. Por isso o script mostra os dois lado a lado, e a medição vale o
+  **processado** (depois de executar).
+- **Conclusão prática:** com estes volumes, o que reduz bytes é a partição por mês; o cluster só ajuda quando o
+  filtro é muito seletivo e a tabela é grande o suficiente (INMET sem partição) e se torna redundante por cima
+  de uma partição mensal pequena. Mantive o cluster nos fatos porque não custa nada e passa a valer quando as
+  tabelas crescerem (com partições de GBs), mas o ganho medido hoje vem só da partição.
+
+### Dois efeitos laterais que a medição revelou
+
+- **O fato da CCEE sem partição já é 13% menor que o staging** (5,55 contra 6,40 MB), só por trocar o nome do
+  submercado pelo código do ONS (média de 7,75 contra 3,5 bytes por linha: −4,25 B × 201.696 linhas = −0,86 MB).
+  É um ganho da harmonização da chave (a `dim_submercado`), não da partição, e reduz o custo extra do NUMERIC
+  visto na 2.2: o fato sem partição lê 5,55 MB, quase o mesmo que o raw (5,40 MB, +2,8%), contra os 6,40 MB do
+  staging (+18,6%).
+- **O faturado só vai ao piso de 10,5 MB depois da partição**: o ONS cai de 18,9 para 10,5 MB (−44%) e o INMET de
+  36,7 para 10,5 MB (−71%), mas a CCEE já estava no piso desde o raw, e o ONS não passa dali mesmo lendo 0,74 MB.
 

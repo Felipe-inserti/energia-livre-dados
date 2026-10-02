@@ -1,0 +1,91 @@
+version: 2
+
+# Intermediários da tarefa 2.4: a agregação da temperatura em dois passos (estação -> estado ->
+# submercado) e a junção de carga, PLD e temperatura na mesma hora.
+models:
+  - name: int_clima_estado_horario
+    description: >
+      Temperatura por estado e hora UTC (1º passo): média das estações com dado na hora, sobre uma
+      grade completa. Se o estado inteiro fica sem dado, repete a última hora válida do próprio
+      estado (até 3 horas) e marca `temperatura_imputada` (4 a 9 horas por estado em 5 anos).
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [uf, instante_utc]
+    columns:
+      - name: uf
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_estacao')
+                field: uf
+      - name: instante_utc
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_tempo')
+                field: instante_utc
+      - name: temperatura_c
+        description: "Média das estações do estado com dado na hora, ou a última hora válida (imputada)."
+      - name: temperatura_imputada
+        data_tests: [not_null]
+      - name: n_estacoes_com_dado
+        description: "Quantas estações do estado têm temperatura na hora."
+        data_tests: [not_null]
+
+  - name: int_clima_submercado_horario
+    description: >
+      Temperatura do submercado por hora UTC (2º passo): média SIMPLES entre os estados, PROVISÓRIA
+      até existirem os pesos de consumo por estado (EPE). Só há o submercado SE (as estações estão no
+      SE/CO).
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [codigo_submercado, instante_utc]
+    columns:
+      - name: codigo_submercado
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["SE"]
+          - relationships:
+              arguments:
+                to: ref('dim_submercado')
+                field: codigo_submercado
+      - name: instante_utc
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_tempo')
+                field: instante_utc
+      - name: n_estados_com_dado
+        data_tests: [not_null]
+
+  - name: int_submercado_horario
+    description: >
+      Carga, PLD e temperatura na mesma granularidade: uma linha por (submercado, hora UTC), com junção
+      completa das três fontes (a carga vai de 2000 a out/2026; PLD e clima, de 2021 em diante). Onde
+      uma fonte não tem a linha, a coluna é nula. Particionada por mês e clusterizada por submercado.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [codigo_submercado, instante_utc]
+    columns:
+      - name: codigo_submercado
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_submercado')
+                field: codigo_submercado
+      - name: instante_utc
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_tempo')
+                field: instante_utc

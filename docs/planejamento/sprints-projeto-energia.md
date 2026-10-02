@@ -67,18 +67,18 @@ Ao abrir uma conversa com o Claude, diga a sprint e a tarefa (ex.: "Sprint 1, ta
 **Tarefas**
 - [x] 2.1 Instalar dbt-bigquery, configurar `profiles.yml` e `sources.yml` apontando para `raw`.
 - [x] 2.2 Modelos de staging: tipos, nomes padronizados, **tudo em UTC**, deduplicação.
-- [ ] 2.3 `dim_tempo` (uma linha por hora UTC de 2000 a 2030, com hora local, feriado, tipo de dia, estação do ano e horário de ponta), `dim_submercado` e `dim_estacao` (as 37 estações do INMET, com o registro mais recente). A `dim_fonte` fica fora: depende da geração por fonte, que foi adiada.
-- [ ] 2.4 Modelos intermediate: carga + PLD + temperatura na mesma granularidade horária.
-- [ ] 2.5 Fatos: `fct_carga_horaria`, `fct_pld_horario`, `fct_clima_horario` (e `fct_reservatorios_diario` se der tempo).
-- [ ] 2.6 Particionar por data e clusterizar por submercado; fatos grandes como modelos incrementais. Medir a consulta típica em **três pontos**: raw (STRING, sem partição), a mesma tabela tipada sem partição e a tabela particionada e clusterizada, para separar o efeito da tipagem do efeito da partição (ver `docs/decisoes.md`).
+- [x] 2.3 `dim_tempo` (uma linha por hora UTC de 2000 a 2030, com hora local, feriado, tipo de dia, estação do ano e horário de ponta), `dim_submercado` e `dim_estacao` (as 37 estações do INMET, com o registro mais recente). A `dim_fonte` fica fora: depende da geração por fonte, que foi adiada.
+- [x] 2.4 Modelos intermediate: a temperatura em dois passos (`int_clima_estado_horario`: média das estações por estado e hora, com imputação de até 3 h; `int_clima_submercado_horario`: média **simples** entre os estados, provisória até existirem os pesos da EPE) e a junção de carga, PLD e temperatura na mesma hora (`int_submercado_horario`).
+- [x] 2.5 Fatos, no dataset `marts`: `fct_carga_horaria`, `fct_pld_horario`, `fct_clima_horario` (grão estação x hora) e `fct_pld_semanal` (o PLD de 2001 a 2020, que dá o preço de contrato de 2021); `fct_reservatorios_diario` fica fora (item de corte). Testes de chave, `not_null` e `relationships` com as dimensões.
+- [x] 2.6 Particionar os fatos horários **por mês** em `instante_utc` e clusterizar por submercado (clima: por UF e estação). **Os fatos incrementais ficam para a Sprint 4** (junto com a janela de segurança das revisões). Medir a consulta típica em **três pontos**: raw (STRING), tipada sem partição e fato particionado e clusterizado, comparando **bytes processados** (o faturado fica no piso de 10 MiB nesse volume), e um experimento que isola o efeito da partição do efeito do cluster.
 - [ ] 2.7 Descrever modelos e colunas no YAML e gerar `dbt docs`.
 - [ ] 2.8 Primeira análise exploratória em notebook: sazonalidade da carga, relação carga x temperatura, comportamento do PLD.
 
 **Medir (o "depois")**
-- Dados lidos pela mesma consulta típica da Sprint 1, agora no mart particionado e também no passo intermediário (tipado, sem partição).
+- Bytes **processados** pela mesma consulta típica da Sprint 1 nos três pontos (raw, tipado sem partição e fato particionado e clusterizado). O faturado fica no piso de 10 MiB, então o processado é a métrica de comparação.
 - Tempo de `dbt run`.
 
-**Decisão a registrar:** como tratar fuso horário e horário de verão; granularidade dos fatos.
+**Decisão a registrar:** como tratar fuso horário e horário de verão; granularidade dos fatos; granularidade da partição (mensal) e adiamento dos fatos incrementais para a Sprint 4.
 
 **Pronto quando:** `dbt run` gera todos os marts sem erro e a comparação de bytes lidos está em `docs/metricas.md`.
 
@@ -116,7 +116,7 @@ Ao abrir uma conversa com o Claude, diga a sprint e a tarefa (ex.: "Sprint 1, ta
 **Objetivo:** pipeline eficiente e confiável + primeira previsão para servir de comparação.
 
 **Tarefas**
-- [ ] 4.1 Converter os extratores para incremental: buscar só o período novo (com uma janela de segurança para revisões).
+- [ ] 4.1 Converter os extratores para incremental: buscar só o período novo (com uma janela de segurança para revisões). Converter também os fatos grandes do dbt para incrementais (`microbatch` por mês, com a mesma janela).
 - [ ] 4.2 Garantir idempotência: reexecutar o mesmo dia não duplica nada.
 - [ ] 4.3 Backfill parametrizado por intervalo de datas.
 - [ ] 4.4 Testes Python (pytest) para as funções de ingestão.

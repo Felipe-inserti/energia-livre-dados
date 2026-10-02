@@ -179,3 +179,147 @@ models:
         description: "Quantos nomes distintos a estação teve nos arquivos (a A521 BH Pampulha tem 2)."
       - name: primeiro_instante_utc
       - name: ultimo_instante_utc
+
+  # ----------------------------------------------------------------- fatos (tarefa 2.5)
+  - name: fct_carga_horaria
+    description: >
+      Carga horária do ONS por submercado. Grão: (submercado, hora UTC), 937.796 linhas. Particionada
+      por mês em `instante_utc` e clusterizada por submercado. Os valores nulos (dias inteiros sem dado
+      de 2013 a 2015) ficam: tratá-los é papel dos testes da Sprint 3.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [codigo_submercado, instante_utc]
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: ref('stg_ons__curva_carga')
+    columns:
+      - name: codigo_submercado
+        description: "Código do ONS do submercado (SE, S, NE ou N). Chave estrangeira da dim_submercado."
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_submercado')
+                field: codigo_submercado
+      - name: instante_utc
+        description: "Início da hora, em UTC. Chave estrangeira da dim_tempo e coluna de partição (mensal)."
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_tempo')
+                field: instante_utc
+      - name: carga_mwmed
+        description: "Carga média da hora em MWmed. Nulo nos dias inteiros sem dado de 2013 a 2015."
+
+  - name: fct_pld_horario
+    description: >
+      PLD horário por submercado. Grão: (submercado, hora UTC), 201.696 linhas. O submercado vem com o
+      nome da CCEE e é traduzido para o código do ONS pela dim_submercado. Particionada por mês e
+      clusterizada por submercado.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [codigo_submercado, instante_utc]
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: ref('stg_ccee__pld_horario')
+    columns:
+      - name: codigo_submercado
+        description: "Código do ONS do submercado. Chave estrangeira da dim_submercado."
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_submercado')
+                field: codigo_submercado
+      - name: instante_utc
+        description: "Início da hora, em UTC. Chave estrangeira da dim_tempo e coluna de partição (mensal)."
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_tempo')
+                field: instante_utc
+      - name: pld_rs_mwh
+        description: "PLD da hora em R$/MWh (NUMERIC)."
+        data_tests: [not_null]
+
+  - name: fct_clima_horario
+    description: >
+      Medições horárias das 37 estações do INMET. Grão: (estação, hora UTC), 1.837.272 linhas, com as 17
+      medidas. A temperatura agregada por estado e submercado fica nos modelos int_clima_*. O `uf` é
+      uma cópia do atributo da dim_estacao, para clusterizar e filtrar sem junção. Particionada por mês
+      e clusterizada por UF e estação.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [estacao_codigo, instante_utc]
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: ref('stg_inmet__estacoes_horario')
+    columns:
+      - name: estacao_codigo
+        description: "Código da estação. Chave estrangeira da dim_estacao."
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_estacao')
+                field: estacao_codigo
+      - name: uf
+        description: "UF da estação (cópia da dim_estacao)."
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["DF", "ES", "GO", "MG", "MS", "RJ", "SP"]
+      - name: instante_utc
+        description: "Início da hora, em UTC. Chave estrangeira da dim_tempo e coluna de partição (mensal)."
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_tempo')
+                field: instante_utc
+      - name: temperatura_c
+        description: "Temperatura do ar (bulbo seco), em °C. Nulo em ~1,35% das horas."
+
+  - name: fct_pld_semanal
+    description: >
+      PLD histórico semanal por patamar (2001-2020). Grão: (submercado, semana, ordem do preço), 3
+      linhas por semana, 12.312 linhas, sem partição. Tem o fim de cada semana e as horas reais dela
+      (com o horário de verão). O patamar não é identificável. Serve ao preço de contrato de 2021.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [codigo_submercado, inicio_semana_utc, ordem_preco_na_semana]
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: ref('stg_ccee__pld_semanal')
+    columns:
+      - name: codigo_submercado
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_submercado')
+                field: codigo_submercado
+      - name: inicio_semana_utc
+        description: "Início da semana operativa (00:00 local do primeiro dia), em UTC."
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_tempo')
+                field: instante_utc
+      - name: fim_semana_utc
+        description: "Início da semana seguinte (a última semana dura 7 dias)."
+        data_tests: [not_null]
+      - name: horas_na_semana
+        description: "Horas reais entre o início e o fim da semana (167 ou 169 nas semanas com mudança de horário de verão)."
+        data_tests: [not_null]
+      - name: pld_rs_mwh
+        data_tests: [not_null]
+
