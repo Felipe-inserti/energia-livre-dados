@@ -40,7 +40,7 @@ Uma empresa no **mercado livre de energia (ACL)** precisa decidir com antecedên
 Como o consumo de uma empresa específica não é público, o projeto usa um **consumidor hipotético**, documentado abertamente no README.
 
 - **Perfil:** supermercado de porte médio, conectado em média tensão (Grupo A), submercado Sudeste/Centro-Oeste.
-- **Curva de consumo:** derivada de dados públicos (consumo por ramo de atividade da CCEE, se disponível em granularidade horária; senão, perfil sintético construído a partir da carga do SE/CO + horário de funcionamento + sensibilidade à temperatura, por causa da refrigeração).
+- **Curva de consumo:** derivada de dados públicos (consumo por ramo de atividade da CCEE, se disponível em granularidade horária; senão, perfil sintético: carga real do SE/CO (ONS) × perfil de loja com 40% de refrigeração constante e 60% de operação no horário de funcionamento; ver `docs/premissas.md`).
 - **Extensão futura:** cenário de um comércio em baixa tensão que poderá migrar em nov/2027.
 
 Toda premissa vai para `docs/premissas.md`. Ser transparente sobre premissas conta a favor em entrevista.
@@ -57,7 +57,7 @@ Toda premissa vai para `docs/premissas.md`. Ser transparente sobre premissas con
 | Transformação | dbt Core (dbt-bigquery) | Padrão de mercado para transformação em SQL |
 | Orquestração | Apache Airflow (rodando local em Docker) | O orquestrador mais pedido em vagas no Brasil |
 | Qualidade | testes do dbt + checagens em Python | Qualidade de dados é tema de entrevista |
-| ML | pandas, scikit-learn, LightGBM | Previsão de carga |
+| ML | pandas, scikit-learn, LightGBM | Previsão mensal de carga (regressão regularizada primeiro; LightGBM como desafiante) |
 | Otimização | NumPy/SciPy (ou PuLP/cvxpy) | Escolha do volume de contrato por cenários |
 | Dashboard | Streamlit (ou Looker Studio) | Mostrar o resultado |
 | Infra | Docker, docker-compose | Rodar tudo com um comando |
@@ -72,10 +72,10 @@ Toda premissa vai para `docs/premissas.md`. Ser transparente sobre premissas con
 
 | Fonte | Dados | Uso |
 |---|---|---|
-| ONS (dados abertos) | Carga horária por subsistema, geração por fonte, nível de reservatórios (EAR), energia natural afluente (ENA) | Alvo da previsão, contexto do setor |
-| CCEE (dados abertos) | PLD horário por submercado (desde 2021), consumo por ramo de atividade | Preço para o backtest, perfil do consumidor |
-| INMET | Temperatura horária de estações no Sudeste | Principal variável explicativa da carga |
-| Feriados | Calendário nacional (lib `holidays`) | Feriados derrubam a carga |
+| ONS (dados abertos) | Carga horária por subsistema (histórico desde 2000), geração por fonte, nível de reservatórios (EAR), energia natural afluente (ENA) | Alvo da previsão mensal (SE/CO), base da curva do consumidor, contexto do setor |
+| CCEE (dados abertos) | PLD horário por submercado (desde 2021; arquivo 2001–2020 para o preço de 2021), consumo por ramo de atividade (mensal, desde abr/2024) | Preço para o backtest; o consumo por ramo só checa a plausibilidade da curva |
+| INMET | Temperatura horária de estações no Sudeste e Centro-Oeste (2021 em diante) | Análise de erro da previsão (ondas de calor) |
+| Feriados | Calendário nacional (lib `holidays`), desde 2000 | Calendário da previsão mensal e da curva do consumidor |
 | ANEEL | Limites de PLD (piso e teto por ano) | Testes de qualidade |
 
 **Atenção:** os portais mudam formatos de vez em quando, e ONS/CCEE **revisam dados antigos**. Isso precisa ser tratado na ingestão (e vira uma boa história de entrevista).
@@ -146,7 +146,8 @@ Cada fase termina com algo funcionando e com métricas registradas. As fases est
 - Um extrator por fonte, salvando o bruto no GCS e carregando no BigQuery.
 - **Primeira versão de propósito simples:** carga full (baixa tudo toda vez), tabelas sem partição.
 - **MEDIR (o "antes"):** tempo da carga full, volume baixado, dados lidos por uma consulta típica no BigQuery.
-- **Entregável:** dados de 2021 em diante no BigQuery.
+- **Escopo dos dados:** ONS desde 2000 (a previsão mensal precisa do histórico longo), PLD horário de 2021 em diante (mais o arquivo 2001–2020, perfilado, de onde vem o preço de contrato de 2021) e INMET de 2021 em diante.
+- **Entregável:** as quatro fontes no BigQuery.
 
 ### Fase 2 — Transformação e modelagem com dbt
 - Projeto dbt com staging → intermediate → marts.
@@ -171,29 +172,33 @@ Cada fase termina com algo funcionando e com métricas registradas. As fases est
 - **Entregável:** pipeline rodando sozinho todo dia.
 
 ### Fase 5 — Previsão de carga
-- Baseline ingênuo: mesma hora da semana anterior (sazonal ingênuo).
-- Modelo: LightGBM com features de calendário, feriados, temperatura e defasagens.
-- Validação temporal (janela deslizante), nunca aleatória.
-- Previsões gravadas no BigQuery com versão do modelo.
-- **MEDIR:** MAPE e erro absoluto do modelo vs. baseline no mesmo período de teste; erro em feriados e ondas de calor.
-- **Entregável:** previsão diária automatizada + análise de erros.
+- **Alvo:** carga mensal do SE/CO, 12 meses à frente (o contrato é decidido uma vez por ano, antes do início do ano). Histórico do ONS desde 2000.
+- **Baseline ingênuo:** mesmo mês do ano anterior.
+- **Modelo:** regressão linear regularizada com tendência, calendário (dias úteis, feriados) e defasagens de pelo menos 12 meses. LightGBM entra como desafiante, com a mesma validação.
+- **Validação:** backtest mensal em rolling origin, nunca aleatória e sempre só com informação anterior ao início de cada ano.
+- **Outliers:** 2001–2002 (racionamento) e 2020 (pandemia) tratados explicitamente (excluir do treino ou variável indicadora) e registrados em `docs/decisoes.md`.
+- Previsões gravadas no BigQuery com versão do modelo. O erro do rolling origin gera os cenários de consumo da Fase 6.
+- **MEDIR:** MAPE mensal e erro absoluto do modelo vs. baseline no mesmo período de teste; erro em meses atípicos e em ondas de calor (com a temperatura do INMET).
+- **Extra opcional:** previsão horária D+1 com LightGBM (temperatura e defasagens de curto prazo), só depois do resto.
+- **Entregável:** previsão mensal automatizada + análise de erros.
 
 ### Fase 6 — Otimização de contrato e backtest
-- Regras de contrato simplificadas (documentadas em `docs/premissas.md`): volume anual em MWm, banda de flexibilidade, preço de contrato definido por premissa (com análise de sensibilidade).
-- Cenários de consumo (a partir da distribuição do erro da previsão) e de PLD (a partir do histórico).
-- Escolha do volume que minimiza custo esperado + medida de risco (ex.: CVaR).
-- **Backtest 2021–2025** com PLD real, comparando três estratégias:
+- **Curva do consumidor** (`docs/premissas.md`): `k × carga média diária do SE/CO (real) × perfil de loja`, com `k` único para todo o período.
+- **Regras de contrato simplificadas** (documentadas em `docs/premissas.md`): volume anual `V` em MWm, contrato modulado pela carga, banda de flexibilidade de ±10% apurada por mês, diferenças liquidadas ao PLD ponderado pelo consumo. Preço `P_t` = PLD médio do ano anterior + spread de R$ 20/MWh (sensibilidade 0/20/40). A regra de lastro (cobertura de 100% do consumo) define o limite inferior de `V`; a penalidade por insuficiência não entra no custo (extra, ver seção 15).
+- Cenários de consumo (a partir da distribuição do erro mensal do rolling origin) e de PLD (a partir do histórico).
+- **Escolha de `V`** que minimiza custo esperado + λ × CVaR95, com `V` limitado a `[1/(1+f), 120%]` do consumo previsto (λ = 0,5; sensibilidade 0/0,5/1). O limite inferior vem da regra de lastro (Decreto 5.163/2004: cobertura de 100% da carga).
+- **Backtest 2021–2025** com PLD real, comparando três estratégias (2021–2023 são contrafactuais: o consumidor não teria carga para migrar nesses anos):
   1. Ingênua: contratar a média do consumo do ano anterior.
   2. Previsão pontual: contratar o valor previsto.
   3. Otimizada: volume recomendado pelo modelo de cenários.
-- **MEDIR:** custo total por ano de cada estratégia, economia em R$ e em %, exposição ao PLD (energia descoberta ou sobrando).
+- **Relatório definido antes dos resultados:** custo total ano a ano, economia contra a ingênua, pior ano, CVaR e exposição ao PLD (MWh) por estratégia. Reportado mesmo que a economia seja pequena ou negativa, e lido ano a ano.
 - **Entregável:** tabela de resultados do backtest. **Esta é a métrica principal do projeto.**
 
 ### Fase 7 — Dashboard
 Quatro páginas:
 1. **Panorama do setor:** carga, PLD e reservatórios ao longo do tempo.
 2. **Previsão:** real vs. previsto, erro do modelo vs. baseline.
-3. **Decisão de contrato:** volume recomendado, custo esperado por estratégia, distribuição de risco, resultado do backtest.
+3. **Decisão de contrato:** volume recomendado, custo esperado por estratégia, distribuição de risco, resultado do backtest e **acompanhamento diário do contrato vigente**: consumo acumulado contra a banda, exposição estimada em R$ até o fim do ano e alerta de mês saindo da banda.
 4. **Saúde do pipeline:** última atualização, testes passando/falhando, duração das execuções.
 - **Entregável:** dashboard público (link no README).
 
@@ -215,7 +220,7 @@ Manter `docs/metricas.md` atualizado ao longo do projeto. Nunca otimizar antes d
 | Negócio | Custo anual de energia do consumidor-exemplo (backtest) | estratégia ingênua: R$ __ | estratégia otimizada: R$ __ | 6 |
 | Negócio | Economia | — | R$ __ / __% | 6 |
 | Negócio | Exposição ao PLD (MWh descobertos ou sobrando) | __ | __ | 6 |
-| Ciência | MAPE da previsão de carga | baseline: __% | modelo: __% | 5 |
+| Ciência | MAPE mensal da previsão de carga (12 meses à frente, rolling origin) | baseline: __% | modelo: __% | 5 |
 | Engenharia | Dados lidos por consulta típica | __ GB | __ GB | 1 → 2 |
 | Engenharia | Tempo de carga diária | full: __ min | incremental: __ min | 1 → 4 |
 | Engenharia | Tempo do backfill completo (2021–hoje) | — | __ min | 4 |
@@ -312,7 +317,7 @@ Decisões que provavelmente vão aparecer:
 
 - "Desenvolvi plataforma de dados do setor elétrico (Python, Airflow, dbt, BigQuery) integrando 4 fontes públicas, com ingestão incremental e idempotente que reduziu o tempo de carga de __ para __ min e o volume lido por consulta em __%."
 - "Implementei testes de qualidade de dados que capturaram __ registros inconsistentes, incluindo revisões retroativas das fontes."
-- "Modelei previsão de carga horária com LightGBM, reduzindo o erro de __% (baseline) para __%, e otimização de contratação de energia que, em backtest 2021–2025 com preços reais, reduziria o custo anual de um consumidor do mercado livre em R$ __ (__%)."
+- "Modelei previsão mensal de carga (12 meses à frente, validação em rolling origin), reduzindo o erro de __% (baseline sazonal) para __%, e otimização de contratação de energia que, em backtest 2021–2025 com preços reais, alterou o custo anual de um consumidor do mercado livre em R$ __ (__%)."
 
 ---
 
@@ -350,3 +355,4 @@ O projeto está pronto para mandar a recrutador quando:
 - Data contracts / Great Expectations.
 - Monitoramento de drift do modelo de previsão.
 - Pequeno serviço de API (FastAPI) servindo a recomendação.
+- Penalidade por insuficiência de lastro no modelo de custo do contrato (depende de confirmar a fórmula, a tolerância e o VR de 2021–2025 no Caderno de Regras nº 13 da CCEE).

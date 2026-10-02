@@ -36,18 +36,19 @@ Ao abrir uma conversa com o Claude, diga a sprint e a tarefa (ex.: "Sprint 1, ta
 **Objetivo:** ter dados reais de 2021 em diante no BigQuery, carregados da forma mais simples possível, e o "antes" medido.
 
 **Tarefas**
-- [ ] 1.1 Criar repositório `energia-livre-dados` com a estrutura de pastas do planejamento, `.gitignore`, `README.md` inicial e licença.
-- [ ] 1.2 Configurar ambiente Python (uv), `pyproject.toml`, ruff para lint.
-- [ ] 1.3 Criar projeto no GCP, **alerta de orçamento**, bucket no GCS, datasets `raw`, `staging`, `marts` no BigQuery (região us-central1) e autenticação local sem arquivo de chave.
-- [ ] 1.4 Explorar os portais: baixar uma amostra de cada fonte (carga horária ONS, PLD horário CCEE, consumo por ramo CCEE, temperatura INMET). Anotar formato, granularidade, período e frequência em `docs/fontes.md`.
-- [ ] 1.5 Escrever `docs/premissas.md`: consumidor-exemplo, como será a curva de consumo e as regras simplificadas de contrato.
-- [ ] 1.6 Extrator ONS (carga horária): baixar tudo desde 2021 → GCS → BigQuery `raw`.
-- [ ] 1.7 Extrator CCEE (PLD horário), mesmo fluxo.
-- [ ] 1.8 Extrator INMET (temperatura) para algumas estações do Sudeste + tabela de feriados.
+- [x] 1.1 Criar repositório `energia-livre-dados` com a estrutura de pastas do planejamento, `.gitignore`, `README.md` inicial e licença.
+- [x] 1.2 Configurar ambiente Python (uv), `pyproject.toml`, ruff para lint.
+- [x] 1.3 Criar projeto no GCP, **alerta de orçamento**, bucket no GCS, datasets `raw`, `staging`, `marts` no BigQuery (região us-central1) e autenticação local sem arquivo de chave.
+- [x] 1.4 Explorar os portais: baixar uma amostra de cada fonte (carga horária ONS, PLD horário CCEE, consumo por ramo CCEE, temperatura INMET). Anotar formato, granularidade, período e frequência em `docs/fontes.md`.
+- [x] 1.5 Escrever `docs/premissas.md`: consumidor-exemplo, como será a curva de consumo e as regras simplificadas de contrato.
+- [ ] 1.6 Extrator ONS (carga horária): baixar tudo **desde 2000** (a previsão mensal precisa do histórico longo) → GCS → BigQuery `raw`.
+- [ ] 1.7 Extrator CCEE (PLD horário 2021 em diante e o arquivo 2001–2020, de onde vem o preço de contrato de 2021), mesmo fluxo. O portal bloqueia downloads automáticos: histórico por download manual, atualização automática a testar.
+- [ ] 1.8 Extrator INMET (temperatura, 2021 em diante) para as estações que passam no critério de 95% (ver `docs/fontes.md`) + tabela de feriados desde 2000.
 - [ ] 1.9 Módulo `ingestion/common/` com cliente GCS/BigQuery e logging reaproveitáveis.
+- [ ] 1.10 Perfilar o arquivo PLD 2001–2020 (granularidade, ponderação por horas de 2020) e checar a série do ONS 2000–2025 (quebras na definição da carga, layout, fuso).
 
 **Medir (o "antes")**
-- Tempo da carga full de cada fonte.
+- Tempo da carga full de cada fonte (o ONS inclui 2000 em diante).
 - Volume baixado.
 - Dados lidos por uma consulta típica (ex.: carga média por hora do SE/CO em 2024), com tabela sem partição.
 
@@ -119,14 +120,14 @@ Ao abrir uma conversa com o Claude, diga a sprint e a tarefa (ex.: "Sprint 1, ta
 - [ ] 4.2 Garantir idempotência: reexecutar o mesmo dia não duplica nada.
 - [ ] 4.3 Backfill parametrizado por intervalo de datas.
 - [ ] 4.4 Testes Python (pytest) para as funções de ingestão.
-- [ ] 4.5 Baseline ingênuo: mesma hora da semana anterior.
-- [ ] 4.6 Definir a validação temporal (janelas de treino e teste) que todos os modelos vão usar.
+- [ ] 4.5 Baseline ingênuo: mesmo mês do ano anterior (carga mensal do SE/CO, 12 meses à frente).
+- [ ] 4.6 Definir a validação temporal que todos os modelos vão usar: rolling origin mensal, horizonte de 12 meses, sempre só com informação anterior ao início de cada ano de decisão.
 
 **Medir**
 - Tempo da carga incremental vs. full da Sprint 1.
 - Tempo do backfill completo (2021 até hoje).
 - Idempotência: rodar duas vezes e comparar contagens.
-- MAPE do baseline no período de teste.
+- MAPE mensal do baseline no rolling origin (2021–2025).
 
 **Decisão a registrar:** tamanho da janela de segurança na carga incremental.
 
@@ -141,23 +142,24 @@ Ao abrir uma conversa com o Claude, diga a sprint e a tarefa (ex.: "Sprint 1, ta
 **Objetivo:** previsão melhor que o baseline e a base da otimização pronta.
 
 **Tarefas**
-- [ ] 5.1 Features: calendário, feriados, temperatura, defasagens e médias móveis.
-- [ ] 5.2 Treinar LightGBM com a mesma validação temporal do baseline.
-- [ ] 5.3 Análise de erros: onde o modelo erra mais (feriados, ondas de calor, horário de ponta).
-- [ ] 5.4 Gravar previsões no BigQuery (`fct_previsao_carga`) com versão do modelo; adicionar a etapa na DAG.
-- [ ] 5.5 Construir a curva de consumo do consumidor-exemplo (conforme `docs/premissas.md`).
-- [ ] 5.6 Gerador de cenários de consumo (a partir da distribuição do erro da previsão).
-- [ ] 5.7 Gerador de cenários de PLD (a partir do histórico).
+- [ ] 5.1 Features mensais: tendência, calendário (dias úteis, feriados, dias do mês) e defasagens de pelo menos 12 meses. Tratar os outliers de 2001–2002 (racionamento) e 2020 (pandemia) e registrar a escolha.
+- [ ] 5.2 Treinar uma regressão linear regularizada (o "antes") e o LightGBM como desafiante, com a mesma validação em rolling origin.
+- [ ] 5.3 Análise de erros: onde o modelo erra mais (meses atípicos, ondas de calor com a temperatura do INMET).
+- [ ] 5.4 Gravar previsões mensais no BigQuery (`fct_previsao_carga`) com versão do modelo; adicionar a etapa na DAG.
+- [ ] 5.5 Construir a curva de consumo do consumidor-exemplo: `k × carga média diária do SE/CO × perfil de loja` (conforme `docs/premissas.md`).
+- [ ] 5.6 Gerador de cenários de consumo (a partir da distribuição do erro mensal do rolling origin, sem usar dados futuros).
+- [ ] 5.7 Gerador de cenários de PLD (a partir do histórico, por reamostragem).
+- [ ] 5.8 (Extra opcional) Previsão horária D+1 com LightGBM.
 
 **Medir**
-- MAPE do LightGBM vs. baseline.
-- Erro em feriados e em dias de calor extremo.
+- MAPE mensal do modelo linear e do LightGBM vs. baseline, no mesmo rolling origin.
+- Erro em meses atípicos e em ondas de calor.
 
-**Decisão a registrar:** como os cenários de PLD são gerados e por quê.
+**Decisão a registrar:** tratamento dos outliers 2001–2002 e 2020; como os cenários de PLD são gerados e por quê.
 
-**Pronto quando:** o modelo supera o baseline no mesmo teste, as previsões entram no pipeline diário e os cenários estão gerados.
+**Pronto quando:** o modelo supera o baseline no mesmo teste, as previsões mensais entram no pipeline e os cenários estão gerados.
 
-**Estudar:** LightGBM para séries temporais e noções de otimização sob incerteza (custo esperado, CVaR).
+**Estudar:** regressão regularizada e rolling origin para séries mensais, LightGBM como desafiante e noções de otimização sob incerteza (custo esperado, CVaR).
 
 ---
 
@@ -166,23 +168,25 @@ Ao abrir uma conversa com o Claude, diga a sprint e a tarefa (ex.: "Sprint 1, ta
 **Objetivo:** produzir a métrica principal do projeto e mostrá-la.
 
 **Tarefas**
-- [ ] 6.1 Modelo de custo do contrato: volume em MWm, banda de flexibilidade, liquidação da diferença pelo PLD.
-- [ ] 6.2 Otimização: volume que minimiza custo esperado + risco (CVaR) sobre os cenários.
-- [ ] 6.3 Backtest 2021–2025 comparando as três estratégias (ingênua, previsão pontual, otimizada).
-- [ ] 6.4 Análise de sensibilidade ao preço de contrato assumido.
+- [ ] 6.1 Modelo de custo do contrato: volume em MWm, contrato modulado pela carga, banda de flexibilidade, liquidação da diferença pelo PLD ponderado pelo consumo e preço `P_t` = PLD médio do ano anterior + spread.
+- [ ] 6.2 Otimização: volume que minimiza custo esperado + λ × CVaR95 sobre os cenários, com `V` limitado a `[1/(1+f), 120%]` do consumo previsto (λ = 0,5; o limite inferior vem da regra de lastro, ver `docs/premissas.md`, seção 4).
+- [ ] 6.3 Backtest 2021–2025 comparando as três estratégias (ingênua, previsão pontual, otimizada). 2021–2023 são contrafactuais.
+- [ ] 6.4 Análise de sensibilidade: spread do preço (0/20/40), λ (0/0,5/1) e banda de flexibilidade (±5%/±15%).
 - [ ] 6.5 Gravar resultados em `fct_recomendacao_contrato`.
 - [ ] 6.6 Dashboard (Streamlit): panorama do setor, previsão, decisão de contrato e saúde do pipeline.
 - [ ] 6.7 Publicar o dashboard (ex.: Streamlit Community Cloud).
+- [ ] 6.8 Na página "Decisão de contrato": acompanhamento diário do contrato vigente (consumo acumulado contra a banda, exposição estimada em R$ até o fim do ano e alerta de mês saindo da banda).
 
-**Medir (métrica principal)**
-- Custo anual de cada estratégia, economia em R$ e em %.
-- Exposição ao PLD (MWh descobertos ou sobrando) por estratégia.
+**Medir (métrica principal)** — relatório definido antes de ver os resultados
+- Custo total ano a ano de cada estratégia, economia contra a ingênua em R$ e em %.
+- Pior ano, CVaR95 do custo e exposição ao PLD (MWh descobertos ou sobrando) por estratégia.
+- Reportar mesmo que a economia seja pequena ou negativa, e ler ano a ano.
 
-**Decisão a registrar:** medida de risco escolhida e premissa de preço de contrato.
+**Decisão a registrar:** medida de risco (CVaR95, λ) e regra do preço de contrato (spread). O limite inferior de `V` pela regra de lastro já está decidido (a penalidade fica como extra).
 
 **Pronto quando:** a tabela do backtest está em `docs/metricas.md` e o dashboard está no ar.
 
-**Estudar:** regras básicas de contratação no ACL (flexibilidade, sazonalização) para defender as simplificações.
+**Estudar:** regras básicas de contratação no ACL (flexibilidade, sazonalização, lastro e penalidade por insuficiência) para defender as simplificações.
 
 ---
 
@@ -210,7 +214,8 @@ Ao abrir uma conversa com o Claude, diga a sprint e a tarefa (ex.: "Sprint 1, ta
 Ordem do que cortar primeiro, sem prejudicar o essencial:
 1. Terraform.
 2. `fct_reservatorios_diario` e geração por fonte.
-3. Página "panorama do setor" do dashboard.
-4. Análise de sensibilidade.
+3. Agregação da temperatura do INMET com pesos de consumo por estado (usar média simples entre estados).
+4. Página "panorama do setor" do dashboard.
+5. Análise de sensibilidade.
 
 **Nunca cortar:** medições do "antes", testes de qualidade, idempotência, backtest e README com resultados.
