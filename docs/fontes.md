@@ -17,6 +17,20 @@ Pendências estão marcadas com **[pendente]**.
 
 Duas fontes em horário local (ONS, PLD) e uma em UTC (INMET): ver `decisoes.md` ("Fuso horário em séries horárias").
 
+## Tabelas do raw (Sprint 1)
+
+| Tabela em `raw` | Fonte | Linhas | Origem dos arquivos | Bronze no GCS |
+|---|---|---|---|---|
+| `ons_curva_carga` | ONS, curva de carga horária, 2000 a 2026 | 937.816 | download automático | `bronze/ons/curva_carga/ano=AAAA/` |
+| `ccee_pld_horario` | CCEE, PLD horário, 2021 a 2026 | 201.696 | download manual | `bronze/ccee/pld_horario/ano=AAAA/` |
+| `ccee_pld_semanal` | CCEE, PLD semanal por patamar, 2001 a 2020 | 12.312 | download manual | `bronze/ccee/pld_semanal/` |
+| `ccee_consumo_ramo_atividade` | CCEE, consumo mensal por ramo, 2024 a 2026 | 435 | download manual | `bronze/ccee/consumo_ramo_atividade/ano=AAAA/` |
+| `inmet_estacoes_horario` | INMET, 37 estações do SE/CO, 2021 a 2026 | 1.837.272 | download manual | `bronze/inmet/ano=AAAA/` |
+| `feriados` | biblioteca `holidays`, 2000 a 2030 | 285 | gerada em código | n/a |
+
+Todas as colunas das fontes estão como STRING (a tipagem é do dbt), sem partição, mais
+`_arquivo_origem` e `_carregado_em` (exceto `feriados`, só com `_carregado_em`).
+
 ---
 
 ## ONS: Curva de Carga Horária
@@ -51,8 +65,11 @@ Formato do arquivo: CSV UTF-8, separador `;`, ponto decimal.
   (4 subsistemas × 8.760 h por ano). Layout idêntico nos dois anos.
 - Sem negativos nem zeros. Faixa em 2025, por subsistema e hora (os 4 juntos): 6.016 a
   62.150 MWmed.
-- Revisões retroativas: não medidas, a amostra é um retrato único. Serão investigadas na
-  tarefa 3.4.
+- **Revisões retroativas:** primeira evidência medida em 02/10/2026. Entre duas cargas full feitas
+  com cerca de 75 minutos de diferença (13:50 e 15:06 UTC), os arquivos de 2000 a 2025 ficaram
+  iguais em tamanho de texto (e os de 2024 e 2025 idênticos em hash), mas o arquivo do ano
+  corrente (2026, as mesmas 26.208 linhas) mudou: a consulta típica leu 69 bytes a menos. Não
+  dá para ver o que mudou porque o bronze sobrescreve o arquivo. Serão investigadas na tarefa 3.4.
 - Veja abaixo o histórico 2000–2025 (layout, nulos, horário de verão e degraus de nível).
 - **Carga no BigQuery (tarefa 1.6, 02/10/2026):** os campos vazios do CSV (259 em 2013–2018, os
   nulos documentados abaixo) chegam ao `raw.ons_curva_carga` como **`NULL`**, e não como string
@@ -364,37 +381,39 @@ Unidade: a confirmar no dicionário de dados do portal. **[pendente]**
 
 - **Portal:** https://portal.inmet.gov.br/dadoshistoricos
 - **Acesso:** um ZIP por ano em `https://portal.inmet.gov.br/uploads/dadoshistoricos/{ANO}.zip`,
-  com um CSV por estação. Em um teste do ambiente de desenvolvimento a conexão foi derrubada
-  (erro 56); os ZIPs de 2021 e 2024 foram baixados manualmente. **[pendente]** verificar se o
-  extrator consegue baixar sem bloqueio. Não há API documentada para o histórico.
+  com um CSV por estação. **Não funcionou por script** na rede de desenvolvimento (`curl -4`
+  devolve código 000, sem conexão), então os ZIPs são **baixados à mão, no navegador**, como os
+  da CCEE (passo a passo mais abaixo). Não há API documentada para o histórico.
 - **Granularidade:** horária, por estação.
-- **Período:** 2000–2026. 2026 vai até 31/08/2026.
+- **Período:** 2000–2026. O ZIP de 2026 vai até 31/08/2026. O projeto usa 2021 em diante.
 - **Atualização:** anual, em lote.
-- **Tamanho:** ZIP de 80,6 MB (2021) e 102,8 MB (2024); ~0,8 MB por estação/ano.
-- **Estações:** 588 em 2021 e 565 em 2024 (a rede muda: 4 estações do Sudeste só existem em
-  2021 e 1 só em 2024; 145 do Sudeste estão nos dois anos, e 240 se somado o Centro-Oeste). Sem códigos repetidos dentro do
-  mesmo ano.
+- **Tamanho:** ZIPs de 80,6 MB (2021), 90,4 (2022), 107,1 (2023), 102,8 (2024), 90,9 (2025) e
+  64,2 MB (2026), 536 MB no total; ~0,8 MB por estação/ano.
+- **Estações:** 588 (2021), 567 (2022), 567 (2023), 565 (2024), 594 (2025) e 639 (2026). A rede
+  muda: no SE/CO há 271 estações em algum ano de 2021 a 2025 e 236 em todos os 5. Sem códigos
+  repetidos dentro de um ano.
 - **Fuso:** UTC (explícito na coluna `Hora UTC`).
 
-**Layout (2021 comparado com 2024): idêntico.** Verificado em todos os arquivos dos dois ZIPs
-(588 e 565):
+**Layout: idêntico de 2021 a 2026.** Verificado em todos os arquivos dos ZIPs de 2021 a 2025
+(588 + 567 + 567 + 565 + 594 estações) e, no de 2026, nas 37 estações usadas:
 
-| Item | 2021 | 2024 |
-|---|---|---|
-| Encoding | latin-1 (não decodifica como UTF-8) | latin-1 |
-| Separador / decimal | `;` / vírgula | `;` / vírgula |
-| Metadados antes do cabeçalho | 8 linhas, mesmos campos (`REGIAO`, `UF`, `ESTACAO`, `CODIGO (WMO)`, `LATITUDE`, `LONGITUDE`, `ALTITUDE`, `DATA DE FUNDACAO`) | idem |
-| Linha de cabeçalho | 1 única variante em todos os arquivos | 1 única variante, **igual à de 2021** (19 colunas) |
-| `Data` | `AAAA/MM/DD` em todos | idem |
-| `Hora UTC` | `HHMM UTC` (ex.: `0000 UTC`) em todos | idem |
-| Sentinela `-9999` na temperatura | nenhuma ocorrência | nenhuma |
-| Quebra de linha | LF | LF |
+| Item | Todos os anos |
+|---|---|
+| Encoding | latin-1 (não decodifica como UTF-8) |
+| Separador / decimal | `;` / vírgula |
+| Metadados antes do cabeçalho | 8 linhas, mesmos campos (`REGIAO`, `UF`, `ESTACAO`, `CODIGO (WMO)`, `LATITUDE`, `LONGITUDE`, `ALTITUDE`, `DATA DE FUNDACAO`) |
+| Linha de cabeçalho | 1 única variante em todos os arquivos e anos (19 colunas) |
+| `Data` | `AAAA/MM/DD` |
+| `Hora UTC` | `HHMM UTC` (ex.: `0000 UTC`) |
+| Sentinela `-9999` na temperatura | nenhuma ocorrência |
+| Cada linha termina com `;` | sim: gera um campo vazio a mais |
 
-A única diferença observada é a precisão da latitude e longitude nos metadados (6 casas em
-2021, 8 em 2024), sem efeito prático. O `;` no fim de cada linha gera uma coluna vazia ao
-ler. Escopo: só 2021 e 2024 foram comparados; os anos intermediários e 2026 não foram
-verificados. 17 medidas por hora; a usada no projeto é
-`TEMPERATURA DO AR - BULBO SECO, HORARIA (°C)`.
+Diferenças que existem, todas sem efeito nos dados:
+- **O ZIP de 2025 guarda os arquivos dentro de uma pasta `2025/`**; os demais não têm pasta. O
+  extrator seleciona a estação pelo código no nome-base do arquivo.
+- A precisão da latitude e da longitude nos metadados varia (6 casas em 2021, 8 em 2024).
+- Os 19 nomes de coluna padronizam sem colisão.
+- 17 medidas por hora; a usada no projeto é `TEMPERATURA DO AR - BULBO SECO, HORARIA (°C)`.
 
 **Completude varia muito entre estações.** Nulos na temperatura em 2024 nas estações do
 teste inicial:
@@ -411,76 +430,55 @@ seguinte**, por isso o critério vale por ano (abaixo).
 
 ### Estações escolhidas para a temperatura
 
-**Critério:** temperatura do ar com pelo menos **95% de horas válidas em cada ano** analisado
-(por enquanto 2021 e 2024). Horas válidas = horas distintas com temperatura não nula e
-diferente de `-9999`, divididas pelas horas do ano (8.760 ou 8.784). Uma hora que falta no
-arquivo conta como inválida. Escopo: estados do submercado SE/CO que o projeto cobre:
-Sudeste (ES, MG, RJ, SP) e Centro-Oeste (DF, GO, MS, MT). Análise reproduzível com
-`uv run python scripts/inmet_cmp.py` (gera `data/amostras/inmet/completude_estacoes.csv`).
+**Critério:** temperatura do ar com pelo menos **95% de horas válidas em cada ano de 2021 a
+2025**. Horas válidas = horas distintas com temperatura não nula e diferente de `-9999`,
+divididas pelas horas do ano (8.760 ou 8.784). Uma hora que falta no arquivo conta como
+inválida. O ano de 2026 (parcial) não entra no critério. Escopo: estados do submercado SE/CO
+que o projeto cobre: Sudeste (ES, MG, RJ, SP) e Centro-Oeste (DF, GO, MS, MT). Análise
+reproduzível a partir dos ZIPs com `uv run python scripts/inmet_cmp.py` (gera
+`data/amostras/inmet/completude_estacoes.csv`).
 
-**Resultado:** das 240 estações do SE/CO presentes nos dois anos, **73 passam**; **72 são
-usadas**, porque o MT foi excluído (abaixo).
+**Resultado: das 236 estações do SE/CO presentes nos 5 anos, 37 passam.** A lista caiu de 72
+para 37: os 72 vinham do critério aplicado só a 2021 e 2024, e incluir 2022, 2023 e 2025 tirou
+35 estações (as 72 antigas continham as 37 atuais).
 
-| Região | UF | Presentes nos 2 anos | Passam |
+| Região | UF | Presentes nos 5 anos | Passam |
 |---|---|---|---|
-| SE | ES | 12 | 5 |
-| SE | MG | 68 | 30 |
-| SE | RJ | 25 | 12 |
-| SE | SP | 40 | 7 |
+| SE | ES | 11 | 4 |
+| SE | MG | 68 | 14 |
+| SE | RJ | 25 | 6 |
+| SE | SP | 38 | 4 |
 | CO | DF | 5 | 4 |
-| CO | GO | 26 | 9 |
-| CO | MS | 27 | 5 |
-| CO | MT | 37 | **1** (excluído) |
+| CO | GO | 26 | 3 |
+| CO | MS | 27 | 2 |
+| CO | MT | 36 | **0** |
 
-Percentual de horas válidas (2021 / 2024):
+As 37 estão no ZIP de todos os anos, inclusive no de 2026. A lista é a constante `ESTACOES` em
+`ingestion/inmet.py`. Percentual de horas válidas (2021 / 2022 / 2023 / 2024 / 2025):
 
-- **ES:** A617 Alegre (97,2/100,0); A615 Alfredo Chaves (100,0/99,9); A614 Linhares
-  (100,0/100,0); A616 São Mateus (100,0/99,7); A633 Venda Nova do Imigrante (98,9/97,8).
-- **MG:** A549 Águas Vermelhas (95,1/100,0); A534 Aimorés (100,0/98,9); A508 Almenara
-  (99,3/99,5); A505 Araxá (99,5/99,3); A502 Barbacena (99,8/99,8); A521 Belo Horizonte
-  Pampulha (100,0/100,0); F501 Belo Horizonte Cercadinho (98,4/100,0); A530 Caldas
-  (99,9/99,8); A554 Caratinga (100,0/99,9); A520 Conceição das Alagoas (99,8/97,0);
-  A564 Divinópolis (100,0/99,9); A524 Formiga (99,9/100,0); A533 Guanhães (99,2/100,0);
-  A555 Ibirité Rola Moça (99,7/99,4); A550 Itaobim (99,5/99,8); A518 Juiz de Fora
-  (100,0/99,9); A540 Mantena (100,0/100,0); A531 Maria da Fé (100,0/100,0); A539 Mocambinho
-  (100,0/99,8); A509 Monte Verde (99,7/99,9); A506 Montes Claros (100,0/100,0); A570
-  Oliveira (100,0/98,2); A571 Paracatu (100,0/99,3); A516 Passos (99,2/99,4); A551 Rio Pardo
-  de Minas (99,7/100,0); A514 São João del Rei (100,0/100,0); A547 São Romão (99,7/97,7);
-  A507 Uberlândia (98,9/100,0); A515 Varginha (100,0/100,0); A510 Viçosa (100,0/99,9).
-- **RJ:** A606 Arraial do Cabo (100,0/97,0); A607 Campos dos Goytacazes (100,0/100,0); A624
-  Nova Friburgo Salinas (97,5/100,0); A609 Resende (99,8/99,9); A626 Rio Claro (99,3/96,9);
-  A636 Rio de Janeiro Jacarepaguá (98,9/100,0); A621 Rio de Janeiro Vila Militar
-  (100,0/99,9); A602 Rio de Janeiro Marambaia (99,7/100,0); A601 Seropédica Ecologia
-  Agrícola (100,0/99,9); A659 Silva Jardim (100,0/99,6); A625 Três Rios (95,6/99,9); A611
-  Valença (99,5/100,0).
-- **SP:** A705 Bauru (98,8/100,0); A763 Marília (100,0/99,6); A747 Pradópolis (100,0/97,8);
-  A707 Presidente Prudente (99,6/97,6); A701 São Paulo Mirante (100,0/99,8); A770 São Simão
-  (98,6/96,3); A768 Tupã (95,9/95,7).
-- **DF:** A001 Brasília (100,0/99,7); A042 Brazlândia (97,9/97,3); A046 Gama Ponte Alta
-  (100,0/99,2); A047 Paranoá Coopa-DF (97,7/95,3).
-- **GO:** A034 Catalão (100,0/100,0); A036 Cristalina (100,0/100,0); A002 Goiânia
-  (98,5/99,3); A015 Itapaci (100,0/95,8); A016 Jataí (99,9/99,9); A012 Luziânia
-  (100,0/100,0); A027 Paraúna (100,0/100,0); A033 Pires do Rio (100,0/99,9); A037 Silvânia
-  (100,0/97,9).
-- **MS:** A756 Água Clara (100,0/99,8); A702 Campo Grande (99,2/100,0); A703 Ponta Porã
-  (98,2/100,0); A743 Rio Brilhante (97,5/100,0); A704 Três Lagoas (100,0/100,0).
-- **MT (excluído):** A934 Alto Taquari (97,5/95,6).
+- **DF:** A001 Brasilia (100,0/100,0/99,9/99,7/99,8); A042 Brazlandia (98,0/97,7/96,5/97,3/99,8); A046 Gama (Ponte Alta) (100,0/99,2/99,8/99,2/99,5); A047 Paranoa (Coopa-Df) (97,7/97,1/95,7/95,3/99,8).
+- **ES:** A617 Alegre (97,2/100,0/100,0/100,0/96,5); A614 Linhares (100,0/100,0/100,0/100,0/99,9); A616 Sao Mateus (100,0/99,5/99,8/99,7/99,7); A633 Venda Nova Do Imigrante (98,9/99,4/98,8/97,8/99,8).
+- **GO:** A034 Catalao (100,0/97,0/100,0/100,0/99,9); A036 Cristalina (100,0/97,7/99,5/100,0/99,8); A037 Silvania (100,0/95,3/99,3/97,9/99,8).
+- **MG:** A508 Almenara (99,3/98,3/97,8/99,5/99,8); A502 Barbacena (99,8/99,5/96,9/99,8/99,4); A521 Belo Horizonte (Pampulha) (100,0/99,9/100,0/100,0/99,9); F501 Belo Horizonte - Cercadinho (98,4/99,1/100,0/100,0/99,6); A554 Caratinga (100,0/99,8/97,1/99,9/99,8); A520 Conceicao Das Alagoas (99,8/99,3/99,3/97,0/98,6); A540 Mantena (100,0/100,0/98,5/100,0/99,9); A531 Maria Da Fe (100,0/100,0/100,0/100,0/99,9); A539 Mocambinho (100,0/100,0/100,0/99,8/99,7); A509 Monte Verde (99,7/97,1/100,0/99,9/99,9); A506 Montes Claros (100,0/100,0/100,0/100,0/99,9); A570 Oliveira (100,0/100,0/95,5/98,2/99,8); A516 Passos (99,2/99,4/99,7/99,4/99,0); A507 Uberlandia (98,9/100,0/98,5/100,0/99,8).
+- **MS:** A756 Agua Clara (100,0/95,4/99,9/99,8/99,9); A704 Tres Lagoas (100,0/100,0/100,0/100,0/99,9).
+- **RJ:** A607 Campos Dos Goytacazes (100,0/99,5/99,8/100,0/99,9); A624 Nova Friburgo - Salinas (97,5/100,0/100,0/100,0/99,9); A626 Rio Claro (99,3/99,3/96,2/97,0/99,8); A621 Rio De Janeiro - Vila Militar (100,0/99,5/97,6/99,9/99,8); A601 Seropedica-Ecologia Agricola (100,0/100,0/99,9/99,9/99,9); A659 Silva Jardim (100,0/99,8/99,9/99,6/99,5).
+- **SP:** A763 Marilia (100,0/100,0/98,7/99,7/99,8); A747 Pradopolis (100,0/100,0/100,0/97,8/99,9); A701 Sao Paulo - Mirante (100,0/100,0/97,6/99,8/99,5); A770 Sao Simao (98,6/98,6/97,2/96,3/97,8).
 
 **Observações sobre o resultado**
-- A lista só pode **encolher** quando 2022, 2023 e 2025 entrarem (o critério vale em cada
-  ano). Ela precisa ser recalculada com os anos 2021 a 2025 antes de ser usada nos
-  extratores. O INMET é usado de 2021 em diante, então o ano 2020 não entra no critério.
-- Muitas estações ficam de fora por completude baixa em 2021 (mediana de 92,6% no
-  Sudeste, contra 98,1% em 2024). Perto do limite há estações como Casa Branca, Itapira
-  ou Cachoeira Paulista (0% em 2021, entre 91% e 96% em 2024).
-- **Distribuição geográfica desigual:** 30 das 73 estações são de MG e só 7 de SP, quase
-  todas no interior (a capital só tem a A701 Mirante). Uma média simples entre todas as
-  estações ficaria dominada por MG, embora SP seja o maior centro de carga do submercado.
+- Com um limiar de 90% seriam **52** estações (SP 6, GO 5, MS 5, MG 18, RJ 9, DF 5, ES 4).
+  15 estações ficam de fora por pouco, em 1 ou 2 anos (por exemplo Campo Grande, 90,4% em
+  2022; Luziânia, 91,8% em 2023; Juiz de Fora, 90,8% em 2025). O raw guarda só as 37, mas o
+  **bronze guarda todos os ZIPs com todas as estações**, então reprocessar com outra lista
+  custa só uma nova carga.
+- **Poucas estações em alguns estados:** MS tem 2, GO tem 3, SP e ES têm 4. A média do estado
+  fica frágil nesses casos (uma estação com problema pesa muito). Reavaliar na Sprint 2 se
+  vale afrouxar o critério.
+- **Distribuição desigual:** MG tem 14 das 37 estações e SP só 4 (a capital só tem a A701
+  Mirante). Uma média simples ficaria dominada por MG, embora SP seja o maior centro de carga.
   Por isso a agregação é em dois passos, com peso por estado (abaixo).
-- **MT está excluído:** só 1 estação passa (Alto Taquari, com 95,6% em 2024, perto do
-  limite), de 37 presentes nos dois anos. A média do estado dependeria de uma única estação.
-  O peso do MT é redistribuído proporcionalmente entre os outros 7 estados (ES, MG, RJ, SP,
-  DF, GO, MS).
+- **MT está excluído:** nenhuma das 36 estações do MT presentes nos 5 anos passa (com 2021 e
+  2024 só havia uma, Alto Taquari, no limite). O peso do MT é redistribuído entre os outros 7
+  estados (ES, MG, RJ, SP, DF, GO, MS).
 
 **Papel da temperatura:** o INMET é usado de 2021 em diante como **variável de análise de
 erro** (onde a previsão erra mais, como em ondas de calor). Ela não entra na curva do
@@ -498,6 +496,58 @@ consumidor nem na previsão central de 12 meses (ver `premissas.md`, seção 3).
    hora, a hora fica ausente.
 
 Ver `decisoes.md` ("Estações do INMET e temperatura do submercado").
+
+### Carga no raw (`raw.inmet_estacoes_horario`, tarefa 1.8)
+
+- **Só as 37 estações**, de todos os ZIPs (2021 a 2026): 1.837.272 linhas (324.120 por ano
+  completo de 365 dias, 325.008 em 2024, que é bissexto, e 215.784 em 2026, até 31/08).
+- **Colunas:** as 19 da fonte padronizadas (`data`, `hora_utc`, ..., `vento_velocidade_horaria_m_s`),
+  mais `estacao_codigo`, `estacao_uf`, `estacao_nome`, `estacao_latitude`, `estacao_longitude`
+  (dos metadados do arquivo), `_arquivo_origem` (o caminho do ZIP no bronze, por exemplo
+  `bronze/inmet/ano=2024/2024.zip`) e `_carregado_em`. Tudo STRING (inclusive o decimal com
+  vírgula, como `-23,49638888`), sem partição.
+- **Temperatura vazia:** nas 37 estações há 24.781 horas sem valor de temperatura (1,35% de
+  1.837.272). Os campos vazios chegam ao BigQuery como `NULL` (0 strings vazias), como no ONS, e
+  a carga confirmou as contagens por ZIP e estação (222 grupos, validação ok).
+- **Os nulos se concentram em 2026 e em poucas estações:**
+
+| Ano | Temperatura vazia |
+|---|---|
+| 2021 | 0,49% |
+| 2022 | 0,88% |
+| 2023 | 1,10% |
+| 2024 | 0,81% |
+| 2025 | 0,41% |
+| **2026 (jan–ago)** | **5,94%** |
+
+  Por UF: GO 4,21%, MS 2,07%, DF 1,27%, MG 1,21%, SP 1,02%, ES 0,75%, RJ 0,68%. Nenhuma das 37
+  estações tem 0 vazios.
+- **O critério olha para trás e não garante o futuro.** Em 2026 (jan–ago, 5.832 horas), **10 das
+  37 estações têm menos de 95% de horas válidas e 5 têm menos de 90%**: A037 Silvânia (GO) só
+  13,6% válido, A704 Três Lagoas (MS) 72,5%, A554 Caratinga (MG) 77,6%, A516 Passos (MG) 81,6% e
+  A502 Barbacena (MG) 83,8%. Para o GO, que só tem 3 estações, a média do estado em 2026 fica
+  praticamente em 2 estações; para o MS, que tem 2, fica quase só na A756 Água Clara (a Três
+  Lagoas tem 72,5% de horas válidas). Isso pesa nas análises que
+  usarem 2026 (a análise de erro e o acompanhamento diário do contrato). Para a Sprint 3, vale um
+  teste de completude mensal por estação (e por estado) no staging, que avise quando uma estação
+  selecionada degrada.
+
+---
+
+## Feriados nacionais (biblioteca `holidays`)
+
+- **Fonte:** biblioteca Python `holidays` (versão 0.105, travada no `uv.lock`), feriados
+  nacionais do Brasil, **sem arquivo-fonte nem bronze**. Carregados por
+  `uv run python -m ingestion.feriados`.
+- **Escopo:** 2000 a 2030 (285 linhas; o histórico serve à previsão mensal desde 2000 e à curva
+  do consumidor, e os anos futuros à projeção). Colunas no raw: `data` (texto `AAAA-MM-DD`), `nome`
+  e `_carregado_em`. Só feriados nacionais (estaduais e municipais não são tratados).
+- **Datas com dois feriados vêm numa linha só**, com os nomes separados por "; ". No intervalo
+  carregado só há uma: 2000-04-21 ("Sexta-feira Santa; Tiradentes"). O staging desmembra, se
+  precisar.
+- **O resultado depende da versão da biblioteca.** Por exemplo, o Dia Nacional de Zumbi e da
+  Consciência Negra é feriado nacional só a partir de 2024 (a lib não o lista em 2023). A
+  versão fica registrada no log da carga.
 
 ---
 
@@ -562,6 +612,54 @@ baixado do recurso errado para antes da carga, com a mensagem do que está errad
 > **Nota para conferência:** os nomes dos botões e dos recursos acima foram escritos a partir da
 > estrutura da página que consultei (lista de recursos por ano, mais o recurso "2001-2020"), não
 > de uma sessão de download. Quem fez o download deve conferir o passo a passo.
+
+---
+
+## Download manual dos ZIPs do INMET
+
+**Por quê:** o download por script não funcionou na rede de desenvolvimento (`curl -4` devolveu
+código 000, sem conexão). Por isso **os ZIPs são baixados à mão, no navegador**, como os da
+CCEE. O extrator (`ingestion/inmet.py`) lê a pasta local.
+
+**Quem clonou o repositório precisa fazer isto uma vez** (e repetir para atualizar o ano
+corrente):
+
+1. **Criar a pasta** (ignorada pelo git):
+   ```bash
+   mkdir -p data/manual/inmet
+   ```
+2. **Baixar um ZIP por ano, de 2021 até o ano atual**, em
+   https://portal.inmet.gov.br/dadoshistoricos (link "(AUTOMÁTICA)" de cada ano). A URL direta
+   segue o padrão `https://portal.inmet.gov.br/uploads/dadoshistoricos/AAAA.zip`. Salvar com o
+   nome exato `AAAA.zip` (por exemplo `2024.zip`) em `data/manual/inmet/`. Cada ZIP tem de 64
+   a 107 MB, 536 MB no total.
+3. **Conferir** se tudo está no lugar (não usa a nuvem nem o `.env`):
+   ```bash
+   uv run python -m ingestion.inmet --verificar
+   ```
+   Se faltar ZIP, o comando diz qual e de onde baixar.
+4. **Carregar** (grava no GCS e no BigQuery; precisa do `.env` e do `gcloud auth
+   application-default login`):
+   ```bash
+   uv run python -m ingestion.inmet
+   ```
+
+**Atualizar:** o ZIP do ano corrente é parcial (o de 2026 vai até 31/08/2026) e é atualizado
+pelo INMET em lote. Para atualizar, baixe de novo o ZIP do ano corrente, troque na pasta e rode
+o extrator outra vez (a carga é full).
+
+**O que o extrator confere antes de gravar o ZIP na nuvem:** que o arquivo é um ZIP íntegro
+(um download interrompido costuma gerar ZIP truncado), que as 37 estações selecionadas estão
+nele, e, estação a estação, que o código e a UF dos metadados batem com os esperados, que o
+cabeçalho tem as 19 colunas e que as datas são do ano do ZIP (pega ZIP baixado com nome
+trocado).
+
+**Mudar a lista de estações:** os ZIPs guardam todas as estações. Para recalcular o critério,
+`uv run python scripts/inmet_cmp.py 2021 2022 2023 2024 2025`, e atualizar a constante
+`ESTACOES` em `ingestion/inmet.py`.
+
+> **Nota para conferência:** os nomes dos links acima foram escritos a partir da estrutura da
+> página consultada, não de uma sessão de download. Quem fez o download deve conferir.
 
 ---
 

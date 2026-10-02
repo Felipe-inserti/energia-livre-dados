@@ -44,6 +44,26 @@ class CsvTransformado:
     colunas: list[str]  # colunas da fonte, já padronizadas (sem as extras)
     linhas: int  # linhas de dados (sem o cabeçalho)
     vazios: dict[str, int]  # campos vazios por coluna da fonte
+    metadados: dict[str, str]  # linhas puladas antes do cabeçalho (campo -> valor), se houver
+
+
+def _ler_metadados(leitor, quantidade: int) -> dict[str, str]:
+    metadados: dict[str, str] = {}
+    for _ in range(quantidade):
+        linha = next(leitor, None)
+        if linha is None:
+            raise ValueError(f"CSV com menos de {quantidade} linhas de metadados")
+        if linha:
+            metadados[linha[0].strip().rstrip(":")] = linha[1].strip() if len(linha) > 1 else ""
+    return metadados
+
+
+def ler_metadados(
+    conteudo: bytes, quantidade: int, *, codificacao: str = "utf-8-sig", separador: str = ";"
+) -> dict[str, str]:
+    """Lê só as primeiras `quantidade` linhas ('CAMPO:;valor') de um CSV com metadados."""
+    leitor = csv.reader(io.StringIO(conteudo.decode(codificacao), newline=""), delimiter=separador)
+    return _ler_metadados(leitor, quantidade)
 
 
 def transformar_csv(
@@ -52,16 +72,27 @@ def transformar_csv(
     *,
     codificacao: str = "utf-8-sig",
     separador: str = ";",
+    pular_linhas: int = 0,
+    descartar_coluna_vazia_final: bool = False,
 ) -> CsvTransformado:
     """Padroniza o cabeçalho e acrescenta as colunas `extras` (nome -> valor) a cada linha.
+
+    - `pular_linhas`: linhas de metadados antes do cabeçalho (INMET: 8). Elas não vão para o
+      CSV, mas voltam em `metadados` (`'CODIGO (WMO):;A701'` -> `{'CODIGO (WMO)': 'A701'}`).
+    - `descartar_coluna_vazia_final`: ignora o campo vazio que sobra quando cada linha termina
+      com o separador (INMET).
 
     Os valores originais não são alterados (campos vazios continuam vazios). A estrutura é
     validada: uma linha com número de campos diferente do cabeçalho gera erro.
     """
     leitor = csv.reader(io.StringIO(conteudo.decode(codificacao), newline=""), delimiter=separador)
+    metadados = _ler_metadados(leitor, pular_linhas)
     cabecalho = next(leitor, None)
     if cabecalho is None:
         raise ValueError("CSV vazio")
+    descartar = descartar_coluna_vazia_final and cabecalho[-1] == ""
+    if descartar:
+        cabecalho = cabecalho[:-1]
     colunas = padronizar_colunas(cabecalho)
     colidem = sorted(set(colunas) & set(extras))
     if colidem:
@@ -73,9 +104,11 @@ def transformar_csv(
     vazios = dict.fromkeys(colunas, 0)
     linhas = 0
     valores_extras = list(extras.values())
-    for numero, linha in enumerate(leitor, start=2):
+    for numero, linha in enumerate(leitor, start=pular_linhas + 2):
         if not linha:  # linha em branco no fim do arquivo
             continue
+        if descartar and len(linha) == len(colunas) + 1 and linha[-1] == "":
+            linha = linha[:-1]
         if len(linha) != len(colunas):
             raise ValueError(f"Linha {numero}: {len(linha)} campos, esperado {len(colunas)}")
         for coluna, valor in zip(colunas, linha, strict=True):
@@ -83,4 +116,4 @@ def transformar_csv(
                 vazios[coluna] += 1
         escritor.writerow([*linha, *valores_extras])
         linhas += 1
-    return CsvTransformado(saida.getvalue().encode("utf-8"), colunas, linhas, vazios)
+    return CsvTransformado(saida.getvalue().encode("utf-8"), colunas, linhas, vazios, metadados)

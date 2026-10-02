@@ -7,7 +7,7 @@ Uso:
 - ONS: baixa os CSVs de 2021 e 2025 (~1,5 MB cada) para data/amostras/ons/.
 - CCEE: o portal bloqueia downloads automáticos; perfila os CSVs já colocados à mão
   em data/manual/ccee/.
-- INMET: lê do ZIP anual (data/amostras/inmet/2024.zip) só algumas estações do Sudeste,
+- INMET: lê do ZIP anual (data/manual/inmet/2024.zip) só algumas estações do Sudeste,
   sem descompactar o resto, e salva essas estações em data/amostras/inmet/estacoes/.
 
 - PLD-HISTORICO (tarefa 1.10): perfila o arquivo semanal 2001–2020 (colocado à mão em
@@ -181,7 +181,7 @@ def ler_estacao(conteudo: bytes) -> tuple[dict, pd.DataFrame]:
 
 def explorar_inmet() -> None:
     titulo("INMET: estações automáticas (ZIP anual local)")
-    caminho = AMOSTRAS / "inmet" / "2024.zip"
+    caminho = RAIZ / "data" / "manual" / "inmet" / "2024.zip"
     saida = AMOSTRAS / "inmet" / "estacoes"
     saida.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(caminho) as z:

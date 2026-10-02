@@ -1,6 +1,11 @@
 import pytest
 
-from ingestion.common.csv_utils import padronizar_coluna, padronizar_colunas, transformar_csv
+from ingestion.common.csv_utils import (
+    ler_metadados,
+    padronizar_coluna,
+    padronizar_colunas,
+    transformar_csv,
+)
 
 
 @pytest.mark.parametrize(
@@ -85,3 +90,70 @@ def test_colunas_da_fonte_nunca_comecam_com_underscore_mas_extra_igual_colide():
 def test_nome_com_underscore_na_fonte_nao_pode_imitar_coluna_de_controle():
     # '_arquivo_origem' na fonte viraria 'arquivo_origem' (underscore inicial é removido)
     assert padronizar_coluna("_arquivo_origem") == "arquivo_origem"
+
+
+# ---------------------------------------------------------------- formato do INMET
+
+INMET = (
+    "REGIAO:;SE\n"
+    "UF:;SP\n"
+    "ESTACAO:;SAO PAULO - MIRANTE\n"
+    "CODIGO (WMO):;A701\n"
+    "LATITUDE:;-23,49638888\n"
+    "LONGITUDE:;-46,61999999\n"
+    "ALTITUDE:;785,64\n"
+    "DATA DE FUNDACAO:;25/07/06\n"
+    "Data;Hora UTC;PRECIPITAÇÃO TOTAL, HORÁRIO (mm);RADIACAO GLOBAL (Kj/m²);\n"
+    "2024/01/01;0000 UTC;0;;\n"
+    "2024/01/01;0100 UTC;0,2;12,5;\n"
+).encode("latin-1")
+
+
+def test_ler_metadados():
+    meta = ler_metadados(INMET, 8, codificacao="latin-1")
+    assert meta["CODIGO (WMO)"] == "A701" and meta["UF"] == "SP"
+    assert meta["LATITUDE"] == "-23,49638888"  # o decimal com vírgula fica como veio
+    assert len(meta) == 8
+
+
+def test_transformar_csv_do_inmet_pula_metadados_e_descarta_coluna_vazia():
+    resultado = transformar_csv(
+        INMET,
+        {"estacao_codigo": "A701"},
+        codificacao="latin-1",
+        pular_linhas=8,
+        descartar_coluna_vazia_final=True,
+    )
+    assert resultado.colunas == [
+        "data",
+        "hora_utc",
+        "precipitacao_total_horario_mm",
+        "radiacao_global_kj_m2",
+    ]
+    linhas = resultado.conteudo.decode().splitlines()
+    assert (
+        linhas[0]
+        == "data,hora_utc,precipitacao_total_horario_mm,radiacao_global_kj_m2,estacao_codigo"
+    )
+    assert linhas[1] == "2024/01/01,0000 UTC,0,,A701"
+    assert linhas[2] == '2024/01/01,0100 UTC,"0,2","12,5",A701'  # a vírgula decimal é protegida
+    assert resultado.linhas == 2 and resultado.vazios["radiacao_global_kj_m2"] == 1
+    assert resultado.metadados["ESTACAO"] == "SAO PAULO - MIRANTE"
+
+
+def test_sem_descartar_a_coluna_vazia_o_cabecalho_com_separador_final_falha():
+    with pytest.raises(ValueError, match="vazio"):
+        transformar_csv(INMET, {}, codificacao="latin-1", pular_linhas=8)
+
+
+def test_erro_de_linha_conta_as_linhas_puladas():
+    ruim = INMET + b"2024/01/01;0200 UTC;1;2;3;4;5;\n"
+    with pytest.raises(ValueError, match="Linha 12"):
+        transformar_csv(
+            ruim, {}, codificacao="latin-1", pular_linhas=8, descartar_coluna_vazia_final=True
+        )
+
+
+def test_menos_linhas_de_metadados_do_que_o_pedido():
+    with pytest.raises(ValueError, match="menos de 8"):
+        transformar_csv(b"a;b\n", {}, pular_linhas=8)

@@ -284,4 +284,8 @@ regime de preço de cada ano.
 11. Unidade do consumo por ramo da CCEE (`fontes.md`).
 12. Número e método de geração dos cenários de PLD e de consumo (Sprint 5).
 13. Definição final do CVaR ex-ante no relatório do backtest (Sprint 6).
-14. Recalcular as estações do INMET com os anos 2021 a 2025 (`fontes.md`).
+14. ~~Recalcular as estações do INMET com os anos 2021 a 2025~~ (resolvido: 37 estações; a
+    lista caiu de 72 para 37; ver `fontes.md` e `decisoes.md`).
+15. Estações do INMET que degradaram em 2026 (10 das 37 abaixo de 95% de horas válidas, 5 abaixo
+    de 90%, em especial Silvânia-GO e Três Lagoas-MS): decidir na Sprint 2/3 como tratar nas
+    análises que usarem 2026 e se vale um teste de completude mensal por estação (`fontes.md`).

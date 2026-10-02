@@ -43,7 +43,7 @@ Ao abrir uma conversa com o Claude, diga a sprint e a tarefa (ex.: "Sprint 1, ta
 - [x] 1.5 Escrever `docs/premissas.md`: consumidor-exemplo, como será a curva de consumo e as regras simplificadas de contrato.
 - [x] 1.6 Extrator ONS (carga horária): baixar tudo **desde 2000** (a previsão mensal precisa do histórico longo) → GCS → BigQuery `raw`.
 - [x] 1.7 Extrator CCEE (PLD horário 2021 em diante, o arquivo semanal 2001–2020, de onde vem o preço de contrato de 2021, e o consumo por ramo de atividade de 2024 em diante), mesmo fluxo. O portal bloqueia downloads automáticos: histórico por download manual, atualização automática a testar.
-- [ ] 1.8 Extrator INMET (temperatura, 2021 em diante) para as estações que passam no critério de 95% (ver `docs/fontes.md`) + tabela de feriados desde 2000.
+- [x] 1.8 Extrator INMET (temperatura, 2021 em diante) para as estações que passam no critério de 95% (ver `docs/fontes.md`) + tabela de feriados desde 2000.
 - [x] 1.9 Módulo `ingestion/common/` com cliente GCS/BigQuery e logging reaproveitáveis.
 - [x] 1.10 Perfilar o arquivo PLD 2001–2020 (granularidade, ponderação por horas de 2020) e checar a série do ONS 2000–2025 (quebras na definição da carga, layout, fuso).
 

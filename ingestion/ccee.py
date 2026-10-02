@@ -24,14 +24,23 @@ import csv
 import io
 import sys
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
-from ingestion.common import gcp
+from ingestion.common import gcp, manual
 from ingestion.common.config import DATASET_RAW, RAIZ, Config, carregar_config
 from ingestion.common.csv_utils import CsvTransformado, transformar_csv
 from ingestion.common.logs import obter_logger
+from ingestion.common.manual import ArquivosAusentes
+from ingestion.common.raw import (
+    Carregador,
+    ConjuntoValidacao,
+    Medicoes,
+    imprimir_resumo,
+    medir_consulta_tipica,
+    validar_raw,
+)
 
 log = obter_logger("ingestion.ccee")
 
@@ -92,6 +101,8 @@ CONSUMO_RAMO = Conjunto(
     por_ano=True,
 )
 
+CONJUNTOS = [PLD_HORARIO, PLD_SEMANAL, CONSUMO_RAMO]
+
 ANO_INICIAL_PLD_HORARIO = 2021
 ANO_INICIAL_CONSUMO = 2024
 NOME_PLD_SEMANAL = "pld_historico_semanal_2001_2020.csv"
@@ -107,15 +118,6 @@ GROUP BY hora
 ORDER BY hora
 """
 
-CONSULTA_VALIDACAO = """
-SELECT _arquivo_origem,
-       COUNT(*) AS linhas,
-       COUNTIF({valor} IS NULL) AS nulos,
-       COUNTIF({valor} = '') AS strings_vazias
-FROM `{tabela}`
-GROUP BY _arquivo_origem
-"""
-
 
 @dataclass(frozen=True)
 class ArquivoEsperado:
@@ -129,6 +131,10 @@ class ArquivoEsperado:
         if self.conjunto.por_ano:
             return f"{base}/ano={self.ano}/{self.nome}"
         return f"{base}/{self.nome}"
+
+    @property
+    def pagina(self) -> str:
+        return self.conjunto.pagina
 
     @property
     def descricao(self) -> str:
@@ -161,25 +167,9 @@ def arquivos_esperados(ano_atual: int) -> list[ArquivoEsperado]:
     ]
 
 
-class ArquivosAusentes(Exception):
-    """Faltam arquivos na pasta manual; a mensagem diz o que baixar e de onde."""
-
-
-def mensagem_ausentes(ausentes: list[ArquivoEsperado], pasta: Path) -> str:
-    linhas = [f"Faltam {len(ausentes)} arquivo(s) em {pasta}:"]
-    for arq in ausentes:
-        linhas += [
-            f"  - {arq.nome}: {arq.descricao}",
-            f"      baixe em {arq.conjunto.pagina} e salve como {pasta / arq.nome}",
-        ]
-    linhas.append(f"Passo a passo: {SECAO_DOCS}.")
-    return "\n".join(linhas)
-
-
 def verificar_arquivos(pasta: Path, esperados: list[ArquivoEsperado]) -> None:
-    ausentes = [a for a in esperados if not (pasta / a.nome).is_file()]
-    if ausentes:
-        raise ArquivosAusentes(mensagem_ausentes(ausentes, pasta))
+    """Confere se todos os arquivos estão na pasta manual (lança ArquivosAusentes se faltar)."""
+    manual.verificar_arquivos(pasta, esperados, SECAO_DOCS)
 
 
 def meses_do_csv(conteudo: bytes) -> set[str]:
@@ -213,36 +203,18 @@ def validar_conteudo(arquivo: ArquivoEsperado, csv_raw: CsvTransformado) -> None
         )
 
 
-@dataclass
-class Medicoes:
-    arquivos: int = 0
-    bytes_lidos: int = 0
-    linhas_csv: int = 0
-    linhas_carregadas: int = 0
-    t_leitura: float = 0.0
-    t_gcs: float = 0.0
-    t_bigquery: float = 0.0
-    por_arquivo: list[tuple[str, int, int]] = field(default_factory=list)  # nome, bytes, linhas
-    # tabela -> caminho no GCS -> (linhas, vazios na coluna de valor), para validar o raw
-    esperado: dict[str, dict[str, tuple[int, int]]] = field(default_factory=dict)
-
-    @property
-    def t_total(self) -> float:
-        return self.t_leitura + self.t_gcs + self.t_bigquery
-
-
 def carregar_arquivos(pasta: Path, esperados: list[ArquivoEsperado], config: Config) -> Medicoes:
     storage_cli = gcp.cliente_storage(config)
     bq_cli = gcp.cliente_bigquery(config)
     carregado_em = datetime.now(UTC).isoformat(timespec="seconds")
     medicoes = Medicoes()
-    ja_carregou: set[str] = set()  # tabelas que já receberam o TRUNCATE desta execução
+    carregadores: dict[str, Carregador] = {}  # um por tabela: o primeiro job trunca
 
     for arq in esperados:
         caminho_local = pasta / arq.nome
         t0 = time.perf_counter()
         original = caminho_local.read_bytes()
-        medicoes.t_leitura += time.perf_counter() - t0
+        medicoes.t_origem += time.perf_counter() - t0
         info = caminho_local.stat()
         log.info(
             "%s: %.2f MB, modificado em %s",
@@ -260,112 +232,22 @@ def carregar_arquivos(pasta: Path, esperados: list[ArquivoEsperado], config: Con
         origem = gcp.enviar_para_gcs(storage_cli, config.bucket, arq.caminho_gcs, original)
         medicoes.t_gcs += time.perf_counter() - t0
 
-        t0 = time.perf_counter()
         tabela = arq.conjunto.tabela
-        linhas = gcp.carregar_csv_no_bigquery(
-            bq_cli,
-            config.tabela(DATASET_RAW, tabela),
-            csv_raw.conteudo,
-            gcp.montar_esquema(arq.conjunto.colunas, TIPOS_EXTRAS),
-            truncar=tabela not in ja_carregou,
-        )
-        medicoes.t_bigquery += time.perf_counter() - t0
-        ja_carregou.add(tabela)
-
-        if linhas != csv_raw.linhas:
-            raise RuntimeError(
-                f"{arq.nome}: o CSV tem {csv_raw.linhas} linhas e o job carregou {linhas}"
+        if tabela not in carregadores:
+            carregadores[tabela] = Carregador(
+                bq_cli,
+                config.tabela(DATASET_RAW, tabela),
+                gcp.montar_esquema(arq.conjunto.colunas, TIPOS_EXTRAS),
+                medicoes,
             )
-        medicoes.arquivos += 1
-        medicoes.bytes_lidos += len(original)
-        medicoes.linhas_csv += csv_raw.linhas
-        medicoes.linhas_carregadas += linhas
-        medicoes.por_arquivo.append((arq.nome, len(original), linhas))
-        vazios = csv_raw.vazios[arq.conjunto.coluna_valor]
-        medicoes.esperado.setdefault(tabela, {})[arq.caminho_gcs] = (csv_raw.linhas, vazios)
+        linhas = carregadores[tabela].carregar(csv_raw.conteudo, csv_raw.linhas, arq.nome)
+
+        medicoes.registrar_arquivo(arq.nome, len(original), linhas)
+        medicoes.registrar_esperado(
+            tabela, (arq.caminho_gcs,), csv_raw.linhas, csv_raw.vazios[arq.conjunto.coluna_valor]
+        )
         log.info("%s: %d linhas -> %s (raw.%s)", arq.nome, linhas, origem, tabela)
     return medicoes
-
-
-def validar_raw(config: Config, medicoes: Medicoes, conjuntos: list[Conjunto]) -> list[str]:
-    """Compara, por arquivo, linhas e vazios do raw com os dos CSVs. Devolve os problemas."""
-    bq_cli = gcp.cliente_bigquery(config)
-    problemas = []
-    for conjunto in conjuntos:
-        esperado = medicoes.esperado.get(conjunto.tabela, {})
-        resultado = gcp.executar_consulta(
-            bq_cli,
-            CONSULTA_VALIDACAO.format(
-                tabela=config.tabela(DATASET_RAW, conjunto.tabela), valor=conjunto.coluna_valor
-            ),
-        )
-        no_raw = {r["_arquivo_origem"]: r for r in resultado.linhas}
-        for caminho, (linhas, vazios) in esperado.items():
-            r = no_raw.get(caminho)
-            if r is None:
-                problemas.append(f"{caminho}: ausente em raw.{conjunto.tabela}")
-                continue
-            if r["linhas"] != linhas:
-                problemas.append(f"{caminho}: {r['linhas']} linhas no raw, {linhas} no CSV")
-            if r["nulos"] + r["strings_vazias"] != vazios:
-                problemas.append(
-                    f"{caminho}: {r['nulos']} NULL + {r['strings_vazias']} '' no raw, "
-                    f"{vazios} vazios no CSV"
-                )
-        extras = sorted(set(no_raw) - set(esperado))
-        if extras:
-            problemas.append(
-                f"raw.{conjunto.tabela}: arquivos que não vieram desta carga: {extras}"
-            )
-        log.info(
-            "validação raw.%s: %d arquivos, %d NULL, %d strings vazias",
-            conjunto.tabela,
-            len(no_raw),
-            sum(r["nulos"] for r in no_raw.values()),
-            sum(r["strings_vazias"] for r in no_raw.values()),
-        )
-    return problemas
-
-
-def medir_consulta_tipica(config: Config) -> dict[str, object]:
-    bq_cli = gcp.cliente_bigquery(config)
-    sql = CONSULTA_TIPICA.format(tabela=config.tabela(DATASET_RAW, PLD_HORARIO.tabela))
-    estimativa = gcp.executar_consulta(bq_cli, sql, dry_run=True)
-    real = gcp.executar_consulta(bq_cli, sql, usar_cache=False)  # sem cache: mede de verdade
-    return {
-        "bytes_estimados": estimativa.bytes_processados,
-        "bytes_processados": real.bytes_processados,
-        "bytes_faturados": real.bytes_faturados,
-        "cache": real.cache,
-        "horas": len(real.linhas),
-    }
-
-
-def imprimir_resumo(medicoes: Medicoes, consulta: dict | None) -> None:
-    print("\n=== Medições da carga full da CCEE (para docs/metricas.md) ===")
-    print(
-        f"arquivos: {medicoes.arquivos} | volume dos arquivos carregados: "
-        f"{medicoes.bytes_lidos / 1e6:.1f} MB (lidos da pasta manual, sem download)"
-    )
-    print(
-        f"linhas nos CSVs: {medicoes.linhas_csv:,} | linhas carregadas: "
-        f"{medicoes.linhas_carregadas:,}"
-    )
-    print(
-        f"tempo total da carga: {medicoes.t_total:.1f} s "
-        f"(leitura {medicoes.t_leitura:.1f} s, GCS {medicoes.t_gcs:.1f} s, "
-        f"BigQuery {medicoes.t_bigquery:.1f} s)"
-    )
-    print("linhas por arquivo:")
-    for nome, tamanho, linhas in medicoes.por_arquivo:
-        print(f"  {nome}: {linhas:,} linhas, {tamanho / 1e6:.2f} MB")
-    if consulta:
-        proc, fat = consulta["bytes_processados"], consulta["bytes_faturados"]
-        print("consulta típica (PLD médio por hora do SUDESTE em 2024, tabela sem partição):")
-        print(f"  estimativa do dry-run: {consulta['bytes_estimados']:,} bytes")
-        print(f"  bytes processados: {proc:,} ({proc / 1e6:.1f} MB)")
-        print(f"  bytes faturados: {fat:,} ({fat / 1e6:.1f} MB) | cache: {consulta['cache']}")
-        print(f"  linhas devolvidas: {consulta['horas']} (esperado: 24 horas)")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -400,14 +282,24 @@ def main(argv: list[str] | None = None) -> int:
     medicoes = carregar_arquivos(args.pasta, esperados, config)
     consulta = None
     if not args.sem_consulta:
-        problemas = validar_raw(config, medicoes, [PLD_HORARIO, PLD_SEMANAL, CONSUMO_RAMO])
+        conjuntos = [ConjuntoValidacao(c.tabela, c.coluna_valor) for c in CONJUNTOS]
+        problemas = validar_raw(config, medicoes, conjuntos)
         if problemas:
             for problema in problemas:
                 log.error("validação: %s", problema)
             return 1
         log.info("validação do raw: ok (linhas e vazios batem com os CSVs)")
-        consulta = medir_consulta_tipica(config)
-    imprimir_resumo(medicoes, consulta)
+        sql = CONSULTA_TIPICA.format(tabela=config.tabela(DATASET_RAW, PLD_HORARIO.tabela))
+        consulta = medir_consulta_tipica(config, sql)
+    imprimir_resumo(
+        "da carga full da CCEE",
+        medicoes,
+        consulta,
+        rotulo_volume="volume dos arquivos carregados (lidos da pasta manual, sem download)",
+        rotulo_origem="leitura",
+        descricao_consulta="PLD médio por hora do SUDESTE em 2024",
+        listar_arquivos=True,
+    )
     return 0
 
 

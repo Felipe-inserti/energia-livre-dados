@@ -99,3 +99,32 @@ def test_montar_esquema_fonte_em_string_e_extras_com_tipo():
         ("_arquivo_origem", "STRING"),
         ("_carregado_em", "TIMESTAMP"),
     ]
+
+
+def test_enviar_arquivo_para_gcs_usa_o_arquivo_local_com_checksum(tmp_path):
+    gravado = {}
+
+    class Blob:
+        def upload_from_filename(self, caminho, content_type, checksum):
+            gravado.update(caminho=caminho, tipo=content_type, checksum=checksum)
+
+    class Bucket:
+        def blob(self, caminho):
+            gravado["destino"] = caminho
+            return Blob()
+
+    class Cliente:
+        def bucket(self, nome):
+            return Bucket()
+
+    arquivo = tmp_path / "2024.zip"
+    uri = gcp.enviar_arquivo_para_gcs(
+        Cliente(), "meu-bucket", "bronze/inmet/ano=2024/2024.zip", arquivo, tipo="application/zip"
+    )
+    assert uri == "gs://meu-bucket/bronze/inmet/ano=2024/2024.zip"
+    assert gravado == {
+        "caminho": str(arquivo),
+        "tipo": "application/zip",
+        "checksum": "crc32c",
+        "destino": "bronze/inmet/ano=2024/2024.zip",
+    }
