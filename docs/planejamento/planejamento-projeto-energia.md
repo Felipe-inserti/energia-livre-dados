@@ -153,7 +153,7 @@ Cada fase termina com algo funcionando e com métricas registradas. As fases est
 ### Fase 2 — Transformação e modelagem com dbt
 - Projeto dbt com staging → intermediate → marts.
 - Modelo dimensional da seção 6.
-- Particionamento e clusterização; modelos incrementais.
+- Particionamento **mensal** e clusterização dos fatos horários (o ONS desde 2000 não cabe em partição diária: 9.772 dias, e o limite é de 10.000 partições por tabela e, segundo fontes secundárias, 4.000 por job). Os modelos incrementais ficam para a Fase 4, junto com a ingestão incremental e a janela de segurança para revisões.
 - **MEDIR (o "depois"):** dados lidos pela mesma consulta típica após particionamento; tempo de execução do dbt.
 - **Entregável:** marts prontos e documentação gerada pelo `dbt docs`.
 
@@ -167,6 +167,7 @@ Cada fase termina com algo funcionando e com métricas registradas. As fases est
 ### Fase 4 — Orquestração e ingestão incremental
 - Airflow em Docker; DAG diária com as etapas da seção 5.
 - Converter a ingestão para **incremental e idempotente** (só busca o que é novo; reexecutar não duplica).
+- Converter os fatos grandes do dbt para incrementais (estratégia `microbatch` por mês, `batch_size: month`, que se encaixa na partição mensal), com a mesma janela de segurança da ingestão.
 - Backfill parametrizado por intervalo de datas.
 - Retentativas, logs e alerta de falha (e-mail ou Discord).
 - **MEDIR:** tempo da carga incremental vs. full; tempo do backfill completo; teste de idempotência (rodar duas vezes e comparar contagens).
@@ -316,7 +317,7 @@ Decisões que provavelmente vão aparecer:
 
 ## 12. Como vai aparecer no currículo (preencher com os números reais)
 
-- "Desenvolvi plataforma de dados do setor elétrico (Python, Airflow, dbt, BigQuery) integrando 4 fontes públicas, com ingestão incremental e idempotente que reduziu o tempo de carga de __ para __ min e o volume lido por consulta em __%."
+- "Desenvolvi plataforma de dados do setor elétrico (Python, Airflow, dbt, BigQuery) integrando 4 fontes públicas, com ingestão incremental e idempotente que reduziu o tempo de carga de 9,3 (carga full) para __ min e, com tipagem e partição mensal no BigQuery, reduziu em 98% os bytes processados pela consulta típica do ONS (de 37,3 MB para 0,74 MB; o faturado cai de 37,7 MB para o piso de 10 MiB do BigQuery, então o ganho real aparece nos bytes processados)."
 - "Implementei testes de qualidade de dados que capturaram __ registros inconsistentes, incluindo revisões retroativas das fontes."
 - "Modelei previsão mensal de carga (12 meses à frente, validação em rolling origin), reduzindo o erro de __% (baseline sazonal) para __%, e otimização de contratação de energia que, em backtest 2021–2025 com preços reais, alterou o custo anual de um consumidor do mercado livre em R$ __ (__%)."
 

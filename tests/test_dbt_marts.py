@@ -38,7 +38,11 @@ def projeto() -> dict:
 
 
 def test_tres_dimensoes_e_sem_dim_fonte():
-    assert {p.stem for p in MARTS.glob("*.sql")} == {"dim_tempo", "dim_submercado", "dim_estacao"}
+    assert {p.stem for p in MARTS.glob("dim_*.sql")} == {
+        "dim_tempo",
+        "dim_submercado",
+        "dim_estacao",
+    }
     # dim_fonte depende da geração por fonte, que foi adiada (item de corte)
     assert not list(MARTS.glob("dim_fonte*"))
 
