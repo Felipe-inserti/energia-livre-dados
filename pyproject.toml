@@ -1,0 +1,37 @@
+[project]
+name = "energia-livre-dados"
+version = "0.1.0"
+description = "Plataforma de dados do mercado livre de energia"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "google-cloud-bigquery>=3.46.1",
+    "google-cloud-storage>=3.16.0",
+    "holidays>=0.105",
+    "pandas>=3.0.6",
+    "python-dotenv>=1.2.4",
+    "requests>=2.34.2",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+    "ruff>=0.16.10",
+]
+
+[tool.uv]
+# Projeto de scripts, não uma biblioteca: não precisa ser construído/instalado.
+package = false
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+# E/W: estilo, F: erros lógicos, I: ordem dos imports, B: bugs comuns, UP: sintaxe moderna
+select = ["E", "W", "F", "I", "B", "UP"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# Permite `import ingestion` nos testes a partir da raiz (não usamos layout src/).
+pythonpath = ["."]
