@@ -1,0 +1,22 @@
+# Projeto dbt: transforma o `raw` (STRING, como veio da fonte) em staging, intermediate e marts.
+# Rodar da raiz do repositório:
+#   uv run --env-file .env dbt <comando> --project-dir dbt --profiles-dir dbt
+name: energia_livre
+version: "0.1.0"
+config-version: 2
+
+profile: energia_livre
+
+model-paths: ["models"]
+macro-paths: ["macros"]
+test-paths: ["tests"]
+target-path: "target"
+clean-targets: ["target", "dbt_packages"]
+
+models:
+  energia_livre:
+    # Staging: tipos corretos, nomes padronizados, UTC e deduplicação. Tabela (não view):
+    # uma view releria o raw inteiro (de 100 a 366 MB) a cada consulta.
+    staging:
+      +materialized: table
+      +schema: staging

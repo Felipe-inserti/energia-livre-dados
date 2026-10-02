@@ -1,0 +1,192 @@
+version: 2
+
+# Fonte `raw`: tabelas carregadas pelos extratores em ingestion/ (Sprint 1). Todas as colunas das
+# fontes estão como STRING, exatamente como vieram (tipagem, fuso e limpeza são do staging), mais
+# `_arquivo_origem` e `_carregado_em`. Detalhes de cada fonte: docs/fontes.md.
+sources:
+  - name: raw
+    description: >
+      Espelho das fontes públicas do setor elétrico (ONS, CCEE, INMET e a biblioteca `holidays`),
+      carregado em carga full, sem partição, com as colunas padronizadas e todas como STRING.
+    schema: raw
+    tables:
+      - name: ons_curva_carga
+        description: >
+          Curva de carga horária do ONS por subsistema (N, NE, S e SE), de 2000 a 2026 (um arquivo
+          por ano). Fonte: https://dados.ons.org.br/dataset/curva-carga (download automático).
+          **Horário oficial local, com horário de verão até 2018**: `din_instante` é horário
+          local e não UTC. A hora 00:00 do dia de início do horário de verão (2000–2013) não
+          existe na série; em 2014–2018 existe com valor vazio (e um 0,0 no S em 2018), e esse
+          horário local não existe no relógio. Há 259 valores vazios (inclusive os dias inteiros
+          de 2013-12-01, 2014-02-01 e 2015-04-09). O ONS revisa os dados depois de publicados,
+          e o arquivo do ano corrente muda várias vezes ao dia. Em 29/04/2023 a carga passou a
+          incorporar a micro e minigeração distribuída (degrau de definição).
+        config:
+          meta:
+            fonte: ONS
+            granularidade: horária, por subsistema
+            fuso: horário oficial local (America/Sao_Paulo, com horário de verão até 2018)
+            origem_dos_arquivos: download automático
+  
+        columns:
+          - name: id_subsistema
+            description: "Código do subsistema (N, NE, S ou SE)."
+          - name: nom_subsistema
+            description: "Nome do subsistema (NORTE, NORDESTE, SUL ou SUDESTE)."
+          - name: din_instante
+            description: "Início da hora, texto `AAAA-MM-DD HH:MM:SS`, em horário local."
+          - name: val_cargaenergiahomwmed
+            description: "Carga média da hora em MWmed, texto com ponto decimal; vazio quando não há valor."
+          - name: _arquivo_origem
+            description: "Caminho do CSV original no bronze do GCS (`bronze/ons/curva_carga/ano=AAAA/...`)."
+          - name: _carregado_em
+            description: "Momento (UTC) em que a carga full gravou a linha."
+
+      - name: ccee_pld_horario
+        description: >
+          PLD horário por submercado (NORDESTE, NORTE, SUDESTE e SUL), de 2021 a 2026 (um arquivo
+          por ano). Fonte: https://dadosabertos.ccee.org.br/dataset/pld_horario (download manual,
+          o portal bloqueia scripts). **Horário de Brasília.** Não há coluna de timestamp: o
+          instante se monta com `mes_referencia`, `dia` e `hora`. O layout muda entre 2024 e
+          2025 (aspas, CRLF/LF e zeros à esquerda em `dia` e `hora`: `01` contra `1`), então a
+          conversão deve ser numérica, nunca por comparação de texto. O mínimo do ano concentra
+          boa parte das linhas em 2022–2024 (PLD no piso).
+        config:
+          meta:
+            fonte: CCEE
+            granularidade: horária, por submercado
+            fuso: horário de Brasília (America/Sao_Paulo)
+            origem_dos_arquivos: download manual
+  
+        columns:
+          - name: mes_referencia
+            description: "Mês de referência, texto `AAAAMM`."
+          - name: submercado
+            description: "NORDESTE, NORTE, SUDESTE ou SUL."
+          - name: periodo_comercializacao
+            description: "Hora sequencial dentro do mês (1 a 744), texto."
+          - name: dia
+            description: "Dia do mês, texto (com ou sem zero à esquerda conforme o ano)."
+          - name: hora
+            description: "Hora do dia (0 a 23), texto (com ou sem zero à esquerda conforme o ano)."
+          - name: pld_hora
+            description: "Preço em R$/MWh, texto com ponto decimal."
+          - name: _arquivo_origem
+            description: "Caminho do CSV original no bronze do GCS."
+          - name: _carregado_em
+            description: "Momento (UTC) em que a carga full gravou a linha."
+
+      - name: ccee_pld_semanal
+        description: >
+          PLD histórico **semanal por patamar de carga**, de jun/2001 a dez/2020 (arquivo único,
+          recurso "2001-2020" do mesmo dataset do PLD horário). Não é série horária: cada semana
+          operativa (de sábado a sexta, com poucas semanas curtas no início do mês) tem **3 linhas
+          por submercado**, uma por patamar, e o arquivo **não identifica qual é qual** nem traz as
+          horas de cada patamar. As 3 linhas podem ser idênticas (patamares com o mesmo preço):
+          são legítimas, não duplicatas. `dia` é o dia em que a semana começa e `hora` é sempre
+          `00`. Serve ao preço de contrato de 2021 (PLD médio de 2020).
+        config:
+          meta:
+            fonte: CCEE
+            granularidade: semanal por patamar de carga, por submercado
+            fuso: horário de Brasília
+            origem_dos_arquivos: download manual
+  
+        columns:
+          - name: mes_referencia
+            description: "Mês em que a semana começa, texto `AAAAMM`."
+          - name: periodo_comercializacao
+            description: "Hora do mês em que a semana começa, igual a `(dia - 1) * 24 + 1`."
+          - name: dia
+            description: "Dia do mês em que a semana começa."
+          - name: hora
+            description: "Sempre `00`."
+          - name: pld_hora
+            description: "Preço do patamar em R$/MWh, texto com ponto decimal."
+          - name: _arquivo_origem
+            description: "Caminho do CSV original no bronze do GCS."
+          - name: _carregado_em
+            description: "Momento (UTC) em que a carga full gravou a linha."
+
+      - name: ccee_consumo_ramo_atividade
+        description: >
+          Consumo **mensal** por ramo de atividade (15 ramos) dos consumidores livres, especiais e
+          autoprodutores no mercado livre, de abr/2024 a 2026 (um arquivo por ano). Fonte:
+          https://dadosabertos.ccee.org.br/dataset/consumo_ramo_atividade (download manual). Não é
+          horário nem por consumidor, então **não gera curva horária**; serve só à checagem de
+          plausibilidade da sazonalidade (ramo COMÉRCIO). A unidade ainda está por confirmar.
+        config:
+          meta:
+            fonte: CCEE
+            granularidade: mensal, por ramo de atividade
+            fuso: não se aplica
+            origem_dos_arquivos: download manual
+  
+        columns:
+          - name: mes_referencia
+            description: "Mês de referência, texto `AAAAMM`."
+          - name: ramo_atividade
+            description: "Ramo de atividade (ex.: COMÉRCIO, SERVIÇOS, METALURGIA E PRODUTOS DE METAL)."
+          - name: _arquivo_origem
+            description: "Caminho do CSV original no bronze do GCS."
+          - name: _carregado_em
+            description: "Momento (UTC) em que a carga full gravou a linha."
+
+      - name: inmet_estacoes_horario
+        description: >
+          Dados horários das estações meteorológicas automáticas do INMET, **só as 37 estações do
+          SE/CO** que tiveram pelo menos 95% de horas válidas de temperatura em cada ano de 2021
+          a 2025, de 2021 a 2026 (o ano de 2026 vai até 31/08). Fonte:
+          https://portal.inmet.gov.br/dadoshistoricos (ZIPs baixados à mão). **UTC** (`hora_utc`).
+          Todas as medidas vêm como texto com **vírgula decimal**; vazio quando não houve
+          medição (cerca de 1,35% na temperatura, 5,9% em 2026). Cada linha carrega os metadados
+          da estação. O bronze guarda os ZIPs com todas as estações.
+        config:
+          meta:
+            fonte: INMET
+            granularidade: horária, por estação
+            fuso: UTC
+            origem_dos_arquivos: download manual
+  
+        columns:
+          - name: data
+            description: "Data, texto `AAAA/MM/DD`."
+          - name: hora_utc
+            description: "Hora em UTC, texto `HHMM UTC` (ex.: `0000 UTC`)."
+          - name: temperatura_do_ar_bulbo_seco_horaria_c
+            description: "Temperatura do ar em °C, texto com vírgula decimal; vazio quando não houve medição."
+          - name: estacao_codigo
+            description: "Código da estação (WMO), ex.: A701."
+          - name: estacao_uf
+            description: "UF da estação."
+          - name: estacao_nome
+            description: "Nome da estação, como no arquivo do INMET."
+          - name: estacao_latitude
+            description: "Latitude da estação, texto com vírgula decimal."
+          - name: estacao_longitude
+            description: "Longitude da estação, texto com vírgula decimal."
+          - name: _arquivo_origem
+            description: "Caminho do ZIP original no bronze do GCS (`bronze/inmet/ano=AAAA/AAAA.zip`)."
+          - name: _carregado_em
+            description: "Momento (UTC) em que a carga full gravou a linha."
+
+      - name: feriados
+        description: >
+          Feriados nacionais do Brasil de 2000 a 2030 gerados pela biblioteca Python `holidays`
+          (sem arquivo-fonte nem bronze). O resultado depende da versão da biblioteca (0.105 no
+          `uv.lock`). Uma data com dois feriados vem numa linha só, com os nomes separados por
+          "; " (2000-04-21 = "Sexta-feira Santa; Tiradentes"). Só feriados nacionais.
+        config:
+          meta:
+            fonte: biblioteca holidays
+            granularidade: diária
+            fuso: não se aplica
+            origem_dos_arquivos: gerada em código
+  
+        columns:
+          - name: data
+            description: "Data do feriado, texto `AAAA-MM-DD`."
+          - name: nome
+            description: "Nome do feriado (vários nomes separados por \"; \" na mesma data)."
+          - name: _carregado_em
+            description: "Momento (UTC) em que a carga gravou a linha."

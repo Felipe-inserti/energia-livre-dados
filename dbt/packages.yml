@@ -1,0 +1,4 @@
+# Pacotes do dbt (instalar com `dbt deps`; as versões exatas ficam em package-lock.yml).
+packages:
+  - package: dbt-labs/dbt_utils
+    version: [">=1.3.0", "<2.0.0"]

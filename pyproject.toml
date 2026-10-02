@@ -6,7 +6,7 @@ readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "google-cloud-bigquery>=3.46.1",
-    "google-cloud-storage>=3.16.0",
+    "google-cloud-storage>=3.1.0",
     "holidays>=0.105",
     "pandas>=3.0.6",
     "python-dotenv>=1.2.4",
@@ -14,12 +14,18 @@ dependencies = [
 ]
 
 [dependency-groups]
+dbt = [
+    "dbt-bigquery>=1.12.1",
+]
 dev = [
     "pytest>=9.1.1",
+    "pyyaml>=6.0.3",
     "ruff>=0.16.10",
 ]
 
 [tool.uv]
+# Um ambiente só: `uv sync` instala também o dbt (ver docs/decisoes.md)
+default-groups = ["dev", "dbt"]
 # Projeto de scripts, não uma biblioteca: não precisa ser construído/instalado.
 package = false
 
