@@ -2,18 +2,20 @@
 
 Resultado da exploração da tarefa 1.4 (amostras em `data/amostras/`, ignorada pelo git;
 perfil reproduzível com `uv run python scripts/explorar_fontes.py`).
-Data da exploração: 02/10/2026. Pendências estão marcadas com **[pendente]**.
+Data da exploração: 02/10/2026 (tarefa 1.10 incluída: histórico do ONS 2000–2025 e PLD
+2001–2020; `uv run python scripts/explorar_fontes.py pld-historico` e `ons-historico`).
+Pendências estão marcadas com **[pendente]**.
 
 ## Resumo
 
 | Fonte | Granularidade | Período | Fuso | Atualização | Tamanho | Formato |
 |---|---|---|---|---|---|---|
-| ONS, curva de carga | Horária, por subsistema | 2000–2026 (ingestão desde 2000) | Brasília (a confirmar) | 2x ao dia, com revisões | ~1,5 MB/ano | CSV, Parquet, XLSX |
+| ONS, curva de carga | Horária, por subsistema | 2000–2026 (ingestão desde 2000) | Horário oficial local (com horário de verão até 2018) | 2x ao dia, com revisões | ~1,5 MB/ano | CSV, Parquet, XLSX |
 | CCEE, PLD horário | Horária, por submercado | 2021–2026 (+ arquivo 2001–2020) | Brasília | Mensal (publicação diária) | ~1 MB/ano | CSV |
 | CCEE, consumo por ramo | Mensal, por ramo | abr/2024 em diante | n/a | Mensal | ~15 KB/ano | CSV |
 | INMET, estações automáticas | Horária, por estação | 2000–2026 (usado: 2021+) | UTC | Anual (2026 parcial) | ~80–100 MB/ano (ZIP) | ZIP de CSVs |
 
-Duas fontes em horário de Brasília e uma em UTC: ver `decisoes.md` ("Fuso horário em séries horárias").
+Duas fontes em horário local (ONS, PLD) e uma em UTC (INMET): ver `decisoes.md` ("Fuso horário em séries horárias").
 
 ---
 
@@ -26,14 +28,14 @@ Duas fontes em horário de Brasília e uma em UTC: ver `decisoes.md` ("Fuso hor�
 - **Granularidade:** horária, por subsistema (N, NE, S, SE).
 - **Período:** 2000–2026. A ingestão é **desde 2000**: a previsão mensal da carga do SE/CO (12
   meses à frente) precisa do histórico longo, e a curva do consumidor usa a carga real de
-  2020 em diante (ver `premissas.md`). Só 2021 e 2025 foram perfilados. **[pendente]** perfilar
-  2000–2025: quebras na definição da carga (ex.: inclusão de geração distribuída), mudanças de
-  layout, subsistemas e fuso em anos antigos.
+  2020 em diante (ver `premissas.md`). Os 26 arquivos de 2000 a 2025 foram perfilados
+  (tarefa 1.10); 1999 não existe (404).
 - **Atualização:** 2x ao dia (12:00 e 19:00 UTC). O portal avisa que os dados passam por
   "processo de consistência recorrente", ou seja, **valores já publicados podem ser revisados**.
-- **Tamanho:** ~1,5 MB por ano (35.040 linhas).
-- **Fuso:** o dado não declara. A curva média do SE tem mínimo às 03–04h e pico às 18–19h,
-  compatível com horário de Brasília. **[pendente]** confirmar no dicionário de dados do ONS.
+- **Tamanho:** ~1,5 MB por ano (35.040 linhas); 38 MB para os 26 anos.
+- **Fuso:** o dado não declara, mas o teste de horário de verão (abaixo) mostra que a série
+  está no **horário oficial local, acompanhando o relógio, com horário de verão até 2018**.
+  A confirmação documental no dicionário de dados do ONS não foi feita.
 
 | Coluna | Tipo | Descrição |
 |---|---|---|
@@ -51,8 +53,160 @@ Formato do arquivo: CSV UTF-8, separador `;`, ponto decimal.
   62.150 MWmed.
 - Revisões retroativas: não medidas, a amostra é um retrato único. Serão investigadas na
   tarefa 3.4.
+- Veja abaixo o histórico 2000–2025 (layout, nulos, horário de verão e degraus de nível).
 - Fora do escopo da Sprint 1: "Balanço de Energia nos Subsistemas" (inclui geração por fonte),
   item de corte da lista "Se atrasar".
+
+### ONS, histórico 2000–2025 (tarefa 1.10)
+
+**Layout: idêntico nos 26 anos.** Mesmo cabeçalho de 4 colunas, UTF-8 sem BOM, LF, `;`,
+`din_instante` no formato `AAAA-MM-DD HH:MM:SS`, sempre os 4 subsistemas (N, NE, S, SE) e
+minuto sempre 0. Sem duplicatas em nenhum ano. Não há mudança de layout para tratar.
+
+**Completude.** O problema não é o layout, é o que acontece em algumas datas:
+
+| Anos | O que falta ou vem nulo |
+|---|---|
+| 2000–2012 | 1 linha **ausente** por subsistema por ano: 00:00 do dia de início do horário de verão |
+| 2013 | idem (2013-10-20 00:00) + **2013-12-01 inteiro com valor nulo** nos 4 subsistemas (96 nulos) |
+| 2014 | 2014-02-01 inteiro sem dado (nulo em NE, S e SE; linhas ausentes no N) + 00:00 de 2014-10-19 **nulo** |
+| 2015 | 2015-04-09 inteiro sem dado (mesmo padrão) + 00:00 de 2015-10-18 nulo |
+| 2016–2017 | só o 00:00 do início do horário de verão, **nulo** nos 4 subsistemas |
+| 2018 | 00:00 de 2018-11-04 nulo em N, NE e SE e **valor 0,0 no S** (único valor <= 0 de toda a série) |
+| 2019–2025 | completos: sem nulos, sem linhas ausentes |
+
+Nulos e dias sem dado precisam de tratamento no staging (média mensal ignora nulos; testes de
+`not_null` e de carga positiva vão capturar esses casos).
+
+**Teste de horário de verão (confirma a inferência do fuso).** Para cada ano, o perfil diário
+médio do SE (dias úteis) nas 3 semanas antes e nas 3 semanas depois do início do horário de
+verão foi comparado, procurando o deslocamento em horas que melhor os alinha:
+- **Deslocamento 0 em todos os 25 anos testados (2001–2025).** Se a série estivesse em horário
+  fixo (UTC−3 sem horário de verão), o perfil depois do início andaria ~1 hora; se estivesse em
+  UTC, o mínimo da carga às 03h seria meia-noite local, o que não faz sentido. A série
+  acompanha o relógio oficial.
+- **A lacuna de 00:00 coincide com o início do horário de verão.** Em 2000–2013 a linha de
+  00:00 do dia de início (domingo de outubro ou novembro, ex.: 2002-11-03, 2006-11-05,
+  2012-10-21) simplesmente não existe, porque esse horário não existe no relógio local (o
+  relógio salta de 00:00 para 01:00). Em 2014–2018 a linha existe, com valor nulo. As datas de
+  2014–2018 que usei de memória (2014-10-19, 2015-10-18, 2016-10-16, 2017-10-15, 2018-11-04)
+  foram confirmadas pelos nulos nessas mesmas datas.
+- **Fim do horário de verão:** a hora repetida (23:00 que ocorre duas vezes) aparece **uma
+  vez só** (zero duplicatas). Um dos dois instantes UTC fica sem dado.
+- **O mínimo da carga do SE é às 03h** antes e depois (o 04h de 2016 e 2020 é ruído).
+- **A inferência de "horário de Brasília" está confirmada, com uma precisão:** é o horário
+  oficial local, que no Sudeste e no Centro-Oeste teve horário de verão (UTC−2) até 2018. O
+  `America/Sao_Paulo` do tzdata tem esse histórico, então a decisão de converter com o fuso
+  nomeado (e não com offset fixo) está certa.
+- **Consequências para a conversão a UTC no staging (Sprint 2):** (1) as linhas de 00:00 nulas
+  de 2014–2018 caem num horário local que **não existe**; precisam ser descartadas ou tratadas
+  antes da conversão; (2) para cada ano com horário de verão há uma hora UTC sem dado (a
+  repetida), então a série em UTC terá 1 buraco por ano até 2018.
+
+**Carga média anual do SE (MWmed), variação anual e participação do SE no total dos 4
+subsistemas:**
+
+| Ano | MWmed | Var. | SE/total | Ano | MWmed | Var. | SE/total |
+|---|---|---|---|---|---|---|---|
+| 2000 | 25.727 | n/d | 63,0% | 2013 | 34.625 | −2,1% | 58,9% |
+| 2001 | 23.292 | −9,5% | 61,7% | 2014 | 36.277 | +4,8% | 58,9% |
+| 2002 | 25.002 | +7,3% | 63,1% | 2015 | 35.936 | −0,9% | 58,6% |
+| 2003 | 26.155 | +4,6% | 62,6% | 2016 | 35.617 | −0,9% | 57,8% |
+| 2004 | 27.253 | +4,2% | 62,3% | 2017 | 36.130 | +1,4% | 57,6% |
+| 2005 | 28.361 | +4,1% | 62,0% | 2018 | 36.494 | +1,0% | 57,7% |
+| 2006 | 29.359 | +3,5% | 61,8% | 2019 | 37.162 | +1,8% | 57,5% |
+| 2007 | 30.846 | +5,1% | 62,0% | 2020 | 36.311 | −2,3% | 57,3% |
+| 2008 | 31.478 | +2,0% | 61,7% | 2021 | 39.188 | +7,9% | 57,2% |
+| 2009 | 31.089 | −1,2% | 61,4% | 2022 | 39.688 | +1,3% | 57,7% |
+| 2010 | 33.278 | +7,0% | 61,5% | 2023 | 41.886 | +5,5% | 56,8% |
+| 2011 | 34.525 | +3,7% | 61,6% | 2024 | 44.465 | +6,2% | 56,3% |
+| 2012 | 35.379 | +2,5% | 60,9% | 2025 | 44.268 | −0,4% | 55,5% |
+
+A tabela mensal (26 anos × 12 meses) sai do script e fica em
+`data/amostras/ons/carga_mensal_se.csv` (ignorado pelo git).
+
+**Quebras de nível (degraus).** Critério: mês com variação superior a ±5% contra o mesmo mês
+do ano anterior, lendo os blocos de meses seguidos. Muitos meses passam do limite; os blocos
+longos são:
+- **Eventos conhecidos, não mudança de definição:** jun/2001 a abr/2002 (de −22,5% a −5,3%,
+  seguido de +13% a +29% em jun/2002–fev/2003, coincidindo com o racionamento e a
+  recuperação); abr–mai/2020 (−14,5% a −12,6%, pandemia) e o rebote de mar–set/2021 (+5,4% a
+  +22,0%); dez/2008–jan/2009 (−7,6% a −5,2%); nov/2009–set/2010 (+5,9% a +13,1%).
+- **Degrau no N em jul–ago/2013:** a carga média do N passa de ~3.900–4.100 MWmed (2012 e
+  1º semestre de 2013) para ~5.100 em ago/2013 (+25%) e fica nesse nível (2013: +13,2% no
+  ano; 2014: +11,9%). O SE não tem degrau (−2,1% em 2013). A participação do SE no total
+  cai de 60,9% (2012) para 58,9% (2013) em grande parte por isso. A causa não pode ser
+  determinada pelos dados (**hipótese não verificada:** entrada de uma nova região no
+  sistema). Afeta só a série do N e as participações, não a carga do SE.
+- **Degrau em 2023, nos 4 subsistemas: confirmado como mudança de definição (ver abaixo),
+  misturada com crescimento real.** A variação anual, que no SE, NE e S estava em torno de 0%
+  (ou negativa) no início de 2023, sobe para +7% a +19% entre mai/2023 e abr/2024 (SIN, soma
+  dos 4: +12,7% a +18,1% de set/2023 a mar/2024). No SE a carga sobe +6,2% em ago/2023 e +6,5%
+  em set/2023 (mês contra mês) e o nível se mantém: média anual de 39.688 (2022) para 41.886
+  (2023) e 44.465 (2024); 2025 fica em 44.268. Entre abr e mai/2023 a variação anual salta
+  +7,5 p.p. no SE (−3,5% para +4,0%), +8,0 no NE, +5,5 no S e +2,9 no N, a época em que a
+  documentação diz que a MMGD estimada entrou na carga. O que vem depois (set–dez/2023) soma
+  esse degrau com crescimento real (calor e economia), que os dados não permitem separar.
+  **Impacto:** a curva do consumidor é proporcional à carga do SE (`premissas.md`), então
+  herda o degrau em 2023–2025, e a estratégia ingênua e a previsão mensal são afetadas nesses
+  anos. **[pendente]** decidir o tratamento (ver `premissas.md`, pendência 6).
+
+**O que a documentação do ONS diz sobre mudanças de definição da carga** (pesquisa da
+tarefa 1.10):
+- **A página do dataset da curva horária não documenta nada.** Em
+  https://dados.ons.org.br/dataset/curva-carga há só a descrição ("perfil de consumo de energia
+  elétrica com discretização horária") e o aviso de que os dados passam por "processo de
+  consistência recorrente". Não há definição de "carga", menção a MMGD, histórico de mudanças
+  ou fuso. O dicionário de dados em JSON
+  (https://ons-aws-prod-opendata.s3.amazonaws.com/dataset/curva-carga-ho/DicionarioDados_CurvaCarga.json)
+  só traz os 4 campos (`din_instante` como "Data de referência", `val_cargaenergiahomwmed`
+  como "Valor da Carga de Energia, em MWmed"), sem tipos, fuso ou histórico.
+- **A página do dataset "Carga de Energia Diária" documenta as mudanças** (resumo da página,
+  https://dados.ons.org.br/dataset/carga-energia): até fev/2021 a carga cobre as usinas
+  despachadas ou programadas pelo ONS, medidas pelo sistema de supervisão; de mar/2021 a
+  abr/2023 passam a entrar também as usinas não despachadas (por geração prevista); e **a
+  partir de 29/04/2023 "passou a ser incorporado o valor estimado da micro e minigeração
+  distribuída (MMGD), com base em dados meteorológicos previstos"**.
+- **A página do dataset "Carga de Energia Mensal" diz o mesmo para a MMGD** (com base em
+  "dados meteorológicos verificados", https://dados.ons.org.br/dataset/carga-mensal) e acrescenta
+  que, nesse dataset, até dez/2014 os números vêm do sistema de supervisão, que a partir de
+  jan/2015 as usinas não despachadas foram incluídas e que desde mar/2021 vêm do sistema de
+  medição para faturamento da CCEE.
+- **A curva horária tem a mesma definição da carga diária.** Comparei a média diária da curva
+  horária com a "Carga de Energia Diária" nos 26 anos (`scripts/explorar_fontes.py
+  ons-historico`): as diferenças são da ordem de 1e-12, exceto nos dias de transição de
+  horário de verão (4 a 9 subsistema-dias por ano em 2001–2012 e 2017–2018, até 4,4% por causa
+  do dia de 23 horas). Portanto as mudanças documentadas na carga diária valem para a curva
+  horária, **embora a página dela não as cite**.
+- **Mudanças documentadas na série (datas aproximadas):** mar/2021 (inclusão de usinas não
+  despachadas) e 29/04/2023 (MMGD estimada). A de mar/2021 coincide com o rebote da pandemia
+  (variação anual de +10,6% no SE em mar/2021, com base baixa em mar/2020), então o degrau de
+  definição dessa data não é isolável. A de jan/2015 é citada só na página do dataset mensal;
+  para a curva horária não há evidência.
+- **Não confirmado (aparece só em resultados de busca, sem fonte oficial lida):** uma segunda
+  fase da MMGD na carga, com a expansão projetada, depois de mai/2023. **[pendente]** verificar,
+  porque alteraria a definição de novo.
+- **Magnitude:** a documentação diz o que mudou, não quanto. O tamanho do degrau (cerca de
+  +3 a +8 p.p. de variação anual entre abr e mai/2023, com ruído de feriados) é só uma
+  estimativa dos dados, não do ONS.
+
+### Testes de qualidade previstos para a Sprint 3 (ONS, curva de carga)
+
+Cada item é um caso real encontrado na exploração. Os testes devem sinalizá-lo e, onde o caso é
+conhecido e permanente, ter uma lista de exceções esperadas para não parar o pipeline por algo
+que já foi investigado.
+
+| # | Caso encontrado | Onde acontece | Teste previsto |
+|---|---|---|---|
+| 1 | **Linhas de 00:00 nulas no início do horário de verão** | 2014-10-19, 2015-10-18, 2016-10-16, 2017-10-15 (nulo nos 4 subsistemas) e 2018-11-04 (nulo em N, NE e SE). Esse horário não existe no relógio local. Em 2000–2013 a mesma linha **não existe** (ausente) | `not_null` em `val_cargaenergiahomwmed` com exceção para essas datas às 00:00, ou descartar essas linhas no staging antes da conversão para UTC. Completude horária: as linhas ausentes de 2000–2013 são conhecidas |
+| 2 | **Valor 0,0 no S em 2018-11-04 00:00** | único valor <= 0 de toda a série 2000–2025 (os outros subsistemas têm nulo nessa hora) | teste de faixa (carga > 0) deve capturar; tratar como o caso 1 (hora inexistente) |
+| 3 | **Dias inteiros sem valor** | 2013-12-01 (nulo nos 4 subsistemas, 96 nulos), 2014-02-01 e 2015-04-09 (nulo em NE, S e SE; linhas ausentes no N) | `not_null` e completude por dia; exceções conhecidas; decidir se esses dias são imputados ou ficam ausentes (afetam a média mensal do SE) |
+| 4 | **Hora repetida do fim do horário de verão ausente** | uma hora UTC sem dado por ano com horário de verão, no fim (fev/2001 a fev/2019); a série traz o 23:00 repetido uma vez só | completude em UTC no staging: espera-se **uma** hora faltante por ano até 2018; o teste não pode exigir 8.760 horas UTC contínuas nesses anos. A partir de 2019 a série deve estar completa |
+
+Outros testes a prever com base no mesmo perfil: subsistemas fixos (N, NE, S, SE), minuto sempre
+0, sem duplicatas em (`id_subsistema`, `din_instante`), e um alerta de degrau (variação anual
+do SE acima de ±5% por vários meses) que ajude a perceber futuras mudanças de definição como a
+de 2023.
 
 ---
 
@@ -66,11 +220,9 @@ Formato do arquivo: CSV UTF-8, separador `;`, ponto decimal.
   a atualização automática é tema da tarefa 1.7 (ver `decisoes.md`).
 - **Granularidade:** horária, por submercado (NORDESTE, NORTE, SUDESTE, SUL).
 - **Período:** 2021-01-01 até 2026-10-02 (o arquivo de 2026 inclui o dia corrente, porque o
-  PLD é divulgado no dia anterior). O arquivo **2001–2020 não foi perfilado**: dele vem o
-  PLD de 2020, que define o preço de contrato de 2021 (`premissas.md`). O PLD horário só
-  existe a partir de 2021, então a granularidade desse arquivo pode ser semanal (por
-  patamar de carga). **[pendente]** perfilar e confirmar; se for semanal, a média de 2020 é
-  ponderada pela duração (em horas) de cada semana.
+  PLD é divulgado no dia anterior). O arquivo 2001–2020 é **semanal por patamar de carga**,
+  não horário: ver a subseção "PLD histórico" abaixo. Dele vem o PLD de 2020, que define o
+  preço de contrato de 2021 (`premissas.md`).
 - **Atualização:** mensal, com publicação diária por dia de referência.
 - **Tamanho:** 0,8 a 1,3 MB por ano.
 - **Fuso:** horário de Brasília (portal). Não há horário de verão desde 2019, então 2021+ não
@@ -121,6 +273,50 @@ Não há coluna de timestamp. Ele se monta com `MES_REFERENCIA` + `DIA` + `HORA`
   estável; (3) o teste de faixa da tarefa 3.2 precisa do piso e do teto por ano. Parece haver
   um teto horário e um teto estrutural, com valores diferentes. **[pendente]** confirmar
   piso e teto por ano na ANEEL.
+
+### PLD histórico semanal 2001–2020 (tarefa 1.10)
+
+- **Arquivo:** `pld_historico_semanal_2001_2020.csv` (baixado manualmente do mesmo dataset,
+  452 KB, 12.312 linhas). Não é horário: **a ingestão deve tratá-lo como tabela à parte**
+  (`pld_semanal`), sem misturar com o `pld_horario`.
+- **Layout:** mesmas 6 colunas e mesma formatação dos arquivos 2021–2024 (aspas, CRLF, `DIA`
+  e `HORA` com zero à esquerda), **mas a semântica é outra**:
+  - cada linha é o preço de **um patamar de carga de uma semana operativa**;
+  - **3 linhas por (mês de referência, submercado, início da semana)**: 4.104 chaves × 3;
+  - `HORA` é sempre `00`; `DIA` é o dia em que a semana **começa**; `PERIODO_COMERCIALIZACAO`
+    é a hora do mês em que a semana começa (igual a `(DIA − 1) × 24 + 1` em 100% das linhas);
+  - a semana pertence ao mês em que começa (a semana de 28/12/2019 está em `201912`).
+- **Período:** jun/2001 a dez/2020 (235 meses; não começa em jan/2001). 4 submercados,
+  3.078 linhas cada. Sem nulos.
+- **O patamar não é identificável.** Não há coluna de patamar (leve, média, pesada), as horas de
+  cada patamar não estão no arquivo, e a ordem das 3 linhas não os identifica (só 51,3% das
+  semanas têm linha 1 <= linha 2 <= linha 3).
+- **4.118 linhas são duplicatas exatas**, mas não são erro: são patamares com o mesmo preço
+  (por exemplo, 3 linhas iguais de R$ 684 em jun/2001). **Não deduplicar** e não usar
+  `unique` do dbt sobre as 6 colunas; uma chave única precisaria de uma coluna sintética de
+  ordem dentro da semana.
+- **Semanas:** começam em sábado (12.216 linhas) e duram 7 dias, exceto 8 semanas curtas que
+  começam no dia 1 do mês fora de sábado: 2001-08-24, 2002-01-01, 2002-03-01, 2003-04-01,
+  2003-12-01, 2015-06-01, 2016-09-01 e 2016-11-01. A duração de uma semana deve ser o
+  intervalo até o início da seguinte, e não 7 dias fixos. As 53 semanas que tocam 2020 são
+  todas de sábado a sexta.
+- **PLD médio de 2020, ponderado pelas horas de cada semana** (a semana de 28/12/2019
+  contribui com 72 h de 2020 e a de 26/12/2020, com 144 h; as 53 semanas cobrem exatamente as
+  8.784 h do ano). Como o patamar não é identificável, usa-se a **média simples dos 3
+  patamares** de cada semana, com o erro máximo medido pelos extremos (só o menor ou só o
+  maior patamar de cada semana):
+
+| Submercado | Média ponderada (R$/MWh) | Piso | Teto | Erro máximo |
+|---|---|---|---|---|
+| **SUDESTE** | **178,03** | 173,19 | 181,12 | **4,84** |
+| NORDESTE | 135,27 | 132,50 | 138,66 | 3,39 |
+| NORTE | 165,55 | 163,09 | 167,25 | 2,46 |
+| SUL | 187,87 | 173,19 | 196,04 | 14,68 |
+
+  O erro máximo do SUDESTE (R$ 4,84) é menor que o limite aceito de R$ 20: **aproximação
+  aceita**. Sem ponderar pelas horas (média simples das semanas) o SUDESTE daria R$ 179,38.
+- **Consequência para o preço de contrato:** `P_2021` = 178,03 + spread de R$ 20 =
+  **R$ 198,03/MWh** (caso base; R$ 178,03 e R$ 218,03 na sensibilidade 0 e 40).
 
 ---
 
@@ -300,7 +496,7 @@ Ver `decisoes.md` ("Estações do INMET e temperatura do submercado").
 
 | Fonte | Fuso original | Tratamento |
 |---|---|---|
-| ONS | Brasília (a confirmar) | Bronze e raw sem alteração; staging converte para UTC com `America/Sao_Paulo` |
+| ONS | Horário oficial local (confirmado pelo teste de horário de verão), com horário de verão até 2018 | Bronze e raw sem alteração; staging converte para UTC com `America/Sao_Paulo` (tratar linhas nulas de 00:00 em dias de início de horário de verão, 2014–2018) |
 | CCEE PLD | Brasília | idem |
 | INMET | UTC | Já em UTC; apenas montar o timestamp |
 | CCEE consumo | n/a (mensal) | n/a |
