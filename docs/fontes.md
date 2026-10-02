@@ -159,7 +159,7 @@ Unidade: a confirmar no dicionário de dados do portal. **[pendente]**
 - **Atualização:** anual, em lote.
 - **Tamanho:** ZIP de 80,6 MB (2021) e 102,8 MB (2024); ~0,8 MB por estação/ano.
 - **Estações:** 588 em 2021 e 565 em 2024 (a rede muda: 4 estações do Sudeste só existem em
-  2021 e 1 só em 2024; 145 do Sudeste estão nos dois anos). Sem códigos repetidos dentro do
+  2021 e 1 só em 2024; 145 do Sudeste estão nos dois anos, e 240 se somado o Centro-Oeste). Sem códigos repetidos dentro do
   mesmo ano.
 - **Fuso:** UTC (explícito na coluna `Hora UTC`).
 
@@ -201,16 +201,22 @@ seguinte**, por isso o critério vale por ano (abaixo).
 **Critério:** temperatura do ar com pelo menos **95% de horas válidas em cada ano** analisado
 (por enquanto 2021 e 2024). Horas válidas = horas distintas com temperatura não nula e
 diferente de `-9999`, divididas pelas horas do ano (8.760 ou 8.784). Uma hora que falta no
-arquivo conta como inválida. Estações do Sudeste (ES, MG, RJ, SP).
+arquivo conta como inválida. Escopo: estados do submercado SE/CO que o projeto cobre:
+Sudeste (ES, MG, RJ, SP) e Centro-Oeste (DF, GO, MS, MT). Análise reproduzível com
+`uv run python scripts/inmet_cmp.py` (gera `data/amostras/inmet/completude_estacoes.csv`).
 
-**Resultado:** das 145 estações do Sudeste presentes nos dois anos, **54 passam**.
+**Resultado:** das 240 estações do SE/CO presentes nos dois anos, **73 passam**.
 
-| UF | Presentes nos 2 anos | Passam |
-|---|---|---|
-| ES | 12 | 5 |
-| MG | 68 | 30 |
-| RJ | 25 | 12 |
-| SP | 40 | 7 |
+| Região | UF | Presentes nos 2 anos | Passam |
+|---|---|---|---|
+| SE | ES | 12 | 5 |
+| SE | MG | 68 | 30 |
+| SE | RJ | 25 | 12 |
+| SE | SP | 40 | 7 |
+| CO | DF | 5 | 4 |
+| CO | GO | 26 | 9 |
+| CO | MS | 27 | 5 |
+| CO | MT | 37 | **1** |
 
 Percentual de horas válidas (2021 / 2024):
 
@@ -236,6 +242,15 @@ Percentual de horas válidas (2021 / 2024):
 - **SP:** A705 Bauru (98,8/100,0); A763 Marília (100,0/99,6); A747 Pradópolis (100,0/97,8);
   A707 Presidente Prudente (99,6/97,6); A701 São Paulo Mirante (100,0/99,8); A770 São Simão
   (98,6/96,3); A768 Tupã (95,9/95,7).
+- **DF:** A001 Brasília (100,0/99,7); A042 Brazlândia (97,9/97,3); A046 Gama Ponte Alta
+  (100,0/99,2); A047 Paranoá Coopa-DF (97,7/95,3).
+- **GO:** A034 Catalão (100,0/100,0); A036 Cristalina (100,0/100,0); A002 Goiânia
+  (98,5/99,3); A015 Itapaci (100,0/95,8); A016 Jataí (99,9/99,9); A012 Luziânia
+  (100,0/100,0); A027 Paraúna (100,0/100,0); A033 Pires do Rio (100,0/99,9); A037 Silvânia
+  (100,0/97,9).
+- **MS:** A756 Água Clara (100,0/99,8); A702 Campo Grande (99,2/100,0); A703 Ponta Porã
+  (98,2/100,0); A743 Rio Brilhante (97,5/100,0); A704 Três Lagoas (100,0/100,0).
+- **MT:** A934 Alto Taquari (97,5/95,6).
 
 **Observações sobre o resultado**
 - A lista só pode **encolher** quando 2022, 2023 e 2025 entrarem (o critério vale em cada
@@ -243,17 +258,28 @@ Percentual de horas válidas (2021 / 2024):
 - Muitas estações ficam de fora por completude baixa em 2021 (mediana de 92,6% no
   Sudeste, contra 98,1% em 2024). Perto do limite há estações como Casa Branca, Itapira
   ou Cachoeira Paulista (0% em 2021, entre 91% e 96% em 2024).
-- **Distribuição geográfica desigual:** 30 das 54 estações são de MG e só 7 de SP, quase
-  todas no interior (a capital só tem a A701 Mirante). Uma média simples entre estações
-  ficaria dominada por MG, embora SP seja o maior centro de carga do submercado.
-  **[pendente]** decidir se a média é simples ou ponderada por estado (por exemplo, pela
-  carga).
-- O submercado SE/CO inclui estados do Centro-Oeste, que não entram na lista (escopo
-  Sudeste). Aceito por simplicidade.
+- **Distribuição geográfica desigual:** 30 das 73 estações são de MG e só 7 de SP, quase
+  todas no interior (a capital só tem a A701 Mirante). Uma média simples entre todas as
+  estações ficaria dominada por MG, embora SP seja o maior centro de carga do submercado.
+  Por isso a agregação é em dois passos, com peso por estado (abaixo).
+- **MT tem 1 estação só** (Alto Taquari, com 95,6% em 2024, perto do limite), de 37
+  presentes nos dois anos. A média do estado depende de uma única estação, então um problema
+  nela afeta o MT inteiro. O peso do MT no consumo é pequeno, mas o ponto deve ser
+  monitorado na Sprint 2.
+- O submercado SE/CO do ONS inclui também Acre e Rondônia, fora do escopo do projeto
+  (conhecimento meu, não verificado nas fontes). Peso pequeno; aceito por simplicidade.
 
-**Temperatura do submercado:** média horária das estações escolhidas, **tolerante a falhas**:
-uma hora sem medida numa estação não anula a média das demais (a média usa só as estações
-com dado naquela hora). Ver `decisoes.md` ("Estações do INMET e temperatura do submercado").
+**Temperatura do submercado (agregação em dois passos, a implementar na Sprint 2):**
+1. **Média das estações dentro de cada estado**, hora a hora, **tolerante a falhas**: numa
+   hora, a média usa só as estações com dado, e uma falha numa estação não anula as demais.
+2. **Média entre estados, ponderada pelo peso de cada estado no consumo de energia do
+   submercado SE/CO.** Pesos de fonte oficial (ex.: Anuário Estatístico de Energia Elétrica
+   da EPE), a definir em `docs/premissas.md`. **[pendente]** definir fonte, ano de
+   referência e valores dos pesos.
+
+Se um estado ficar sem nenhuma estação com dado numa hora, os pesos dos demais precisam ser
+renormalizados naquela hora (ou a hora é marcada como ausente); a regra será definida na
+implementação. Ver `decisoes.md` ("Estações do INMET e temperatura do submercado").
 
 ---
 
