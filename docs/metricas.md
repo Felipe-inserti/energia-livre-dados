@@ -429,3 +429,33 @@ Bytes processados:
 - **O faturado só vai ao piso de 10,5 MB depois da partição**: o ONS cai de 18,9 para 10,5 MB (−44%) e o INMET de
   36,7 para 10,5 MB (−71%), mas a CCEE já estava no piso desde o raw, e o ONS não passa dali mesmo lendo 0,74 MB.
 
+
+## Sprint 2: documentação e exploração (tarefas 2.7 e 2.8)
+
+### Documentação do dbt (2.7)
+
+| Medida | Antes | Depois |
+|---|---|---|
+| Colunas dos modelos com descrição | 45 de 141 (32%) | 141 de 141 |
+| Colunas (modelos e fontes) conferidas contra o BigQuery | não medido | 200 de 200 (`scripts/verificar_docs.py`) |
+| Blocos de documentação reutilizáveis | 0 | 14 (`dbt/models/_docs.md`) |
+
+`dbt docs generate` só lê metadados: sem bytes processados. A conferência contra as colunas reais pegou 21
+colunas das fontes (raw) que o YAML não declarava (as 17 medidas do INMET e as de consumo da CCEE), que a
+contagem só dos modelos não mostrava.
+
+### Notebook de exploração (2.8): custo das consultas (sem cache, `notebooks/01_exploracao.ipynb`)
+
+| Consulta | Linhas devolvidas | MB processados |
+|---|---|---|
+| 1. carga mensal do SE | 321 | 22,6 |
+| 2. perfil por hora do dia | 72 | 10,8 |
+| 3. carga x temperatura (média diária) | 1.440 | 28,4 |
+| 4. PLD horário do SE | 50.424 | 9,9 |
+| 5. PLD médio anual | 104 | 10,3 |
+| **Total** | 52.361 | **82,0** |
+
+Todas abaixo do teto de 200 MiB por consulta. Estimado antes (dry-run): ~94 MB; medido: 82,0 MB. Em tabelas pequenas o faturado fica no
+piso de 10 MiB por consulta, então o total faturado é maior que o processado.
+Arquivos: o notebook sem saídas tem 23,7 KB (executado, com as imagens embutidas, tem 620 KB); as 5 figuras somam
+~630 KB em `docs/figuras/` (a de dispersão tem 238 KB; limite por figura: 300 KB). O `lineage.png` tem 155 KB.

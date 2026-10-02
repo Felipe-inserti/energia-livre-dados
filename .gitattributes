@@ -1,0 +1,4 @@
+# Notebooks versionados sem saídas (nbstripout): o filtro precisa estar ativo em cada clone com
+#   uv run nbstripout --install
+*.ipynb filter=nbstripout
+*.ipynb diff=ipynb

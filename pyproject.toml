@@ -22,10 +22,17 @@ dev = [
     "pyyaml>=6.0.3",
     "ruff>=0.16.10",
 ]
+notebook = [
+    "ipykernel>=7.4.0",
+    "matplotlib>=3.11.2",
+    "nbclient>=0.11.0",
+    "nbformat>=5.11.1",
+    "nbstripout>=0.9.1",
+]
 
 [tool.uv]
 # Um ambiente só: `uv sync` instala também o dbt (ver docs/decisoes.md)
-default-groups = ["dev", "dbt"]
+default-groups = ["dev", "dbt", "notebook"]
 # Projeto de scripts, não uma biblioteca: não precisa ser construído/instalado.
 package = false
 
@@ -36,6 +43,10 @@ target-version = "py311"
 [tool.ruff.lint]
 # E/W: estilo, F: erros lógicos, I: ordem dos imports, B: bugs comuns, UP: sintaxe moderna
 select = ["E", "W", "F", "I", "B", "UP"]
+
+[tool.ruff.lint.per-file-ignores]
+# O notebook acerta o sys.path (para achar `notebooks.utilitarios`) antes dos imports do projeto.
+"notebooks/*.ipynb" = ["E402"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

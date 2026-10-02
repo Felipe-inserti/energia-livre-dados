@@ -68,11 +68,11 @@ Ao abrir uma conversa com o Claude, diga a sprint e a tarefa (ex.: "Sprint 1, ta
 - [x] 2.1 Instalar dbt-bigquery, configurar `profiles.yml` e `sources.yml` apontando para `raw`.
 - [x] 2.2 Modelos de staging: tipos, nomes padronizados, **tudo em UTC**, deduplicação.
 - [x] 2.3 `dim_tempo` (uma linha por hora UTC de 2000 a 2030, com hora local, feriado, tipo de dia, estação do ano e horário de ponta), `dim_submercado` e `dim_estacao` (as 37 estações do INMET, com o registro mais recente). A `dim_fonte` fica fora: depende da geração por fonte, que foi adiada.
-- [x] 2.4 Modelos intermediate: a temperatura em dois passos (`int_clima_estado_horario`: média das estações por estado e hora, com imputação de até 3 h; `int_clima_submercado_horario`: média **simples** entre os estados, provisória até existirem os pesos da EPE) e a junção de carga, PLD e temperatura na mesma hora (`int_submercado_horario`).
+- [x] 2.4 Modelos intermediate: a temperatura em dois passos (`int_clima_estado_horario`: média das estações por estado e hora, com imputação de até 3 h; `int_clima_submercado_horario`: média **simples** entre os estados, provisória até existirem os pesos da EPE) e a junção de carga, PLD e temperatura na mesma hora (`int_submercado_horario`, promovido a mart `fct_submercado_horario` na 2.8).
 - [x] 2.5 Fatos, no dataset `marts`: `fct_carga_horaria`, `fct_pld_horario`, `fct_clima_horario` (grão estação x hora) e `fct_pld_semanal` (o PLD de 2001 a 2020, que dá o preço de contrato de 2021); `fct_reservatorios_diario` fica fora (item de corte). Testes de chave, `not_null` e `relationships` com as dimensões.
 - [x] 2.6 Particionar os fatos horários **por mês** em `instante_utc` e clusterizar por submercado (clima: por UF e estação). **Os fatos incrementais ficam para a Sprint 4** (junto com a janela de segurança das revisões). Medir a consulta típica em **três pontos**: raw (STRING), tipada sem partição e fato particionado e clusterizado, comparando **bytes processados** (o faturado fica no piso de 10 MiB nesse volume), e um experimento que isola o efeito da partição do efeito do cluster.
-- [ ] 2.7 Descrever modelos e colunas no YAML e gerar `dbt docs`.
-- [ ] 2.8 Primeira análise exploratória em notebook: sazonalidade da carga, relação carga x temperatura, comportamento do PLD.
+- [x] 2.7 Descrever modelos e colunas no YAML e gerar `dbt docs`.
+- [x] 2.8 Primeira análise exploratória em notebook: sazonalidade da carga, relação carga x temperatura, comportamento do PLD.
 
 **Medir (o "depois")**
 - Bytes **processados** pela mesma consulta típica da Sprint 1 nos três pontos (raw, tipado sem partição e fato particionado e clusterizado). O faturado fica no piso de 10 MiB, então o processado é a métrica de comparação.

@@ -107,6 +107,8 @@ sources:
             description: "Caminho do CSV original no bronze do GCS."
           - name: _carregado_em
             description: "Momento (UTC) em que a carga full gravou a linha."
+          - name: submercado
+            description: "NORDESTE, NORTE, SUDESTE ou SUL."
 
       - name: ccee_consumo_ramo_atividade
         description: >
@@ -131,6 +133,14 @@ sources:
             description: "Caminho do CSV original no bronze do GCS."
           - name: _carregado_em
             description: "Momento (UTC) em que a carga full gravou a linha."
+          - name: consumo_cl_esp_acl
+            description: "Consumo dos consumidores livres e especiais no mercado livre (ACL), texto com ponto decimal. Unidade por confirmar."
+          - name: consumo_autop_acl
+            description: "Consumo dos autoprodutores no mercado livre (ACL), texto com ponto decimal. Unidade por confirmar."
+          - name: consumo_ponto_conexao_cl_esp_acl
+            description: "Consumo por ponto de conexão dos consumidores livres e especiais no ACL, texto. Unidade por confirmar."
+          - name: consumo_ponto_conexao_autop_acl
+            description: "Consumo por ponto de conexão dos autoprodutores no ACL, texto. Unidade por confirmar."
 
       - name: inmet_estacoes_horario
         description: >
@@ -169,6 +179,38 @@ sources:
             description: "Caminho do ZIP original no bronze do GCS (`bronze/inmet/ano=AAAA/AAAA.zip`)."
           - name: _carregado_em
             description: "Momento (UTC) em que a carga full gravou a linha."
+          - name: precipitacao_total_horario_mm
+            description: "Precipitação total da hora, em mm. Texto com vírgula decimal; vazio quando não houve medição."
+          - name: pressao_atmosferica_ao_nivel_da_estacao_horaria_mb
+            description: "Pressão ao nível da estação, em milibar (mB). Texto com vírgula decimal; vazio quando não houve medição."
+          - name: pressao_atmosferica_max_na_hora_ant_aut_mb
+            description: "Pressão máxima na hora anterior, em mB. Texto com vírgula decimal; vazio quando não houve medição."
+          - name: pressao_atmosferica_min_na_hora_ant_aut_mb
+            description: "Pressão mínima na hora anterior, em mB. Texto com vírgula decimal; vazio quando não houve medição."
+          - name: radiacao_global_kj_m2
+            description: "Radiação global da hora, em kJ/m². Texto com vírgula decimal; vazio quando não houve medição."
+          - name: temperatura_do_ponto_de_orvalho_c
+            description: "Temperatura do ponto de orvalho, em °C. Texto com vírgula decimal; vazio quando não houve medição."
+          - name: temperatura_maxima_na_hora_ant_aut_c
+            description: "Temperatura máxima na hora anterior, em °C. Texto com vírgula decimal; vazio quando não houve medição."
+          - name: temperatura_minima_na_hora_ant_aut_c
+            description: "Temperatura mínima na hora anterior, em °C. Texto com vírgula decimal; vazio quando não houve medição."
+          - name: temperatura_orvalho_max_na_hora_ant_aut_c
+            description: "Temperatura de orvalho máxima na hora anterior, em °C. Texto com vírgula decimal; vazio quando não houve medição."
+          - name: temperatura_orvalho_min_na_hora_ant_aut_c
+            description: "Temperatura de orvalho mínima na hora anterior, em °C. Texto com vírgula decimal; vazio quando não houve medição."
+          - name: umidade_rel_max_na_hora_ant_aut
+            description: "Umidade relativa máxima na hora anterior, em %. Texto com vírgula decimal; vazio quando não houve medição."
+          - name: umidade_rel_min_na_hora_ant_aut
+            description: "Umidade relativa mínima na hora anterior, em %. Texto com vírgula decimal; vazio quando não houve medição."
+          - name: umidade_relativa_do_ar_horaria
+            description: "Umidade relativa do ar na hora, em %. Texto com vírgula decimal; vazio quando não houve medição."
+          - name: vento_direcao_horaria_gr_gr
+            description: "Direção do vento na hora, em graus. Texto com vírgula decimal; vazio quando não houve medição."
+          - name: vento_rajada_maxima_m_s
+            description: "Rajada máxima de vento na hora, em m/s. Texto com vírgula decimal; vazio quando não houve medição."
+          - name: vento_velocidade_horaria_m_s
+            description: "Velocidade do vento na hora, em m/s. Texto com vírgula decimal; vazio quando não houve medição."
 
       - name: feriados
         description: >

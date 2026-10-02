@@ -14,6 +14,7 @@ models:
             combination_of_columns: [uf, instante_utc]
     columns:
       - name: uf
+        description: '{{ doc("uf") }}'
         data_tests:
           - not_null
           - relationships:
@@ -21,6 +22,7 @@ models:
                 to: ref('dim_estacao')
                 field: uf
       - name: instante_utc
+        description: '{{ doc("instante_utc") }}'
         data_tests:
           - not_null
           - relationships:
@@ -30,6 +32,7 @@ models:
       - name: temperatura_c
         description: "Média das estações do estado com dado na hora, ou a última hora válida (imputada)."
       - name: temperatura_imputada
+        description: "Verdadeiro quando o estado inteiro estava sem dado na hora e `temperatura_c` repete a última hora válida (até 3 horas)."
         data_tests: [not_null]
       - name: n_estacoes_com_dado
         description: "Quantas estações do estado têm temperatura na hora."
@@ -46,6 +49,7 @@ models:
             combination_of_columns: [codigo_submercado, instante_utc]
     columns:
       - name: codigo_submercado
+        description: '{{ doc("codigo_submercado") }}'
         data_tests:
           - not_null
           - accepted_values:
@@ -56,6 +60,7 @@ models:
                 to: ref('dim_submercado')
                 field: codigo_submercado
       - name: instante_utc
+        description: '{{ doc("instante_utc") }}'
         data_tests:
           - not_null
           - relationships:
@@ -63,29 +68,9 @@ models:
                 to: ref('dim_tempo')
                 field: instante_utc
       - name: n_estados_com_dado
+        description: "Quantos estados têm temperatura na hora (medida ou imputada)."
         data_tests: [not_null]
-
-  - name: int_submercado_horario
-    description: >
-      Carga, PLD e temperatura na mesma granularidade: uma linha por (submercado, hora UTC), com junção
-      completa das três fontes (a carga vai de 2000 a out/2026; PLD e clima, de 2021 em diante). Onde
-      uma fonte não tem a linha, a coluna é nula. Particionada por mês e clusterizada por submercado.
-    data_tests:
-      - dbt_utils.unique_combination_of_columns:
-          arguments:
-            combination_of_columns: [codigo_submercado, instante_utc]
-    columns:
-      - name: codigo_submercado
-        data_tests:
-          - not_null
-          - relationships:
-              arguments:
-                to: ref('dim_submercado')
-                field: codigo_submercado
-      - name: instante_utc
-        data_tests:
-          - not_null
-          - relationships:
-              arguments:
-                to: ref('dim_tempo')
-                field: instante_utc
+      - name: temperatura_c
+        description: "Média simples da temperatura dos estados do submercado na hora (provisória até os pesos da EPE)."
+      - name: n_estados_imputados
+        description: "Quantos desses estados têm a temperatura imputada (repetida da última hora válida)."

@@ -1,7 +1,8 @@
 version: 2
 
-# Dimensões (tarefa 2.3). A dim_fonte fica fora: depende da geração por fonte, que foi adiada
-# (item de corte da lista "Se atrasar"). Descrições completas das colunas dos fatos: tarefa 2.7.
+# Dimensões (tarefa 2.3) e fatos (2.5). A dim_fonte fica fora: depende da geração por fonte, que foi
+# adiada (item de corte da lista "Se atrasar"). Todas as colunas têm descrição (tarefa 2.7); as que
+# se repetem usam os blocos de dbt/models/_docs.md.
 models:
   - name: dim_tempo
     description: >
@@ -40,10 +41,13 @@ models:
         description: "Verdadeiro quando o deslocamento é -2 (horário de verão)."
         data_tests: [not_null]
       - name: ano
+        description: "Ano da data local."
         data_tests: [not_null]
       - name: mes
+        description: "Mês da data local (1 a 12)."
         data_tests: [not_null]
       - name: dia_do_mes
+        description: "Dia do mês da data local (1 a 31)."
         data_tests: [not_null]
       - name: dia_da_semana
         description: "Dia da semana ISO da data local: 1 = segunda-feira ... 7 = domingo."
@@ -144,6 +148,7 @@ models:
           - unique
           - not_null
       - name: uf
+        description: '{{ doc("uf") }}'
         data_tests:
           - not_null
           - accepted_values:
@@ -178,7 +183,9 @@ models:
       - name: n_nomes
         description: "Quantos nomes distintos a estação teve nos arquivos (a A521 BH Pampulha tem 2)."
       - name: primeiro_instante_utc
+        description: "Primeira hora UTC em que a estação aparece nos dados do INMET carregados."
       - name: ultimo_instante_utc
+        description: "Última hora UTC em que a estação aparece nos dados carregados (2026 vai até 31/08)."
 
   # ----------------------------------------------------------------- fatos (tarefa 2.5)
   - name: fct_carga_horaria
@@ -212,6 +219,8 @@ models:
                 field: instante_utc
       - name: carga_mwmed
         description: "Carga média da hora em MWmed. Nulo nos dias inteiros sem dado de 2013 a 2015."
+      - name: _carregado_em
+        description: '{{ doc("carregado_em") }}'
 
   - name: fct_pld_horario
     description: >
@@ -245,6 +254,8 @@ models:
       - name: pld_rs_mwh
         description: "PLD da hora em R$/MWh (NUMERIC)."
         data_tests: [not_null]
+      - name: _carregado_em
+        description: '{{ doc("carregado_em") }}'
 
   - name: fct_clima_horario
     description: >
@@ -285,6 +296,40 @@ models:
                 field: instante_utc
       - name: temperatura_c
         description: "Temperatura do ar (bulbo seco), em °C. Nulo em ~1,35% das horas."
+      - name: precipitacao_mm
+        description: "Precipitação total da hora, em mm."
+      - name: pressao_mb
+        description: "Pressão atmosférica ao nível da estação na hora, em milibar (mB)."
+      - name: pressao_max_mb
+        description: "Pressão atmosférica máxima na hora anterior, em mB (medida automática)."
+      - name: pressao_min_mb
+        description: "Pressão atmosférica mínima na hora anterior, em mB (medida automática)."
+      - name: radiacao_kj_m2
+        description: "Radiação global da hora, em kJ/m². Nula à noite e quando o sensor falha."
+      - name: temperatura_orvalho_c
+        description: '{{ doc("inmet_temperatura_orvalho") }}'
+      - name: temperatura_max_c
+        description: "Temperatura máxima na hora anterior, em °C (medida automática)."
+      - name: temperatura_min_c
+        description: "Temperatura mínima na hora anterior, em °C (medida automática)."
+      - name: temperatura_orvalho_max_c
+        description: "Temperatura de orvalho máxima na hora anterior, em °C."
+      - name: temperatura_orvalho_min_c
+        description: "Temperatura de orvalho mínima na hora anterior, em °C."
+      - name: umidade_max_pct
+        description: "Umidade relativa máxima na hora anterior, em %."
+      - name: umidade_min_pct
+        description: "Umidade relativa mínima na hora anterior, em %."
+      - name: umidade_pct
+        description: "Umidade relativa do ar na hora, em %."
+      - name: vento_direcao_graus
+        description: "Direção do vento na hora, em graus (0 a 360, a origem do vento)."
+      - name: vento_rajada_ms
+        description: "Rajada máxima de vento na hora, em m/s."
+      - name: vento_velocidade_ms
+        description: "Velocidade do vento na hora, em m/s."
+      - name: _carregado_em
+        description: '{{ doc("carregado_em") }}'
 
   - name: fct_pld_semanal
     description: >
@@ -300,6 +345,7 @@ models:
             compare_model: ref('stg_ccee__pld_semanal')
     columns:
       - name: codigo_submercado
+        description: '{{ doc("codigo_submercado") }}'
         data_tests:
           - not_null
           - relationships:
@@ -321,5 +367,42 @@ models:
         description: "Horas reais entre o início e o fim da semana (167 ou 169 nas semanas com mudança de horário de verão)."
         data_tests: [not_null]
       - name: pld_rs_mwh
+        description: "PLD do patamar em R$/MWh (NUMERIC)."
         data_tests: [not_null]
+      - name: data_inicio_semana
+        description: '{{ doc("data_inicio_semana") }}'
+      - name: ordem_preco_na_semana
+        description: '{{ doc("ordem_preco_na_semana") }}'
 
+  - name: fct_submercado_horario
+    description: >
+      Carga, PLD e temperatura na mesma granularidade: uma linha por (submercado, hora UTC), com junção
+      completa das três fontes (a carga vai de 2000 a out/2026; PLD e clima, de 2021 em diante). Onde
+      uma fonte não tem a linha, a coluna é nula. Particionada por mês e clusterizada por submercado.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [codigo_submercado, instante_utc]
+    columns:
+      - name: codigo_submercado
+        description: '{{ doc("codigo_submercado") }}'
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_submercado')
+                field: codigo_submercado
+      - name: instante_utc
+        description: '{{ doc("instante_utc") }}'
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_tempo')
+                field: instante_utc
+      - name: carga_mwmed
+        description: '{{ doc("carga_mwmed") }}'
+      - name: pld_rs_mwh
+        description: "PLD da hora em R$/MWh (NUMERIC). Nulo antes de 2021 (a série horária da CCEE começa em 2021)."
+      - name: temperatura_c
+        description: "Temperatura média do submercado na hora, em °C (só o SE; nula para os demais e antes de 2021)."
