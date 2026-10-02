@@ -216,3 +216,13 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Projeto
+.env
+*credentials*.json
+*-key.json
+service-account*.json
+data/
+.venv/
+__pycache__/
+.claude/settings.local.json
