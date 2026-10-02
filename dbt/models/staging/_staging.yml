@@ -3,7 +3,8 @@ version: 2
 # Testes básicos da 2.2 (chave única, chaves não nulas, valores aceitos e contagem contra o raw) e,
 # desde a 2.3, os `relationships` com as dimensões. Os `relationships` rodam depois que os marts
 # existem (o dbt ordena os testes depois dos dois modelos). Os testes de faixa, freshness e outros
-# relacionamentos são da Sprint 3; as descrições completas das colunas, da 2.7.
+# relacionamentos são da Sprint 3. Todas as colunas têm descrição (2.7); as que se repetem usam os
+# blocos de dbt/models/_docs.md.
 models:
   - name: stg_ons__curva_carga
     description: >
@@ -16,6 +17,7 @@ models:
             combination_of_columns: [id_subsistema, instante_utc]
     columns:
       - name: id_subsistema
+        description: '{{ doc("codigo_submercado") }}'
         data_tests:
           - not_null
           - accepted_values:
@@ -26,6 +28,7 @@ models:
                 to: ref('dim_submercado')
                 field: codigo_submercado
       - name: instante_utc
+        description: "Início da hora em UTC, convertido do horário local (America/Sao_Paulo) do raw."
         data_tests:
           - not_null
           - relationships:
@@ -34,6 +37,12 @@ models:
                 field: instante_utc
       - name: carga_mwmed
         description: "Carga média da hora em MWmed. Nulo nos dias inteiros sem dado de 2013-2015."
+      - name: nome_subsistema
+        description: "Nome do subsistema no ONS (SUDESTE vira SUDESTE/CENTRO-OESTE em 2026; o código não muda)."
+      - name: _arquivo_origem
+        description: '{{ doc("arquivo_origem") }}'
+      - name: _carregado_em
+        description: '{{ doc("carregado_em") }}'
 
   - name: stg_ccee__pld_horario
     description: >
@@ -48,6 +57,7 @@ models:
             compare_model: source('raw', 'ccee_pld_horario')
     columns:
       - name: submercado
+        description: '{{ doc("nome_ccee_submercado") }}'
         data_tests:
           - not_null
           - accepted_values:
@@ -58,6 +68,7 @@ models:
                 to: ref('dim_submercado')
                 field: nome_ccee
       - name: instante_utc
+        description: "Início da hora em UTC, convertido do horário de Brasília (monta-se com mês, dia e hora do raw)."
         data_tests:
           - not_null
           - relationships:
@@ -65,8 +76,15 @@ models:
                 to: ref('dim_tempo')
                 field: instante_utc
       - name: pld_rs_mwh
+        description: '{{ doc("pld_rs_mwh") }}'
         data_tests:
           - not_null
+      - name: periodo_comercializacao
+        description: '{{ doc("periodo_comercializacao") }}'
+      - name: _arquivo_origem
+        description: '{{ doc("arquivo_origem") }}'
+      - name: _carregado_em
+        description: '{{ doc("carregado_em") }}'
 
   - name: stg_ccee__pld_semanal
     description: >
@@ -81,6 +99,7 @@ models:
             combination_of_columns: [submercado, data_inicio_semana, ordem_preco_na_semana]
     columns:
       - name: submercado
+        description: '{{ doc("nome_ccee_submercado") }}'
         data_tests:
           - not_null
           - accepted_values:
@@ -91,17 +110,28 @@ models:
                 to: ref('dim_submercado')
                 field: nome_ccee
       - name: data_inicio_semana
+        description: '{{ doc("data_inicio_semana") }}'
         data_tests:
           - not_null
       - name: inicio_semana_utc
+        description: "Início da semana operativa (00:00 de Brasília do primeiro dia), em UTC."
         data_tests:
           - relationships:
               arguments:
                 to: ref('dim_tempo')
                 field: instante_utc
       - name: pld_rs_mwh
+        description: "PLD de uma das 3 linhas da semana, em R$/MWh (NUMERIC)."
         data_tests:
           - not_null
+      - name: periodo_comercializacao
+        description: '{{ doc("periodo_comercializacao") }}'
+      - name: ordem_preco_na_semana
+        description: '{{ doc("ordem_preco_na_semana") }}'
+      - name: _arquivo_origem
+        description: '{{ doc("arquivo_origem") }}'
+      - name: _carregado_em
+        description: '{{ doc("carregado_em") }}'
 
   - name: stg_ccee__consumo_ramo_atividade
     description: >
@@ -116,6 +146,7 @@ models:
             compare_model: source('raw', 'ccee_consumo_ramo_atividade')
     columns:
       - name: mes
+        description: "Primeiro dia do mês de referência."
         data_tests:
           - not_null
           - relationships:
@@ -123,8 +154,21 @@ models:
                 to: ref('dim_tempo')
                 field: data_local
       - name: ramo_atividade
+        description: "Ramo de atividade do consumidor (15 ramos, ex.: COMÉRCIO, SERVIÇOS)."
         data_tests:
           - not_null
+      - name: consumo_cl_esp_acl
+        description: "Consumo dos consumidores livres e especiais no mercado livre (ACL). Unidade por confirmar."
+      - name: consumo_autop_acl
+        description: "Consumo dos autoprodutores no mercado livre (ACL). Unidade por confirmar."
+      - name: consumo_ponto_conexao_cl_esp_acl
+        description: "Consumo por ponto de conexão dos consumidores livres e especiais no ACL. Unidade por confirmar."
+      - name: consumo_ponto_conexao_autop_acl
+        description: "Consumo por ponto de conexão dos autoprodutores no ACL. Unidade por confirmar."
+      - name: _arquivo_origem
+        description: '{{ doc("arquivo_origem") }}'
+      - name: _carregado_em
+        description: '{{ doc("carregado_em") }}'
 
   - name: stg_inmet__estacoes_horario
     description: >
@@ -139,6 +183,7 @@ models:
             compare_model: source('raw', 'inmet_estacoes_horario')
     columns:
       - name: estacao_codigo
+        description: '{{ doc("estacao_codigo") }}'
         data_tests:
           - not_null
           - relationships:
@@ -146,6 +191,7 @@ models:
                 to: ref('dim_estacao')
                 field: estacao_codigo
       - name: instante_utc
+        description: '{{ doc("instante_utc") }}'
         data_tests:
           - not_null
           - relationships:
@@ -154,6 +200,50 @@ models:
                 field: instante_utc
       - name: temperatura_c
         description: "Temperatura do ar (bulbo seco), em °C. Nulo em ~1,35% das horas."
+      - name: uf
+        description: '{{ doc("uf") }}'
+      - name: estacao_nome
+        description: "Nome da estação, como no arquivo do INMET daquele ano."
+      - name: latitude
+        description: "Latitude da estação em graus, como no arquivo daquele ano."
+      - name: longitude
+        description: "Longitude da estação em graus, como no arquivo daquele ano."
+      - name: precipitacao_mm
+        description: "Precipitação total da hora, em mm."
+      - name: pressao_mb
+        description: "Pressão atmosférica ao nível da estação na hora, em milibar (mB)."
+      - name: pressao_max_mb
+        description: "Pressão atmosférica máxima na hora anterior, em mB (medida automática)."
+      - name: pressao_min_mb
+        description: "Pressão atmosférica mínima na hora anterior, em mB (medida automática)."
+      - name: radiacao_kj_m2
+        description: "Radiação global da hora, em kJ/m². Nula à noite e quando o sensor falha."
+      - name: temperatura_orvalho_c
+        description: '{{ doc("inmet_temperatura_orvalho") }}'
+      - name: temperatura_max_c
+        description: "Temperatura máxima na hora anterior, em °C (medida automática)."
+      - name: temperatura_min_c
+        description: "Temperatura mínima na hora anterior, em °C (medida automática)."
+      - name: temperatura_orvalho_max_c
+        description: "Temperatura de orvalho máxima na hora anterior, em °C."
+      - name: temperatura_orvalho_min_c
+        description: "Temperatura de orvalho mínima na hora anterior, em °C."
+      - name: umidade_max_pct
+        description: "Umidade relativa máxima na hora anterior, em %."
+      - name: umidade_min_pct
+        description: "Umidade relativa mínima na hora anterior, em %."
+      - name: umidade_pct
+        description: "Umidade relativa do ar na hora, em %."
+      - name: vento_direcao_graus
+        description: "Direção do vento na hora, em graus (0 a 360, a origem do vento)."
+      - name: vento_rajada_ms
+        description: "Rajada máxima de vento na hora, em m/s."
+      - name: vento_velocidade_ms
+        description: "Velocidade do vento na hora, em m/s."
+      - name: _arquivo_origem
+        description: '{{ doc("arquivo_origem") }}'
+      - name: _carregado_em
+        description: '{{ doc("carregado_em") }}'
 
   - name: stg_feriados
     description: >
@@ -165,6 +255,7 @@ models:
             compare_model: source('raw', 'feriados')
     columns:
       - name: data_feriado
+        description: "Data do feriado nacional (biblioteca `holidays`)."
         data_tests:
           - not_null
           - unique
@@ -172,3 +263,7 @@ models:
               arguments:
                 to: ref('dim_tempo')
                 field: data_local
+      - name: nome_feriado
+        description: "Nome do feriado; datas com dois feriados trazem os nomes separados por \"; \"."
+      - name: _carregado_em
+        description: '{{ doc("carregado_em") }}'

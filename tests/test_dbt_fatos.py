@@ -12,17 +12,20 @@ MARTS = DBT / "models" / "marts"
 INTERMEDIATE = DBT / "models" / "intermediate"
 TESTES = DBT / "tests"
 
-FATOS = {"fct_carga_horaria", "fct_pld_horario", "fct_clima_horario", "fct_pld_semanal"}
-INTERMEDIARIOS = {
-    "int_clima_estado_horario",
-    "int_clima_submercado_horario",
-    "int_submercado_horario",
+FATOS = {
+    "fct_carga_horaria",
+    "fct_pld_horario",
+    "fct_clima_horario",
+    "fct_pld_semanal",
+    "fct_submercado_horario",
 }
+INTERMEDIARIOS = {"int_clima_estado_horario", "int_clima_submercado_horario"}
 PARTICIONADOS = {
     "fct_carga_horaria",
     "fct_pld_horario",
     "fct_clima_horario",
-}  # + int_submercado_horario
+    "fct_submercado_horario",
+}
 
 
 def codigo(caminho: Path) -> str:
@@ -37,7 +40,7 @@ def yaml_modelos(caminho: Path) -> dict[str, dict]:
 # ---------------------------------------------------------------- modelos
 
 
-def test_quatro_fatos_e_tres_intermediarios():
+def test_cinco_fatos_e_dois_intermediarios():
     assert {p.stem for p in MARTS.glob("fct_*.sql")} == FATOS
     assert {p.stem for p in INTERMEDIATE.glob("int_*.sql")} == INTERMEDIARIOS
     assert not list(MARTS.glob("dim_fonte*"))  # adiada com a geração por fonte
@@ -50,9 +53,7 @@ def test_intermediate_vai_para_o_dataset_staging():
 
 
 def test_camadas_nao_se_invertem():
-    """Os fatos não leem intermediários e os intermediários não leem fatos."""
-    for fato in FATOS:
-        assert "ref('int_" not in codigo(MARTS / f"{fato}.sql"), fato
+    """Os intermediários não leem fatos (o fluxo vai de staging a marts, nunca de volta)."""
     for inter in INTERMEDIARIOS:
         assert "ref('fct_" not in codigo(INTERMEDIATE / f"{inter}.sql"), inter
 
@@ -66,10 +67,7 @@ def config_do_modelo(caminho: Path) -> str:
 
 
 def test_fatos_horarios_sao_particionados_por_mes_em_instante_utc():
-    modelos = [MARTS / f"{f}.sql" for f in PARTICIONADOS] + [
-        INTERMEDIATE / "int_submercado_horario.sql"
-    ]
-    for caminho in modelos:
+    for caminho in [MARTS / f"{f}.sql" for f in PARTICIONADOS]:
         cfg = config_do_modelo(caminho)
         assert "'field': 'instante_utc'" in cfg, caminho.name
         assert "'data_type': 'timestamp'" in cfg, caminho.name
@@ -119,7 +117,8 @@ def test_todo_fato_tem_chave_unica_contagem_contra_o_staging_e_relationships():
         modelo = modelos[nome]
         testes = [next(iter(t)) for t in modelo["data_tests"]]
         assert "dbt_utils.unique_combination_of_columns" in testes, nome
-        assert "dbt_utils.equal_rowcount" in testes, nome
+        if nome != "fct_submercado_horario":  # junção completa: tem mais linhas que cada fonte
+            assert "dbt_utils.equal_rowcount" in testes, nome
         relacionamentos = [
             t["relationships"]["arguments"]["to"]
             for c in modelo["columns"]
@@ -138,6 +137,7 @@ def test_chaves_dos_fatos():
 
     assert chave("fct_carga_horaria") == ["codigo_submercado", "instante_utc"]
     assert chave("fct_pld_horario") == ["codigo_submercado", "instante_utc"]
+    assert chave("fct_submercado_horario") == ["codigo_submercado", "instante_utc"]
     assert chave("fct_clima_horario") == ["estacao_codigo", "instante_utc"]
     assert chave("fct_pld_semanal") == [
         "codigo_submercado",
@@ -188,7 +188,7 @@ def test_testes_singulares_dos_fatos_existem():
     esperados = {
         "fct_clima_horario_uf_bate_com_dim_estacao",
         "fct_pld_semanal_reproduz_o_preco_de_2020",
-        "int_submercado_horario_preserva_as_linhas_das_fontes",
+        "fct_submercado_horario_preserva_as_linhas_das_fontes",
         "int_clima_estado_horario_imputacao_so_quando_falta_dado",
         "int_clima_estado_horario_grade_completa",
     }

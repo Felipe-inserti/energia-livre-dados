@@ -46,3 +46,25 @@ Três linhas por sprint (ou por bloco de tarefas): o que entreguei, o que aprend
   da temperatura (fonte da EPE), o piso e o teto do PLD por ano na ANEEL (testes da Sprint 3) e o
   fuso do ONS no dicionário de dados.
 
+## Sprint 2, fechamento (02/10/2026)
+
+- **Entreguei:** o projeto dbt completo sobre o raw: 6 modelos de staging, 3 dimensões, 2 intermediários e 5 fatos
+  (os horários particionados por mês), com testes de chave, `relationships` e contagem contra a fonte;
+  documentação de 200 de 200 colunas (modelos e fontes), conferida contra o BigQuery por
+  `scripts/verificar_docs.py`; o lineage em `docs/figuras/lineage.png`, desenhado do manifesto do dbt; e o notebook
+  `notebooks/01_exploracao.ipynb`, que lê só dos marts com teto de custo (82 MB processados nas 5 consultas) e tem
+  5 gráficos com as minhas conclusões. A consulta típica do ONS caiu de 37,32 para 0,74 MB processados (−98,0%).
+- **Aprendi:** (1) a partição mensal é o que reduz bytes; o cluster sozinho ajuda na tabela grande e quase não soma
+  por cima de partições pequenas, e o faturado fica no piso de 10 MiB, então a métrica é bytes processados.
+  (2) Fuso é onde o dado engana: hora inexistente do horário de verão vira o instante da hora seguinte, e só a
+  conferência contra a fonte pegou isso. (3) Conferir o texto contra os dados vale tanto quanto conferir o código:
+  dos números das minhas conclusões, dez estavam errados ou imprecisos (por exemplo, a queda do racionamento é de
+  26% e não 22%, e o degrau da MMGD não aparece em mai/2023). E uma comparação entre inclinações de faixas
+  diferentes parecia mostrar um efeito do ano que não existe: na mesma faixa, controlar o ano muda a inclinação
+  carga x temperatura em ~5%. (4) A documentação por bloco reutilizável e a checagem de completude acharam 21 colunas
+  do raw que ninguém tinha declarado.
+- **Travou:** a camada do notebook: a temperatura agregada só existia num intermediário, e "ler só dos marts" pedia
+  promovê-la a `fct_submercado_horario` (feito, e a tabela antiga precisou ser apagada à mão). Fatos incrementais
+  ficaram para a Sprint 4, junto com a janela de segurança das revisões. Seguem abertos, sem bloquear a Sprint 3:
+  o tratamento do degrau de 2023 da carga (decidir antes da Sprint 5), os pesos da EPE por estado para a
+  temperatura, os pisos e tetos do PLD por ano na ANEEL (testes da Sprint 3) e a unidade do consumo por ramo.

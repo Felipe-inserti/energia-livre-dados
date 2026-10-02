@@ -1,13 +1,15 @@
 {#
-  Carga, PLD e temperatura na mesma granularidade: uma linha por (submercado, hora UTC).
+  Base de análise: carga, PLD e temperatura na mesma granularidade, uma linha por (submercado, hora
+  UTC). Foi o `int_submercado_horario` até a 2.8, quando virou mart porque é o que o notebook, o ML
+  (Sprint 5) e o dashboard consomem (docs/decisoes.md).
 
   Junção COMPLETA das três fontes, porque os períodos diferem: a carga vai de 2000 a out/2026, o PLD
   e o clima de 2021 em diante (o PLD é publicado no dia anterior, então passa um pouco da carga).
   Onde uma fonte não tem a linha, a coluna fica nula. A chave é a mesma nas três: o código do ONS do
-  submercado (SE, S, NE, N); o PLD, que vem com o nome da CCEE, é traduzido pela dim_submercado. A
-  temperatura só existe para o SE (as estações do INMET estão no SE/CO).
+  submercado (SE, S, NE, N). Lê os fatos de carga e de PLD (que já trazem o código do ONS) e o
+  intermediário da temperatura, que só existe para o SE (as estações do INMET estão no SE/CO).
 
-  Particionada por mês e clusterizada por submercado, como os fatos.
+  Particionada por mês e clusterizada por submercado, como os outros fatos horários.
 #}
 {{
     config(
@@ -19,21 +21,20 @@
 with carga as (
 
     select
-        id_subsistema as codigo_submercado,
+        codigo_submercado,
         instante_utc,
         carga_mwmed
-    from {{ ref('stg_ons__curva_carga') }}
+    from {{ ref('fct_carga_horaria') }}
 
 ),
 
 pld as (
 
     select
-        s.codigo_submercado,
-        p.instante_utc,
-        p.pld_rs_mwh
-    from {{ ref('stg_ccee__pld_horario') }} as p
-    inner join {{ ref('dim_submercado') }} as s on s.nome_ccee = p.submercado
+        codigo_submercado,
+        instante_utc,
+        pld_rs_mwh
+    from {{ ref('fct_pld_horario') }}
 
 ),
 
