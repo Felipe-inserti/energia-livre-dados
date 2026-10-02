@@ -54,7 +54,7 @@ Todas as colunas das fontes estão como STRING (a tipagem é do dbt), sem parti�
 | Coluna | Tipo | Descrição |
 |---|---|---|
 | `id_subsistema` | texto | N, NE, S, SE |
-| `nom_subsistema` | texto | NORTE, NORDESTE, SUL, SUDESTE |
+| `nom_subsistema` | texto | NORTE, NORDESTE, SUL e SUDESTE; **o `SE` passa a `SUDESTE/CENTRO-OESTE` a partir de 01/01/2026** (o arquivo de 2026 usa o nome novo; o `id_subsistema` não muda) |
 | `din_instante` | texto `YYYY-MM-DD HH:MM:SS` | início da hora |
 | `val_cargaenergiahomwmed` | decimal | carga média da hora em MWmed |
 

@@ -67,7 +67,7 @@ Ao abrir uma conversa com o Claude, diga a sprint e a tarefa (ex.: "Sprint 1, ta
 **Tarefas**
 - [x] 2.1 Instalar dbt-bigquery, configurar `profiles.yml` e `sources.yml` apontando para `raw`.
 - [x] 2.2 Modelos de staging: tipos, nomes padronizados, **tudo em UTC**, deduplicação.
-- [ ] 2.3 `dim_tempo` (hora, dia da semana, feriado, estação, horário de ponta), `dim_submercado`, `dim_fonte`.
+- [ ] 2.3 `dim_tempo` (uma linha por hora UTC de 2000 a 2030, com hora local, feriado, tipo de dia, estação do ano e horário de ponta), `dim_submercado` e `dim_estacao` (as 37 estações do INMET, com o registro mais recente). A `dim_fonte` fica fora: depende da geração por fonte, que foi adiada.
 - [ ] 2.4 Modelos intermediate: carga + PLD + temperatura na mesma granularidade horária.
 - [ ] 2.5 Fatos: `fct_carga_horaria`, `fct_pld_horario`, `fct_clima_horario` (e `fct_reservatorios_diario` se der tempo).
 - [ ] 2.6 Particionar por data e clusterizar por submercado; fatos grandes como modelos incrementais. Medir a consulta típica em **três pontos**: raw (STRING, sem partição), a mesma tabela tipada sem partição e a tabela particionada e clusterizada, para separar o efeito da tipagem do efeito da partição (ver `docs/decisoes.md`).
@@ -213,7 +213,7 @@ Ao abrir uma conversa com o Claude, diga a sprint e a tarefa (ex.: "Sprint 1, ta
 
 Ordem do que cortar primeiro, sem prejudicar o essencial:
 1. Terraform.
-2. `fct_reservatorios_diario` e geração por fonte.
+2. `fct_reservatorios_diario`, geração por fonte e a `dim_fonte`.
 3. Agregação da temperatura do INMET com pesos de consumo por estado (usar média simples entre estados).
 4. Página "panorama do setor" do dashboard.
 5. Análise de sensibilidade.

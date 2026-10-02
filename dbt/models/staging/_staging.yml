@@ -1,8 +1,9 @@
 version: 2
 
-# Testes básicos da 2.2 (chave única, chaves não nulas, valores aceitos e contagem contra o raw).
-# Os testes de faixa, freshness e relacionamentos são da Sprint 3; as descrições completas das
-# colunas, da 2.7.
+# Testes básicos da 2.2 (chave única, chaves não nulas, valores aceitos e contagem contra o raw) e,
+# desde a 2.3, os `relationships` com as dimensões. Os `relationships` rodam depois que os marts
+# existem (o dbt ordena os testes depois dos dois modelos). Os testes de faixa, freshness e outros
+# relacionamentos são da Sprint 3; as descrições completas das colunas, da 2.7.
 models:
   - name: stg_ons__curva_carga
     description: >
@@ -20,9 +21,17 @@ models:
           - accepted_values:
               arguments:
                 values: ["N", "NE", "S", "SE"]
+          - relationships:
+              arguments:
+                to: ref('dim_submercado')
+                field: codigo_submercado
       - name: instante_utc
         data_tests:
           - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_tempo')
+                field: instante_utc
       - name: carga_mwmed
         description: "Carga média da hora em MWmed. Nulo nos dias inteiros sem dado de 2013-2015."
 
@@ -44,9 +53,17 @@ models:
           - accepted_values:
               arguments:
                 values: ["NORDESTE", "NORTE", "SUDESTE", "SUL"]
+          - relationships:
+              arguments:
+                to: ref('dim_submercado')
+                field: nome_ccee
       - name: instante_utc
         data_tests:
           - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_tempo')
+                field: instante_utc
       - name: pld_rs_mwh
         data_tests:
           - not_null
@@ -69,9 +86,19 @@ models:
           - accepted_values:
               arguments:
                 values: ["NORDESTE", "NORTE", "SUDESTE", "SUL"]
+          - relationships:
+              arguments:
+                to: ref('dim_submercado')
+                field: nome_ccee
       - name: data_inicio_semana
         data_tests:
           - not_null
+      - name: inicio_semana_utc
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('dim_tempo')
+                field: instante_utc
       - name: pld_rs_mwh
         data_tests:
           - not_null
@@ -91,6 +118,10 @@ models:
       - name: mes
         data_tests:
           - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_tempo')
+                field: data_local
       - name: ramo_atividade
         data_tests:
           - not_null
@@ -110,9 +141,17 @@ models:
       - name: estacao_codigo
         data_tests:
           - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_estacao')
+                field: estacao_codigo
       - name: instante_utc
         data_tests:
           - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_tempo')
+                field: instante_utc
       - name: temperatura_c
         description: "Temperatura do ar (bulbo seco), em °C. Nulo em ~1,35% das horas."
 
@@ -129,3 +168,7 @@ models:
         data_tests:
           - not_null
           - unique
+          - relationships:
+              arguments:
+                to: ref('dim_tempo')
+                field: data_local

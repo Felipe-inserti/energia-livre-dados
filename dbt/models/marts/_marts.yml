@@ -1,0 +1,181 @@
+version: 2
+
+# Dimensões (tarefa 2.3). A dim_fonte fica fora: depende da geração por fonte, que foi adiada
+# (item de corte da lista "Se atrasar"). Descrições completas das colunas dos fatos: tarefa 2.7.
+models:
+  - name: dim_tempo
+    description: >
+      Uma linha por hora UTC de 2000-01-01 00:00Z a 2030-12-31 23:00Z (271.752 linhas), com os
+      atributos de calendário na hora local (America/Sao_Paulo). Feriado, dia da semana, tipo de
+      dia e estação usam a DATA LOCAL. Dois conceitos de feriado: `eh_feriado` (biblioteca
+      `holidays`, alimenta `tipo_dia`) e `eh_feriado_aneel` (os 11 feriados nacionais da ANEEL,
+      alimenta o horário de ponta). O horário de ponta é uma premissa (18h às 20h59 locais) usada
+      só na análise, não no cálculo do contrato. Nota: as 2 primeiras linhas (2000-01-01 00:00Z e
+      01:00Z) têm data local de 1999-12-31, porque o horário de verão deixava o relógio local 2 horas
+      atrás da UTC; a primeira carga do ONS (2000-01-01 00:00 local) é a linha das 02:00Z.
+    columns:
+      - name: instante_utc
+        description: "Início da hora, em UTC. Chave da dimensão."
+        data_tests:
+          - unique
+          - not_null
+      - name: instante_local
+        description: "O mesmo instante no relógio local (America/Sao_Paulo, com horário de verão até 2018)."
+        data_tests: [not_null]
+      - name: data_local
+        description: "Data local do instante."
+        data_tests: [not_null]
+      - name: hora_local
+        description: "Hora local (0 a 23)."
+        data_tests: [not_null]
+      - name: deslocamento_utc_horas
+        description: "Diferença entre a hora local e a UTC: -3, ou -2 durante o horário de verão (até 2019-02)."
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [-3, -2]
+                quote: false
+      - name: eh_horario_verao
+        description: "Verdadeiro quando o deslocamento é -2 (horário de verão)."
+        data_tests: [not_null]
+      - name: ano
+        data_tests: [not_null]
+      - name: mes
+        data_tests: [not_null]
+      - name: dia_do_mes
+        data_tests: [not_null]
+      - name: dia_da_semana
+        description: "Dia da semana ISO da data local: 1 = segunda-feira ... 7 = domingo."
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [1, 2, 3, 4, 5, 6, 7]
+                quote: false
+      - name: eh_feriado
+        description: >
+          Feriado nacional da biblioteca `holidays` na data local (inclui a Consciência Negra desde
+          2024; não inclui Carnaval nem Corpus Christi). Alimenta `tipo_dia`.
+        data_tests: [not_null]
+      - name: qtd_feriados
+        description: "Quantos feriados caem na data local (0, 1 ou 2: em 2000-04-21 há Sexta-feira Santa e Tiradentes)."
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [0, 1, 2]
+                quote: false
+      - name: nomes_feriado
+        description: "Nomes dos feriados da data local, um por elemento (lista vazia se não há feriado)."
+      - name: tipo_dia
+        description: >
+          `dia_util`, `sabado` ou `domingo_feriado`. Feriado nacional (`eh_feriado`) e domingo valem
+          `domingo_feriado`, inclusive o feriado que cai num sábado (docs/premissas.md).
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["dia_util", "sabado", "domingo_feriado"]
+      - name: estacao_do_ano
+        description: >
+          Estação meteorológica do hemisfério sul, fechada por mês: verão (dez a fev), outono (mar a
+          mai), inverno (jun a ago) e primavera (set a nov).
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["verao", "outono", "inverno", "primavera"]
+      - name: eh_feriado_aneel
+        description: >
+          Feriado nacional para fins de tarifa (ANEEL): 1º de janeiro, terça de Carnaval,
+          Sexta-feira Santa, Tiradentes, 1º de maio, Corpus Christi, 7 de setembro, 12 de outubro,
+          Finados, 15 de novembro e Natal. Não inclui a Consciência Negra.
+        data_tests: [not_null]
+      - name: eh_horario_ponta
+        description: >
+          Premissa de análise: hora local entre 18h e 20h59, de segunda a sexta, fora dos feriados
+          da ANEEL. A distribuidora define as 3 horas na prática; não entra no cálculo do contrato.
+        data_tests: [not_null]
+
+  - name: dim_submercado
+    description: >
+      Os 4 submercados do SIN e a correspondência entre os códigos do ONS e os nomes da CCEE:
+      SE/CO = `SE` (ONS) = `SUDESTE` (CCEE). A chave é o código do ONS, que é estável; o nome do ONS
+      do SE mudou em 2026 (`SUDESTE` até 2025, `SUDESTE/CENTRO-OESTE` depois), por isso `nomes_ons`
+      é uma lista.
+    columns:
+      - name: codigo_submercado
+        description: "Código do ONS (`id_subsistema`): SE, S, NE ou N. Chave da dimensão."
+        data_tests:
+          - unique
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["SE", "S", "NE", "N"]
+      - name: nome_ccee
+        description: "Nome do submercado na CCEE (`submercado`): SUDESTE, SUL, NORDESTE ou NORTE."
+        data_tests:
+          - unique
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["SUDESTE", "SUL", "NORDESTE", "NORTE"]
+      - name: nomes_ons
+        description: "Nomes que o ONS usou (`nom_subsistema`), o mais recente primeiro."
+      - name: rotulo
+        description: "Rótulo curto para exibição (SE/CO, S, NE, N)."
+        data_tests:
+          - unique
+          - not_null
+
+  - name: dim_estacao
+    description: >
+      As 37 estações do INMET selecionadas (critério de 95% de horas válidas em cada ano de 2021 a
+      2025), com o registro mais recente dos metadados. Os metadados mudam entre os arquivos:
+      14 estações têm coordenadas diferentes entre os anos (quase sempre só precisão), e duas
+      **mudaram de lugar**: A042 Brazlândia (~9,5 km em 2026) e A704 Três Lagoas (~1,3 km em 2023).
+      A coluna `mudou_de_lugar` e o teste `dim_estacao_mudancas_de_lugar_esperadas` documentam isso;
+      mudar de lugar quebra a continuidade da série da estação.
+    columns:
+      - name: estacao_codigo
+        description: "Código da estação (WMO), ex.: A701. Chave da dimensão."
+        data_tests:
+          - unique
+          - not_null
+      - name: uf
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["DF", "ES", "GO", "MG", "MS", "RJ", "SP"]
+      - name: regiao
+        description: "SE (ES, MG, RJ, SP) ou CO (DF, GO, MS, MT), pela UF."
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["SE", "CO"]
+      - name: estacao_nome
+        description: "Nome no arquivo mais recente."
+        data_tests: [not_null]
+      - name: latitude
+        description: "Latitude do registro mais recente, em graus."
+        data_tests: [not_null]
+      - name: longitude
+        description: "Longitude do registro mais recente, em graus."
+        data_tests: [not_null]
+      - name: latitude_inicial
+        description: "Latitude do registro mais antigo."
+      - name: longitude_inicial
+        description: "Longitude do registro mais antigo."
+      - name: deslocamento_m
+        description: "Distância em metros entre as coordenadas do registro mais antigo e do mais recente."
+        data_tests: [not_null]
+      - name: mudou_de_lugar
+        description: "Verdadeiro se o deslocamento for de 500 m ou mais (variável `limite_mudanca_estacao_m`)."
+        data_tests: [not_null]
+      - name: n_nomes
+        description: "Quantos nomes distintos a estação teve nos arquivos (a A521 BH Pampulha tem 2)."
+      - name: primeiro_instante_utc
+      - name: ultimo_instante_utc
