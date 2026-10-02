@@ -71,3 +71,16 @@ Contexto: o desenho inicial limitava `V` da estratégia otimizada a 80–120% do
 Opções: (a) elevar o limite inferior para o menor volume que ainda cobre o consumo médio usando toda a banda, `1/(1+f)`; (b) manter 80% e modelar a penalidade no custo.
 Escolha: (a). Limite inferior de `V` = `consumo previsto / (1 + f)` (≈ 95% com f = 5%, ≈ 91% com f = 10%, ≈ 87% com f = 15%) e limite superior de 120%. É a opção simples (sem depender de uma fórmula que ainda não foi confirmada em fonte oficial) e evita o resultado enganoso. Modelar a penalidade fica como extra (lista "Extras" do planejamento), dependente de confirmar a fórmula, a tolerância e o VR de 2021–2025 no Caderno de Regras nº 13 da CCEE.
 Resultado: o backtest não depende de uma penalidade não modelada para as estratégias com contratação sistematicamente baixa. Risco residual: se o consumo real superar a previsão além da banda, a cobertura média cairia abaixo de 100% e o modelo não captura a penalidade; o relatório do backtest conta esses anos.
+
+## Organização do bronze no GCS e sobrescrita na carga full
+Contexto: a Sprint 1 pede decidir o formato do bruto (já decidido: arquivo original) e a organização das pastas. O ONS revisa dados antigos e o arquivo do ano corrente muda duas vezes por dia, então o que o bucket guarda depois de cada carga importa.
+Opções: (A) uma pasta por fonte e ano, sobrescrevendo o arquivo a cada carga; (B) pasta por fonte, ano e data da carga, guardando cada versão; (C) versionamento de objetos no bucket.
+Escolha: A. Caminho `bronze/<fonte>/<conjunto>/ano=AAAA/<nome original>` (ex.: `bronze/ons/curva_carga/ano=2024/CURVA_CARGA_2024.csv`), com o nome do arquivo original e o prefixo `ano=AAAA` no estilo Hive, que o BigQuery e o dbt entendem como partição. Cada carga sobrescreve o arquivo. O versionamento do bucket (C) foi descartado agora porque a carga full regrava ~40 MB por execução do ONS, e manter versões antigas estouraria a camada gratuita (5 GB). Guardar uma cópia por data de carga (B) tem o mesmo custo.
+Resultado: o bronze mostra só a última versão de cada ano; o histórico das revisões do ONS se perde. Aceito para a versão ingênua, que serve de "antes". A solução vem na tarefa 3.4 (revisões retroativas), junto com a carga incremental: se só buscarmos o período novo, passa a ser barato guardar as versões.
+
+## Medir o ganho do dbt em dois passos: tipagem e partição
+Contexto: no raw todas as colunas da fonte ficam como STRING (decisão: tipagem e limpeza são do dbt), e a tabela não tem partição. A consulta típica da Sprint 1 ("carga média por hora do SE em 2024") compara data como texto e converte o valor com `SAFE_CAST`. Na Sprint 2 o mart traz tipos e partição ao mesmo tempo, então comparar "raw sem partição" com "mart particionado" misturaria duas mudanças e não diria quanto cada uma vale.
+Opções: (A) medir só antes (raw) e depois (mart particionado); (B) medir também um passo intermediário: a mesma tabela tipada, sem partição.
+Escolha: B. A tarefa 2.6 mede três pontos: raw (STRING, sem partição), tipada sem partição, e particionada e clusterizada. A diferença entre o primeiro e o segundo é o efeito da tipagem; entre o segundo e o terceiro, o do particionamento e da clusterização.
+Resultado: dá para atribuir o ganho a cada decisão em vez de contar uma história única, o que é um argumento melhor em entrevista.
+

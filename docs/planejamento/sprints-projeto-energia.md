@@ -41,10 +41,10 @@ Ao abrir uma conversa com o Claude, diga a sprint e a tarefa (ex.: "Sprint 1, ta
 - [x] 1.3 Criar projeto no GCP, **alerta de orçamento**, bucket no GCS, datasets `raw`, `staging`, `marts` no BigQuery (região us-central1) e autenticação local sem arquivo de chave.
 - [x] 1.4 Explorar os portais: baixar uma amostra de cada fonte (carga horária ONS, PLD horário CCEE, consumo por ramo CCEE, temperatura INMET). Anotar formato, granularidade, período e frequência em `docs/fontes.md`.
 - [x] 1.5 Escrever `docs/premissas.md`: consumidor-exemplo, como será a curva de consumo e as regras simplificadas de contrato.
-- [ ] 1.6 Extrator ONS (carga horária): baixar tudo **desde 2000** (a previsão mensal precisa do histórico longo) → GCS → BigQuery `raw`.
+- [x] 1.6 Extrator ONS (carga horária): baixar tudo **desde 2000** (a previsão mensal precisa do histórico longo) → GCS → BigQuery `raw`.
 - [ ] 1.7 Extrator CCEE (PLD horário 2021 em diante e o arquivo 2001–2020, de onde vem o preço de contrato de 2021), mesmo fluxo. O portal bloqueia downloads automáticos: histórico por download manual, atualização automática a testar.
 - [ ] 1.8 Extrator INMET (temperatura, 2021 em diante) para as estações que passam no critério de 95% (ver `docs/fontes.md`) + tabela de feriados desde 2000.
-- [ ] 1.9 Módulo `ingestion/common/` com cliente GCS/BigQuery e logging reaproveitáveis.
+- [x] 1.9 Módulo `ingestion/common/` com cliente GCS/BigQuery e logging reaproveitáveis.
 - [x] 1.10 Perfilar o arquivo PLD 2001–2020 (granularidade, ponderação por horas de 2020) e checar a série do ONS 2000–2025 (quebras na definição da carga, layout, fuso).
 
 **Medir (o "antes")**
@@ -70,12 +70,12 @@ Ao abrir uma conversa com o Claude, diga a sprint e a tarefa (ex.: "Sprint 1, ta
 - [ ] 2.3 `dim_tempo` (hora, dia da semana, feriado, estação, horário de ponta), `dim_submercado`, `dim_fonte`.
 - [ ] 2.4 Modelos intermediate: carga + PLD + temperatura na mesma granularidade horária.
 - [ ] 2.5 Fatos: `fct_carga_horaria`, `fct_pld_horario`, `fct_clima_horario` (e `fct_reservatorios_diario` se der tempo).
-- [ ] 2.6 Particionar por data e clusterizar por submercado; fatos grandes como modelos incrementais.
+- [ ] 2.6 Particionar por data e clusterizar por submercado; fatos grandes como modelos incrementais. Medir a consulta típica em **três pontos**: raw (STRING, sem partição), a mesma tabela tipada sem partição e a tabela particionada e clusterizada, para separar o efeito da tipagem do efeito da partição (ver `docs/decisoes.md`).
 - [ ] 2.7 Descrever modelos e colunas no YAML e gerar `dbt docs`.
 - [ ] 2.8 Primeira análise exploratória em notebook: sazonalidade da carga, relação carga x temperatura, comportamento do PLD.
 
 **Medir (o "depois")**
-- Dados lidos pela mesma consulta típica da Sprint 1, agora no mart particionado.
+- Dados lidos pela mesma consulta típica da Sprint 1, agora no mart particionado e também no passo intermediário (tipado, sem partição).
 - Tempo de `dbt run`.
 
 **Decisão a registrar:** como tratar fuso horário e horário de verão; granularidade dos fatos.
