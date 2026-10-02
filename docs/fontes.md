@@ -54,6 +54,10 @@ Formato do arquivo: CSV UTF-8, separador `;`, ponto decimal.
 - Revisões retroativas: não medidas, a amostra é um retrato único. Serão investigadas na
   tarefa 3.4.
 - Veja abaixo o histórico 2000–2025 (layout, nulos, horário de verão e degraus de nível).
+- **Carga no BigQuery (tarefa 1.6, 02/10/2026):** os campos vazios do CSV (259 em 2013–2018, os
+  nulos documentados abaixo) chegam ao `raw.ons_curva_carga` como **`NULL`**, e não como string
+  vazia (259 NULL e 0 strings vazias, conferidos contra os CSVs). Os testes `not_null` do
+  dbt pegam esses casos. O raw tem 937.816 linhas (2000 a 01/10/2026).
 - Fora do escopo da Sprint 1: "Balanço de Energia nos Subsistemas" (inclui geração por fonte),
   item de corte da lista "Se atrasar".
 
