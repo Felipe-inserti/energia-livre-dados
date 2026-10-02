@@ -13,6 +13,14 @@ test-paths: ["tests"]
 target-path: "target"
 clean-targets: ["target", "dbt_packages"]
 
+# Parâmetros dos marts (premissas documentadas em docs/premissas.md).
+vars:
+  data_inicio_dim_tempo: "2000-01-01" # a dim_tempo cobre da primeira carga do ONS (2000) até 2030,
+  data_fim_dim_tempo: "2030-12-31" # o último ano do calendário de feriados do raw
+  hora_ponta_inicio: 18 # primeira hora local do horário de ponta (18h)
+  horas_de_ponta: 3 # a ANEEL define a ponta como 3 horas consecutivas: 18h, 19h e 20h
+  limite_mudanca_estacao_m: 500 # deslocamento a partir do qual uma estação "mudou de lugar"
+
 models:
   energia_livre:
     # Staging: tipos corretos, nomes padronizados, UTC e deduplicação. Tabela (não view):
@@ -20,3 +28,8 @@ models:
     staging:
       +materialized: table
       +schema: staging
+
+    # Marts: dimensões e fatos, no dataset `marts`.
+    marts:
+      +materialized: table
+      +schema: marts

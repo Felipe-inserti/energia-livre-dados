@@ -111,9 +111,10 @@ GitHub Actions roda testes a cada push.
 ## 6. Modelo de dados (marts)
 
 **Dimensões**
-- `dim_tempo`: hora, dia, mês, ano, dia da semana, feriado, estação do ano, horário de ponta.
-- `dim_submercado`: SE/CO, S, NE, N.
-- `dim_fonte`: hidráulica, eólica, solar, térmica etc.
+- `dim_tempo`: uma linha por hora UTC (2000 a 2030), com hora local, data, dia da semana, mês, ano, feriado (dois conceitos: calendário nacional e o da ANEEL), tipo de dia, estação do ano e horário de ponta.
+- `dim_submercado`: SE/CO, S, NE, N, com a correspondência entre os códigos do ONS e os nomes da CCEE.
+- `dim_estacao`: as estações do INMET selecionadas, com o registro mais recente dos metadados e a marca das que mudaram de lugar.
+- `dim_fonte`: hidráulica, eólica, solar, térmica etc. **Adiada**: depende da geração por fonte, que é item de corte (ver "Se atrasar" nas sprints).
 
 **Fatos**
 - `fct_carga_horaria`: carga verificada por hora e submercado.

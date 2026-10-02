@@ -72,6 +72,39 @@ não calibra nada; só indica se a forma é razoável.
 fins de semana por causa da indústria. Um supermercado vende mais nesses dias. Aceito por
 simplicidade (ver seção 6).
 
+### Calendário (`dim_tempo`)
+
+A `dim_tempo` tem uma linha por hora UTC e traduz cada instante para o relógio e o calendário locais
+(America/Sao_Paulo). Feriado, dia da semana, tipo de dia e estação usam sempre a **data local**.
+
+| Atributo | Definição |
+|---|---|
+| `eh_feriado` | Feriado nacional da biblioteca `holidays` (a mesma lista de `raw.feriados`). Inclui o Dia da Consciência Negra a partir de 2024; **não** inclui Carnaval nem Corpus Christi |
+| `tipo_dia` | `dia_util`, `sabado` ou `domingo_feriado`. Feriado (`eh_feriado`) e domingo valem `domingo_feriado`, inclusive o feriado que cai num sábado: é o "feriado nacional opera como domingo" da curva de consumo |
+| `estacao_do_ano` | Estação meteorológica do hemisfério sul, fechada por mês: verão (dez a fev), outono (mar a mai), inverno (jun a ago), primavera (set a nov) |
+| `eh_feriado_aneel` | Os **11 feriados nacionais que a ANEEL considera para o horário de ponta**: 1º de janeiro, terça-feira de Carnaval, Sexta-feira Santa, Tiradentes, 1º de maio, Corpus Christi, 7 de setembro, 12 de outubro, Finados, 15 de novembro e Natal. Não inclui a Consciência Negra |
+| `eh_horario_ponta` | Premissa: 3 horas locais, das **18h às 20h59**, de segunda a sexta, fora dos feriados da ANEEL |
+
+- **Dois conceitos de feriado, de propósito.** O `eh_feriado` serve ao calendário da curva e da
+  previsão (inclui a Consciência Negra desde 2024, e a loja não fecha no Carnaval); o `eh_feriado_aneel`
+  serve só ao horário de ponta. Eles divergem na Consciência Negra (só no primeiro), no Carnaval e no
+  Corpus Christi (só no segundo).
+- **A lista da ANEEL** está na página oficial de postos tarifários
+  (https://www.gov.br/aneel/pt-br/assuntos/tarifas/entenda-a-tarifa/postos-tarifarios). A terça de
+  Carnaval e o Corpus Christi não estão no `raw.feriados`; a `dim_tempo` os deriva da Sexta-feira
+  Santa (Carnaval = −45 dias, Corpus Christi = +62), e um teste confere a aritmética contra a
+  biblioteca de 2000 a 2030. A lista é a vigente: foi lida na página oficial atual, vale para
+  2021–2025 e é aplicada a todos os anos de 2000 a 2030 sem ter sido verificada para o período
+  anterior a 2021.
+- **O horário de ponta é uma premissa.** A ANEEL define a ponta como "período diário de 3h
+  consecutivas, com exceção feita aos sábados, domingos e feriados nacionais", e quem escolhe as 3
+  horas é a **distribuidora**, na revisão tarifária (o padrão mais comum é 18h às 21h, mas varia por
+  concessionária). O projeto adota 18h–20h59 em todo o SE/CO. É parametrizável (`hora_ponta_inicio` e
+  `horas_de_ponta` no `dbt_project.yml`).
+- **A ponta não entra no cálculo do contrato nem na curva de consumo** (a curva usa o horário de
+  funcionamento da loja, e o contrato é modulado pela carga e liquidado pelo PLD ponderado pelo
+  consumo). Ela só serve à **análise** (por exemplo, olhar a carga e o PLD na ponta e fora dela).
+
 ---
 
 ## 3. Previsão

@@ -32,7 +32,7 @@ sources:
           - name: id_subsistema
             description: "Código do subsistema (N, NE, S ou SE)."
           - name: nom_subsistema
-            description: "Nome do subsistema (NORTE, NORDESTE, SUL ou SUDESTE)."
+            description: "Nome do subsistema (NORTE, NORDESTE, SUL ou SUDESTE). O SE passa a SUDESTE/CENTRO-OESTE a partir de 01/01/2026; o código não muda."
           - name: din_instante
             description: "Início da hora, texto `AAAA-MM-DD HH:MM:SS`, em horário local."
           - name: val_cargaenergiahomwmed
