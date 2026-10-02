@@ -1,0 +1,20 @@
+# Copie para dbt/profiles.yml (esse arquivo real fica fora do git):
+#   cp dbt/profiles.yml.example dbt/profiles.yml
+# Não há segredo aqui: a autenticação é por ADC (`gcloud auth application-default login`), sem
+# arquivo de chave, e projeto e região vêm do .env (`uv run --env-file .env dbt ...`).
+energia_livre:
+  target: dev
+  outputs:
+    dev:
+      type: bigquery
+      method: oauth # usa as credenciais ADC
+      project: "{{ env_var('GCP_PROJECT_ID') }}"
+      dataset: staging # dataset padrão; cada camada define o seu (ver macro generate_schema_name)
+      location: "{{ env_var('BQ_LOCATION') }}"
+      threads: 4
+      priority: interactive
+      # Proteção de custo: o BigQuery recusa qualquer job do dbt que leia mais que 1 GiB.
+      # O maior modelo (INMET) lê ~366 MB; a cota diária do projeto é de ~51 GiB.
+      maximum_bytes_billed: 1073741824
+      job_execution_timeout_seconds: 300
+      job_retries: 1

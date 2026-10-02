@@ -65,7 +65,7 @@ Ao abrir uma conversa com o Claude, diga a sprint e a tarefa (ex.: "Sprint 1, ta
 **Objetivo:** transformar o bruto num modelo dimensional limpo, particionado e documentado.
 
 **Tarefas**
-- [ ] 2.1 Instalar dbt-bigquery, configurar `profiles.yml` e `sources.yml` apontando para `raw`.
+- [x] 2.1 Instalar dbt-bigquery, configurar `profiles.yml` e `sources.yml` apontando para `raw`.
 - [ ] 2.2 Modelos de staging: tipos, nomes padronizados, **tudo em UTC**, deduplicação.
 - [ ] 2.3 `dim_tempo` (hora, dia da semana, feriado, estação, horário de ponta), `dim_submercado`, `dim_fonte`.
 - [ ] 2.4 Modelos intermediate: carga + PLD + temperatura na mesma granularidade horária.
