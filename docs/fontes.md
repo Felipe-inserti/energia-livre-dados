@@ -8,10 +8,10 @@ Data da exploração: 02/10/2026. Pendências estão marcadas com **[pendente]**
 
 | Fonte | Granularidade | Período | Fuso | Atualização | Tamanho | Formato |
 |---|---|---|---|---|---|---|
-| ONS, curva de carga | Horária, por subsistema | 2000–2026 | Brasília (a confirmar) | 2x ao dia, com revisões | ~1,5 MB/ano | CSV, Parquet, XLSX |
-| CCEE, PLD horário | Horária, por submercado | 2021–2026 | Brasília | Mensal (publicação diária) | ~1 MB/ano | CSV |
+| ONS, curva de carga | Horária, por subsistema | 2000–2026 (ingestão desde 2000) | Brasília (a confirmar) | 2x ao dia, com revisões | ~1,5 MB/ano | CSV, Parquet, XLSX |
+| CCEE, PLD horário | Horária, por submercado | 2021–2026 (+ arquivo 2001–2020) | Brasília | Mensal (publicação diária) | ~1 MB/ano | CSV |
 | CCEE, consumo por ramo | Mensal, por ramo | abr/2024 em diante | n/a | Mensal | ~15 KB/ano | CSV |
-| INMET, estações automáticas | Horária, por estação | 2000–2026 | UTC | Anual (2026 parcial) | ~80–100 MB/ano (ZIP) | ZIP de CSVs |
+| INMET, estações automáticas | Horária, por estação | 2000–2026 (usado: 2021+) | UTC | Anual (2026 parcial) | ~80–100 MB/ano (ZIP) | ZIP de CSVs |
 
 Duas fontes em horário de Brasília e uma em UTC: ver `decisoes.md` ("Fuso horário em séries horárias").
 
@@ -24,7 +24,11 @@ Duas fontes em horário de Brasília e uma em UTC: ver `decisoes.md` ("Fuso hor�
   `https://ons-aws-prod-opendata.s3.amazonaws.com/dataset/curva-carga-ho/CURVA_CARGA_{ANO}.csv`
   (também `.parquet` e `.xlsx`). Testado em 2021 e 2025.
 - **Granularidade:** horária, por subsistema (N, NE, S, SE).
-- **Período:** 2000–2026. A Sprint 1 usa 2021 em diante.
+- **Período:** 2000–2026. A ingestão é **desde 2000**: a previsão mensal da carga do SE/CO (12
+  meses à frente) precisa do histórico longo, e a curva do consumidor usa a carga real de
+  2020 em diante (ver `premissas.md`). Só 2021 e 2025 foram perfilados. **[pendente]** perfilar
+  2000–2025: quebras na definição da carga (ex.: inclusão de geração distribuída), mudanças de
+  layout, subsistemas e fuso em anos antigos.
 - **Atualização:** 2x ao dia (12:00 e 19:00 UTC). O portal avisa que os dados passam por
   "processo de consistência recorrente", ou seja, **valores já publicados podem ser revisados**.
 - **Tamanho:** ~1,5 MB por ano (35.040 linhas).
@@ -62,7 +66,11 @@ Formato do arquivo: CSV UTF-8, separador `;`, ponto decimal.
   a atualização automática é tema da tarefa 1.7 (ver `decisoes.md`).
 - **Granularidade:** horária, por submercado (NORDESTE, NORTE, SUDESTE, SUL).
 - **Período:** 2021-01-01 até 2026-10-02 (o arquivo de 2026 inclui o dia corrente, porque o
-  PLD é divulgado no dia anterior).
+  PLD é divulgado no dia anterior). O arquivo **2001–2020 não foi perfilado**: dele vem o
+  PLD de 2020, que define o preço de contrato de 2021 (`premissas.md`). O PLD horário só
+  existe a partir de 2021, então a granularidade desse arquivo pode ser semanal (por
+  patamar de carga). **[pendente]** perfilar e confirmar; se for semanal, a média de 2020 é
+  ponderada pela duração (em horas) de cada semana.
 - **Atualização:** mensal, com publicação diária por dia de referência.
 - **Tamanho:** 0,8 a 1,3 MB por ano.
 - **Fuso:** horário de Brasília (portal). Não há horário de verão desde 2019, então 2021+ não
@@ -205,7 +213,8 @@ arquivo conta como inválida. Escopo: estados do submercado SE/CO que o projeto 
 Sudeste (ES, MG, RJ, SP) e Centro-Oeste (DF, GO, MS, MT). Análise reproduzível com
 `uv run python scripts/inmet_cmp.py` (gera `data/amostras/inmet/completude_estacoes.csv`).
 
-**Resultado:** das 240 estações do SE/CO presentes nos dois anos, **73 passam**.
+**Resultado:** das 240 estações do SE/CO presentes nos dois anos, **73 passam**; **72 são
+usadas**, porque o MT foi excluído (abaixo).
 
 | Região | UF | Presentes nos 2 anos | Passam |
 |---|---|---|---|
@@ -216,7 +225,7 @@ Sudeste (ES, MG, RJ, SP) e Centro-Oeste (DF, GO, MS, MT). Análise reproduzível
 | CO | DF | 5 | 4 |
 | CO | GO | 26 | 9 |
 | CO | MS | 27 | 5 |
-| CO | MT | 37 | **1** |
+| CO | MT | 37 | **1** (excluído) |
 
 Percentual de horas válidas (2021 / 2024):
 
@@ -250,11 +259,12 @@ Percentual de horas válidas (2021 / 2024):
   (100,0/97,9).
 - **MS:** A756 Água Clara (100,0/99,8); A702 Campo Grande (99,2/100,0); A703 Ponta Porã
   (98,2/100,0); A743 Rio Brilhante (97,5/100,0); A704 Três Lagoas (100,0/100,0).
-- **MT:** A934 Alto Taquari (97,5/95,6).
+- **MT (excluído):** A934 Alto Taquari (97,5/95,6).
 
 **Observações sobre o resultado**
 - A lista só pode **encolher** quando 2022, 2023 e 2025 entrarem (o critério vale em cada
-  ano). Ela precisa ser recalculada com os 5 anos antes de ser usada nos extratores.
+  ano). Ela precisa ser recalculada com os anos 2021 a 2025 antes de ser usada nos
+  extratores. O INMET é usado de 2021 em diante, então o ano 2020 não entra no critério.
 - Muitas estações ficam de fora por completude baixa em 2021 (mediana de 92,6% no
   Sudeste, contra 98,1% em 2024). Perto do limite há estações como Casa Branca, Itapira
   ou Cachoeira Paulista (0% em 2021, entre 91% e 96% em 2024).
@@ -262,24 +272,27 @@ Percentual de horas válidas (2021 / 2024):
   todas no interior (a capital só tem a A701 Mirante). Uma média simples entre todas as
   estações ficaria dominada por MG, embora SP seja o maior centro de carga do submercado.
   Por isso a agregação é em dois passos, com peso por estado (abaixo).
-- **MT tem 1 estação só** (Alto Taquari, com 95,6% em 2024, perto do limite), de 37
-  presentes nos dois anos. A média do estado depende de uma única estação, então um problema
-  nela afeta o MT inteiro. O peso do MT no consumo é pequeno, mas o ponto deve ser
-  monitorado na Sprint 2.
-- O submercado SE/CO do ONS inclui também Acre e Rondônia, fora do escopo do projeto
-  (conhecimento meu, não verificado nas fontes). Peso pequeno; aceito por simplicidade.
+- **MT está excluído:** só 1 estação passa (Alto Taquari, com 95,6% em 2024, perto do
+  limite), de 37 presentes nos dois anos. A média do estado dependeria de uma única estação.
+  O peso do MT é redistribuído proporcionalmente entre os outros 7 estados (ES, MG, RJ, SP,
+  DF, GO, MS).
+
+**Papel da temperatura:** o INMET é usado de 2021 em diante como **variável de análise de
+erro** (onde a previsão erra mais, como em ondas de calor). Ela não entra na curva do
+consumidor nem na previsão central de 12 meses (ver `premissas.md`, seção 3).
 
 **Temperatura do submercado (agregação em dois passos, a implementar na Sprint 2):**
 1. **Média das estações dentro de cada estado**, hora a hora, **tolerante a falhas**: numa
    hora, a média usa só as estações com dado, e uma falha numa estação não anula as demais.
-2. **Média entre estados, ponderada pelo peso de cada estado no consumo de energia do
-   submercado SE/CO.** Pesos de fonte oficial (ex.: Anuário Estatístico de Energia Elétrica
-   da EPE), a definir em `docs/premissas.md`. **[pendente]** definir fonte, ano de
-   referência e valores dos pesos.
+   Se um estado ficar sem nenhuma estação com dado numa hora, a temperatura do estado é
+   **imputada dentro do próprio estado** (hora anterior ou perfil típico do dia).
+2. **Média entre estados (ES, MG, RJ, SP, DF, GO, MS), ponderada pelo peso de cada estado no
+   consumo de energia do submercado SE/CO.** Pesos de fonte oficial (ex.: Anuário Estatístico
+   de Energia Elétrica da EPE), a definir em `docs/premissas.md`. **[pendente]** definir
+   fonte, ano de referência e valores dos pesos. Se faltar dado em todos os estados numa
+   hora, a hora fica ausente.
 
-Se um estado ficar sem nenhuma estação com dado numa hora, os pesos dos demais precisam ser
-renormalizados naquela hora (ou a hora é marcada como ausente); a regra será definida na
-implementação. Ver `decisoes.md` ("Estações do INMET e temperatura do submercado").
+Ver `decisoes.md` ("Estações do INMET e temperatura do submercado").
 
 ---
 
