@@ -9,7 +9,7 @@ Nunca otimizar antes de medir a versão simples. Preencher "Antes" na versão in
 | Negócio | Exposição ao PLD (MWh descobertos ou sobrando) | __ | __ | 6 |
 | Ciência | MAPE mensal da previsão de carga (12 meses à frente, rolling origin) | baseline: __% | modelo: __% | 5 |
 | Engenharia | Dados lidos por consulta típica | 0,037 GB (37,3 MB processados; 37,7 MB faturados), ONS, raw sem partição | __ GB | 1 → 2 |
-| Engenharia | Tempo de carga diária | full: 5,8 min (ONS 4,6 min + CCEE 1,2 min; o INMET entra na tarefa 1.8) | incremental: __ min | 1 → 4 |
+| Engenharia | Tempo de carga diária | full: **9,3 min** (ONS 4,9 + CCEE 1,2 + INMET 3,1 + feriados 0,2; sem o tempo do download manual) | incremental: __ min | 1 → 4 |
 | Engenharia | Tempo do backfill completo (2021–hoje) | — | __ min | 4 |
 | Engenharia | Problemas de dados capturados pelos testes | — | __ registros (tipos: __) | 3 |
 | Engenharia | Idempotência | — | 2 execuções → mesma contagem: sim/não | 4 |
@@ -17,6 +17,64 @@ Nunca otimizar antes de medir a versão simples. Preencher "Antes" na versão in
 ---
 
 ## Detalhe das medições da Sprint 1 (o "antes")
+
+### Resumo da carga full da Sprint 1 (as quatro fontes e os feriados)
+
+Medido em 02/10/2026, na máquina local (WSL2), uma execução de cada extrator (ONS, CCEE, INMET e
+feriados, nesta ordem), depois da refatoração do `ingestion/common/`. Tempo = download ou leitura +
+GCS + BigQuery; não inclui a validação do raw nem a consulta típica, nem o tempo que a pessoa
+gasta baixando à mão os arquivos da CCEE e do INMET.
+
+| Fonte | Tabela no raw | Arquivos | Volume | Linhas | Jobs de carga | Tempo total | Tempo no BigQuery |
+|---|---|---|---|---|---|---|---|
+| ONS | `ons_curva_carga` | 27 (baixados) | 40,9 MB | 937.816 | 27 | 292,2 s (4,9 min) | 204,2 s |
+| CCEE | `ccee_pld_horario`, `ccee_pld_semanal`, `ccee_consumo_ramo_atividade` | 10 (manuais) | 7,4 MB | 214.443 | 10 | 74,6 s (1,2 min) | 63,6 s |
+| INMET | `inmet_estacoes_horario` | 6 ZIPs (manuais) | 535,9 MB | 1.837.272 | 12 | 183,2 s (3,1 min) | 138,9 s |
+| Feriados | `feriados` | biblioteca `holidays` 0.105 | n/a | 285 | 1 | 9,5 s | 6,9 s |
+| **Total** | **6 tabelas** | | **584,2 MB no bronze** | **2.989.816** | **50** | **559,5 s (9,3 min)** | **413,6 s (74%)** |
+
+Três consultas típicas, uma por fonte, sem partição e com colunas STRING (o "antes" da Sprint 2):
+
+| Consulta | Bytes processados | Bytes faturados |
+|---|---|---|
+| ONS: carga média por hora do SE em 2024 | **37,3 MB** | 37,7 MB |
+| CCEE: PLD médio por hora do SUDESTE em 2024 | 5,4 MB | 10,5 MB (piso de 10 MiB) |
+| INMET: temperatura média por hora (UTC) em SP em 2024 | 58,3 MB | 58,7 MB |
+
+O raw tem 2,99 milhões de linhas em 6 tabelas, validadas arquivo a arquivo (e, no INMET, por ZIP
+e estação) contra os CSVs de origem.
+
+### Evidência para o incremental da Sprint 4: um job por arquivo contra blocos grandes
+
+Os extratores carregam de duas formas, e as medições mostram que o custo depende do **número de
+jobs**, não do volume:
+
+| | ONS | CCEE | INMET |
+|---|---|---|---|
+| Como carrega | um job por arquivo | um job por arquivo | **blocos de ~43 MB** (12 jobs) |
+| Linhas | 937.816 | 214.443 | **1.837.272** |
+| Tempo total | 4,9 min | 1,2 min | **3,1 min** |
+| Tempo no BigQuery | 204,2 s | 63,6 s | 138,9 s |
+| Tempo no BigQuery por job | 7,6 s | 6,4 s | 11,6 s |
+| Linhas por job (média) | 34,7 mil | 21,4 mil | 153 mil |
+| Linhas por segundo de BigQuery | 4,6 mil | 3,4 mil | **13,2 mil** |
+
+- **O INMET carregou o dobro de linhas do ONS em 37% menos tempo total** (1,84 milhão em 3,1
+  min contra 0,94 milhão em 4,9 min), e a 2,9 vezes a velocidade no BigQuery (13,2 mil contra 4,6
+  mil linhas por segundo), apesar de subir 13 vezes mais bytes ao GCS (536 MB contra 41 MB).
+- **Modelo de custo por job:** ajustando os dados do ONS e do INMET, cada job custa cerca de
+  **6,4 s fixos + 34 s por milhão de linhas**. A CCEE serve de checagem (jobs de 21 mil linhas:
+  previsto 7,1 s, medido 6,4 s; os 3 arquivos de consumo, com 120 a 180 linhas, levaram de 5 a
+  10 s cada, contando o GCS). É uma estimativa de duas execuções com variação de rede de cerca de 6% (o ONS levou
+  275,5 s numa execução e 292,2 s na outra), então vale a ordem de grandeza, não o decimal.
+- **O que isso diz para a Sprint 4:**
+  1. A carga full tem 50 jobs, e ~6,4 s de cada um é custo fixo (320 s dos 414 s de BigQuery).
+  2. Uma carga incremental de um dia (poucas centenas de linhas) custa o mesmo job fixo, cerca
+     de 6 a 7 s por tabela, em vez de recarregar tudo: o ganho vem de não repetir os 50 jobs.
+  3. Projeção (não medida): o ONS carregado em blocos de ~40 MB, como o INMET, seria cerca de 3
+     jobs de ~17 s, perto de 50 s de BigQuery em vez de 204 s (-75%).
+  4. Por isso o incremental da Sprint 4 deve combinar as duas coisas: buscar só o período novo e
+     agrupar o que for carregar numa mesma execução.
 
 ### ONS, curva de carga horária: carga full ingênua (tarefa 1.6)
 
@@ -111,3 +169,72 @@ partição, colunas STRING, cache desligado:
 - **Dados vindos de download manual:** o arquivo de 2026 é um retrato de 02/10/2026 (26.400
   linhas, 275 dias de 96 linhas) e envelhece todo dia; a carga não registra a data do download
   (só o log, com a data de modificação do arquivo).
+
+### Validação da refatoração: ONS e CCEE reexecutados (02/10/2026, 15:05 UTC)
+
+Depois de extrair a parte comum para `ingestion/common/` (`raw.py`, `manual.py`), o ONS e a CCEE
+foram rodados de novo. Resultado contra a primeira execução:
+
+| Medida | ONS, 1ª execução | ONS, reexecução | CCEE, 1ª | CCEE, reexecução |
+|---|---|---|---|---|
+| Linhas carregadas | 937.816 | 937.816 | 214.443 | 214.443 |
+| Valores vazios no raw | 259 NULL | 259 NULL | 0 | 0 |
+| Volume | 40,9 MB | 40,9 MB | 7,4 MB | 7,4 MB |
+| Tempo total | 275,5 s | 292,2 s (+6%) | 74,9 s | 74,6 s |
+| Bytes processados (consulta típica) | 37.316.177 | **37.316.108** | 5.397.600 | 5.397.600 |
+| Bytes faturados | 37.748.736 | 37.748.736 | 10.485.760 | 10.485.760 |
+
+**A refatoração não mudou nada.** Linhas, vazios, volume e faturado são idênticos; o tempo do ONS
+variou 6% (rede) e o da CCEE, 0,4%. A única diferença está nos bytes processados do ONS (69
+bytes, 0,0002%), e **não vem da refatoração**:
+- Os bytes que a consulta lê são a soma de (tamanho do texto + 2) de `id_subsistema`,
+  `din_instante` e do valor (NULL conta 0). Essa conta, feita nos CSVs, **reproduz exatamente** o
+  número do BigQuery: com as cópias locais de 2000 a 2025 (da manhã) e o arquivo de 2026
+  baixado agora, dá 37.316.108 bytes em 937.816 linhas, igual à reexecução.
+- Os arquivos de 2024 e 2025 estão idênticos (hash) às cópias da manhã. Portanto o que mudou
+  entre as 13:50 e as 15:06 (UTC) foi o arquivo do ano corrente (2026), com as mesmas 26.208
+  linhas e valores de tamanho de texto diferente. É a primeira evidência medida das **revisões
+  do ONS** (o portal avisa que os dados mudam depois de publicados): o arquivo vivo mudou em
+  cerca de 75 minutos.
+- Não dá para provar, porque o arquivo de 2026 das 13:50 não foi guardado: o bronze o
+  sobrescreveu. É exatamente o custo da decisão de sobrescrever o bronze (ver `decisoes.md`) que
+  a tarefa 3.4 vai resolver.
+
+### INMET, estações automáticas: carga full ingênua (tarefa 1.8)
+
+Medido em 02/10/2026 (15:16 UTC), `uv run python -m ingestion.inmet`, sem download (ZIPs lidos de
+`data/manual/inmet/`), só as 37 estações do SE/CO selecionadas. Carga em **blocos de ~43 MB**
+(12 jobs), com `raw.inmet_estacoes_horario` sem partição e colunas STRING.
+
+| Medida | Valor |
+|---|---|
+| ZIPs | 6 (2021 a 2026), 37 estações cada |
+| Volume dos ZIPs (bronze) | **535,9 MB** |
+| Linhas nos CSVs / carregadas no raw | 1.837.272 / 1.837.272 (iguais) |
+| Tempo total da carga | **183,2 s (3,1 min)** |
+| Leitura e transformação | 9,6 s |
+| Gravação no GCS (bronze) | 34,8 s (~15 MB/s) |
+| Carga no BigQuery | 138,9 s (12 jobs, 11,6 s por job, 76% do tempo) |
+| Valores vazios de temperatura no raw | 24.781 NULL e 0 strings vazias (1,35%; batem com os CSVs, 222 grupos ZIP x estação) |
+
+Linhas por ZIP (todas validadas por estação): 2021, 2022, 2023 e 2025 com 324.120; 2024 com
+325.008 (bissexto); 2026 com 215.784 (até 31/08).
+
+**Consulta típica** ("temperatura média por hora (UTC) em SP em 2024"), tabela sem partição,
+colunas STRING, cache desligado:
+
+| Medida | Valor |
+|---|---|
+| Estimativa do dry-run | 58.259.163 bytes |
+| Bytes processados | **58.259.163 (58,3 MB)** |
+| Bytes faturados | 58.720.256 (58,7 MB) |
+
+Os 58,3 MB ficam acima do piso de 10 MiB (diferente da CCEE), então o faturado é comparável com o
+do mart da Sprint 2. A estimativa feita antes da carga (~60 MB) acertou.
+
+### Feriados (tarefa 1.8)
+
+`uv run python -m ingestion.feriados`: 285 linhas (feriados nacionais de 2000 a 2030, biblioteca
+`holidays` 0.105), 1 job `TRUNCATE`, 9,5 s no total (6,9 s no BigQuery), validação de contagem,
+datas únicas e ausência de nulos ok. Uma data com dois feriados numa linha só (2000-04-21).
+

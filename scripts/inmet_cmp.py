@@ -1,9 +1,9 @@
 """Análise dos ZIPs anuais do INMET (tarefa 1.4): layout entre anos e completude da temperatura.
 
 Uso:
-    uv run python scripts/inmet_cmp.py [ANO ...]        (padrão: 2021 2024)
+    uv run python scripts/inmet_cmp.py [ANO ...]        (padrão: 2021 a 2025)
 
-Espera os ZIPs em data/amostras/inmet/{ANO}.zip e lê os CSVs direto do ZIP, sem descompactar.
+Espera os ZIPs em data/manual/inmet/{ANO}.zip e lê os CSVs direto do ZIP, sem descompactar.
 
 1. Compara o layout dos arquivos entre os anos (metadados, cabeçalho, formato de Data e Hora UTC).
 2. Calcula, por estação, o % de horas do ano com temperatura válida (não nula e != -9999).
@@ -23,8 +23,8 @@ from pathlib import Path
 import pandas as pd
 
 RAIZ = Path(__file__).resolve().parent.parent
-PASTA = RAIZ / "data" / "amostras" / "inmet"
-SAIDA = PASTA / "completude_estacoes.csv"
+PASTA = RAIZ / "data" / "manual" / "inmet"  # ZIPs baixados à mão (docs/fontes.md)
+SAIDA = RAIZ / "data" / "amostras" / "inmet" / "completude_estacoes.csv"
 
 REGIOES = ("SE", "CO")  # Sudeste e Centro-Oeste (submercado SE/CO)
 LIMITE = 95.0  # % mínimo de horas válidas de temperatura em cada ano
@@ -100,7 +100,8 @@ def analisar_ano(ano: int) -> tuple[pd.DataFrame, dict]:
 
 
 def main() -> None:
-    anos = [int(a) for a in sys.argv[1:]] or [2021, 2024]
+    anos = [int(a) for a in sys.argv[1:]] or [2021, 2022, 2023, 2024, 2025]
+    SAIDA.parent.mkdir(parents=True, exist_ok=True)
     tabelas, layouts = {}, {}
     for ano in anos:
         tabelas[ano], layouts[ano] = analisar_ano(ano)

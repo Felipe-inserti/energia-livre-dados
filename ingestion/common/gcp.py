@@ -8,6 +8,7 @@ Jobs de carga (`carregar_csv_no_bigquery`) não são cobrados e não usam esse l
 import io
 from collections.abc import Sequence
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 from google.cloud import bigquery, storage
@@ -36,6 +37,20 @@ def enviar_para_gcs(
     """Grava os bytes no GCS exatamente como recebidos (com checksum) e devolve o `gs://`."""
     blob = cliente.bucket(bucket).blob(caminho)
     blob.upload_from_string(conteudo, content_type=tipo, checksum="crc32c")
+    return f"gs://{bucket}/{caminho}"
+
+
+def enviar_arquivo_para_gcs(
+    cliente: storage.Client,
+    bucket: str,
+    caminho: str,
+    caminho_local: Path,
+    *,
+    tipo: str = "application/octet-stream",
+) -> str:
+    """Grava um arquivo local no GCS, em fluxo (sem ler tudo para a memória), com checksum."""
+    blob = cliente.bucket(bucket).blob(caminho)
+    blob.upload_from_filename(str(caminho_local), content_type=tipo, checksum="crc32c")
     return f"gs://{bucket}/{caminho}"
 
 
