@@ -136,9 +136,11 @@ erro da previsão é maior (ondas de calor) e para o extra horário D+1.
 2021–2025. Um preço fixo (ex.: R$ 200/MWh) faria o resultado depender de onde o PLD ficou: em
 2022 ele ficou abaixo de R$ 200 em 100% das horas. Por isso `P_t` acompanha o mercado:
 - `PLD médio do ano t−1` = média simples das horas do SUDESTE (2021 em diante).
-- Para 2020 (que dá o preço de 2021), o dado vem do arquivo 2001–2020 do portal da CCEE,
-  **ponderando pela duração (em horas) de cada semana**. **[pendente]** perfilar o arquivo e
-  confirmar a granularidade (ver `fontes.md`).
+- Para 2020 (que dá o preço de 2021), o dado vem do arquivo semanal 2001–2020 do portal da
+  CCEE, **ponderando pelas horas de cada semana**, com a média simples dos 3 patamares de carga
+  (o arquivo não identifica o patamar). Resultado: **R$ 178,03/MWh** no SUDESTE, com erro
+  máximo de R$ 4,84 pelos extremos (aproximação aceita, limite de R$ 20; ver `fontes.md`).
+  Logo, `P_2021` = R$ 198,03/MWh no caso base.
 
 ### Cálculo do custo de um mês
 
@@ -264,8 +266,16 @@ regime de preço de cada ano.
 2. Fonte para a participação da refrigeração, 40% (seção 2).
 3. Limites de carga para migrar ao mercado livre em 2021–2023 (seção 1).
 4. Pesos por estado no consumo do SE/CO: fonte, ano de referência, fixos ou variáveis (seção 3).
-5. Perfil do arquivo PLD 2001–2020: granularidade e ponderação por horas (seção 4; `fontes.md`).
-6. Quebras de definição e de layout na série do ONS 2000–2025 (`fontes.md`).
+5. ~~Perfil do arquivo PLD 2001–2020~~ (resolvido na tarefa 1.10: PLD 2020 do SUDESTE =
+   R$ 178,03/MWh; ver `fontes.md`).
+6. **Degrau de 2023 na carga do ONS: é mudança de definição, a decidir o tratamento.** A
+   documentação do ONS (dataset de carga diária, que a curva horária reproduz) diz que a
+   partir de 29/04/2023 a carga passou a incorporar a MMGD estimada, e que em mar/2021 entrou
+   a geração de usinas não despachadas (`fontes.md`). A curva do consumidor e a previsão
+   mensal herdam o degrau em 2023–2025. Opções: (a) aceitar a série como está (e dizer que o
+   consumo do consumidor-exemplo inclui o efeito); (b) ajustar a série com uma estimativa do
+   degrau; (c) incluir uma variável de mudança de nível na previsão. Decidir antes da Sprint 5.
+   Também verificar se houve uma segunda fase da MMGD depois de mai/2023.
 7. Tratamento dos outliers 2001–2002 e 2020 na previsão mensal (seção 3, Sprint 5).
 8. Lastro: fórmula da penalidade, janela, tolerância e VR 2021–2025. Só necessários se a
    penalidade for modelada (extra); o limite inferior de `V` já está decidido (seção 4).
