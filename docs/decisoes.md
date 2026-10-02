@@ -17,3 +17,9 @@ Contexto: alerta de orçamento só avisa, não bloqueia gastos.
 Opções: só alerta de orçamento, ou alerta + limite rígido de consultas.
 Escolha: alerta de R$ 10/mês (50%, 90%, 100%) + cota de ~51 GiB/dia de consultas no BigQuery (antes: 200 TiB/dia, o padrão).
 Resultado: pior caso limitado mesmo com uma consulta mal feita rodando em loop.
+
+## Gerenciador de ambiente: uv, sem empacotar o projeto
+Contexto: precisa de ambiente Python reprodutível, com dependências travadas, e simples de recriar em outra máquina e no CI.
+Opções: pip + venv + requirements.txt, poetry, ou uv.
+Escolha: uv. Um só comando (`uv sync`) cria o ambiente a partir do `uv.lock` versionado, é bem mais rápido que pip/poetry e baixa a versão de Python fixada em `.python-version` (3.12). Usei `package = false` porque o projeto é um conjunto de scripts, não uma biblioteca; assim não há `src/` nem build-system. Python 3.12 e não o 3.14 do sistema porque Airflow e dbt costumam demorar a suportar versões recentes. Dependências de desenvolvimento (pytest, ruff) ficam num grupo `dev`, separadas das de runtime.
+Resultado: ambiente reproduzível com `uv sync`; lint e testes via `uv run`.
