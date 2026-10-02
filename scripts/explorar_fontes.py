@@ -6,12 +6,12 @@ Uso:
 
 - ONS: baixa os CSVs de 2021 e 2025 (~1,5 MB cada) para data/amostras/ons/.
 - CCEE: o portal bloqueia downloads automáticos; perfila os CSVs já colocados à mão
-  em data/amostras/ccee/.
+  em data/manual/ccee/.
 - INMET: lê do ZIP anual (data/amostras/inmet/2024.zip) só algumas estações do Sudeste,
   sem descompactar o resto, e salva essas estações em data/amostras/inmet/estacoes/.
 
 - PLD-HISTORICO (tarefa 1.10): perfila o arquivo semanal 2001–2020 (colocado à mão em
-  data/amostras/ccee/) e calcula o PLD médio de 2020 do SUDESTE, ponderado pelas horas de cada
+  data/manual/ccee/) e calcula o PLD médio de 2020 do SUDESTE, ponderado pelas horas de cada
   semana.
 - ONS-HISTORICO (tarefa 1.10): baixa os CSVs de 2000 a 2025 e verifica layout, completude,
   horário de verão e quebras de nível na carga mensal do SE.
@@ -29,6 +29,7 @@ import requests
 
 RAIZ = Path(__file__).resolve().parent.parent
 AMOSTRAS = RAIZ / "data" / "amostras"
+MANUAL_CCEE = RAIZ / "data" / "manual" / "ccee"  # arquivos baixados à mão (ver docs/fontes.md)
 
 ONS_URL = (
     "https://ons-aws-prod-opendata.s3.amazonaws.com/dataset/curva-carga-ho/CURVA_CARGA_{ano}.csv"
@@ -114,7 +115,7 @@ def ler_ccee(arq: Path) -> pd.DataFrame:
 def explorar_ccee_pld() -> None:
     titulo("CCEE: PLD horário (arquivos locais)")
     layouts = {}
-    for arq in sorted((AMOSTRAS / "ccee").glob("pld_horario_*.csv")):
+    for arq in sorted(MANUAL_CCEE.glob("pld_horario_*.csv")):
         bruto = arq.read_bytes()
         cabecalho = bruto.split(b"\n", 1)[0].decode()
         df = ler_ccee(arq)
@@ -146,7 +147,7 @@ def explorar_ccee_pld() -> None:
 
 def explorar_ccee_consumo() -> None:
     titulo("CCEE: consumo por ramo de atividade (arquivos locais)")
-    for arq in sorted((AMOSTRAS / "ccee").glob("consumo_ramo_atividade_*.csv")):
+    for arq in sorted(MANUAL_CCEE.glob("consumo_ramo_atividade_*.csv")):
         df = pd.read_csv(arq, sep=";")
         print(f"\n### {arq.name}")
         perfil_basico(df, arq.stem)
@@ -216,7 +217,7 @@ def explorar_inmet() -> None:
 
 # ---------------------------------------------------------------- PLD histórico (1.10)
 
-PLD_HIST = AMOSTRAS / "ccee" / "pld_historico_semanal_2001_2020.csv"
+PLD_HIST = MANUAL_CCEE / "pld_historico_semanal_2001_2020.csv"
 LIMITE_ERRO_PLD = 20.0  # R$/MWh: aproximação aceita se o erro máximo for menor que isso
 
 

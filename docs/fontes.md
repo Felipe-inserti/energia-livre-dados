@@ -223,11 +223,16 @@ de 2023.
   bloqueado" para downloads automáticos.** O histórico 2021–2025 foi baixado manualmente;
   a atualização automática é tema da tarefa 1.7 (ver `decisoes.md`).
 - **Granularidade:** horária, por submercado (NORDESTE, NORTE, SUDESTE, SUL).
-- **Período:** 2021-01-01 até 2026-10-02 (o arquivo de 2026 inclui o dia corrente, porque o
+- **Período:** 2021-01-01 até 2026-10-02 (o arquivo de 2026 baixado em 02/10/2026 vai até esse
+  dia e tem **26.400 linhas**, 275 dias × 96; ele inclui o dia corrente, porque o
   PLD é divulgado no dia anterior). O arquivo 2001–2020 é **semanal por patamar de carga**,
   não horário: ver a subseção "PLD histórico" abaixo. Dele vem o PLD de 2020, que define o
   preço de contrato de 2021 (`premissas.md`).
 - **Atualização:** mensal, com publicação diária por dia de referência.
+- **Carga no BigQuery (tarefa 1.7, 02/10/2026):** os três conjuntos da CCEE estão no raw
+  (`ccee_pld_horario` com 201.696 linhas, `ccee_pld_semanal` com 12.312 e
+  `ccee_consumo_ramo_atividade` com 435), **sem nenhum valor vazio** (0 NULL e 0 strings
+  vazias), conferido arquivo a arquivo contra os CSVs.
 - **Tamanho:** 0,8 a 1,3 MB por ano.
 - **Fuso:** horário de Brasília (portal). Não há horário de verão desde 2019, então 2021+ não
   tem hora faltando nem repetida.
@@ -493,6 +498,70 @@ consumidor nem na previsão central de 12 meses (ver `premissas.md`, seção 3).
    hora, a hora fica ausente.
 
 Ver `decisoes.md` ("Estações do INMET e temperatura do submercado").
+
+---
+
+## Download manual dos arquivos da CCEE
+
+**Por quê:** o portal da CCEE devolve HTTP 403 ("Acesso bloqueado") para downloads e para a API
+feitos por script, e informa que o bloqueio vem de política de segurança. Por isso **os
+arquivos da CCEE são baixados à mão, no navegador**, e o projeto não tenta contornar o bloqueio
+(ver `decisoes.md`). Os links de download também têm hash opaco e podem mudar, então não vale
+guardá-los no código. O extrator (`ingestion/ccee.py`) lê uma pasta local; o INMET e o ONS não
+precisam disso.
+
+**Quem clonou o repositório precisa fazer isto uma vez** (e repetir para atualizar o ano
+corrente):
+
+1. **Instalar o ambiente e criar a pasta** (a pasta é ignorada pelo git):
+   ```bash
+   uv sync
+   mkdir -p data/manual/ccee
+   ```
+2. **PLD horário, de 2021 até o ano atual.** Abrir
+   https://dadosabertos.ccee.org.br/dataset/pld_horario no navegador. Na lista de recursos
+   ("Dados e Recursos"), abrir o recurso de cada ano (2021, 2022, ... até o ano atual), usar o
+   botão de download do CSV e salvar com o nome exato `pld_horario_AAAA.csv` em
+   `data/manual/ccee/`.
+3. **PLD histórico semanal.** Na mesma página, o recurso **"2001-2020"**. Salvar como
+   `pld_historico_semanal_2001_2020.csv`. Este arquivo é semanal por patamar de carga, não
+   horário (ver "PLD histórico semanal 2001–2020" acima).
+4. **Consumo por ramo de atividade.** Abrir
+   https://dadosabertos.ccee.org.br/dataset/consumo_ramo_atividade, baixar os recursos de 2024
+   até o ano atual e salvar como `consumo_ramo_atividade_AAAA.csv`.
+5. **Conferir** se tudo está no lugar (não usa a nuvem nem o `.env`):
+   ```bash
+   uv run python -m ingestion.ccee --verificar
+   ```
+   Se faltar arquivo, o comando diz qual, de qual página baixar e com que nome salvar.
+6. **Carregar** (grava no GCS e no BigQuery, precisa do `.env` e do `gcloud auth
+   application-default login`):
+   ```bash
+   uv run python -m ingestion.ccee
+   ```
+
+**Arquivos esperados** (nomes exatos; os de 2025 e 2026 têm layout diferente dos de 2021–2024,
+o que o extrator aceita):
+
+| Arquivo | Página | Recurso | Tamanho aprox. | Linhas |
+|---|---|---|---|---|
+| `pld_horario_2021.csv` a `pld_horario_AAAA.csv` | pld_horario | cada ano | 0,8 a 1,3 MB | ~35 mil por ano completo |
+| `pld_historico_semanal_2001_2020.csv` | pld_horario | "2001-2020" | 0,45 MB | 12.312 |
+| `consumo_ramo_atividade_2024.csv` a `..._AAAA.csv` | consumo_ramo_atividade | cada ano | 10 a 16 KB | 120 a 180 por ano |
+
+**Atualizar:** o PLD é publicado todo dia, então o arquivo do ano corrente envelhece. Para
+atualizar, baixe de novo o arquivo do ano corrente (e o consumo por ramo, que é mensal), troque
+na pasta e rode o extrator outra vez. A carga é full: regrava tudo. O nome do arquivo não traz a
+data do download; o extrator registra no log o tamanho e a data de modificação de cada arquivo.
+
+**O que o extrator confere antes de tocar na nuvem** (para pegar erro de download manual):
+cabeçalho com as colunas esperadas, arquivo sem linhas, e meses coerentes com o nome (o
+`pld_horario_2024.csv` só pode ter meses de 2024; o semanal, meses entre 2001 e 2020). Um arquivo
+baixado do recurso errado para antes da carga, com a mensagem do que está errado.
+
+> **Nota para conferência:** os nomes dos botões e dos recursos acima foram escritos a partir da
+> estrutura da página que consultei (lista de recursos por ano, mais o recurso "2001-2020"), não
+> de uma sessão de download. Quem fez o download deve conferir o passo a passo.
 
 ---
 
