@@ -23,3 +23,33 @@ Contexto: precisa de ambiente Python reprodutível, com dependências travadas, 
 Opções: pip + venv + requirements.txt, poetry, ou uv.
 Escolha: uv. Um só comando (`uv sync`) cria o ambiente a partir do `uv.lock` versionado, é bem mais rápido que pip/poetry e baixa a versão de Python fixada em `.python-version` (3.12). Usei `package = false` porque o projeto é um conjunto de scripts, não uma biblioteca; assim não há `src/` nem build-system. Python 3.12 e não o 3.14 do sistema porque Airflow e dbt costumam demorar a suportar versões recentes. Dependências de desenvolvimento (pytest, ruff) ficam num grupo `dev`, separadas das de runtime.
 Resultado: ambiente reproduzível com `uv sync`; lint e testes via `uv run`.
+
+## Fuso horário em séries horárias
+Contexto: ONS e PLD publicam em horário de Brasília; o INMET publica em UTC. Para juntar carga, PLD e temperatura na mesma hora, é preciso um fuso único.
+Opções: (A) tudo em horário de Brasília; (B) tudo em UTC; (C) offset fixo de -3h.
+Escolha: B, com conversão no staging do dbt usando o fuso `America/Sao_Paulo` (não offset fixo). UTC não tem horário de verão nem ambiguidade; o fuso nomeado continua correto se o horário de verão voltar (foi abolido em 2019, então 2021+ não tem hora faltando nem repetida). Conversão para horário local só na apresentação. A origem do ONS é Brasília por inferência (mínimo da carga às 03–04h); a confirmação no dicionário de dados do ONS está pendente.
+Resultado: três fontes em dois fusos alinhadas sem ambiguidade. A bronze e o raw guardam o horário original.
+
+## Formato do bruto no GCS: arquivo original, sem alteração
+Contexto: o layout da CCEE muda entre anos (2021–2024 usa aspas, CRLF e zeros à esquerda; 2025–2026 não), e ONS e CCEE revisam dados antigos.
+Opções: (A) guardar o arquivo original (CSV/ZIP); (B) converter para Parquet antes de gravar.
+Escolha: A. A bronze mantém o arquivo exatamente como veio da fonte, o que permite reprocessar quando o layout mudar ou quando eu errar uma regra de limpeza, sem baixar de novo (os portais bloqueiam parte dos downloads). Parquet exigiria normalizar antes de salvar, e isso apagaria justamente a evidência que preciso guardar. O Python faz só o mínimo para carregar no BigQuery `raw`: pular as 8 linhas de metadados do INMET, padronizar nomes de colunas, e adicionar `_arquivo_origem` e `_carregado_em`. Tipagem e limpeza ficam no dbt (staging).
+Resultado: bronze auditável e `raw` sem lógica de negócio. O custo é armazenar mais bytes (CSV é maior que Parquet), irrelevante neste volume (~2,5 MB/ano para ONS e CCEE).
+
+## Consumo do consumidor-exemplo: perfil sintético
+Contexto: a seção 2 previa usar o consumo por ramo da CCEE se estivesse em granularidade horária.
+Opções: (A) usar o dado da CCEE como curva; (B) construir um perfil sintético; (C) procurar outra fonte.
+Escolha: B. Na exploração, o dataset `CONSUMO_RAMO_ATIVIDADE` mostrou ser mensal, agregado por ramo (15 ramos) e disponível só de abr/2024 em diante, então não gera curva horária. O perfil sintético será construído a partir da carga do SE/CO, horário de funcionamento do supermercado e sensibilidade à temperatura (refrigeração), com o nível e a sazonalidade mensal calibrados pelo ramo COMÉRCIO da CCEE. Toda premissa vai para `docs/premissas.md`.
+Resultado: o risco da seção 13 se confirmou antes de escrever qualquer extrator, e a premissa fica explícita e defensável em vez de escondida num dado que não serve.
+
+## Dados da CCEE por download manual no histórico
+Contexto: o portal da CCEE devolve 403 "Acesso bloqueado" para downloads e para a API CKAN feitos por script.
+Opções: (A) contornar o bloqueio (por exemplo, simulando um navegador); (B) baixar o histórico manualmente e automatizar só a atualização; (C) pedir liberação à CCEE.
+Escolha: B para o histórico 2021–2025 (arquivos fechados que não mudam de layout nem de conteúdo). A página diz que o bloqueio decorre de política de segurança, então não vou burlá-lo. A atualização automática do ano corrente fica para a tarefa 1.7, onde se testa o acesso de verdade e se decide o plano se continuar bloqueado.
+Resultado: o histórico não depende do bloqueio. Risco aceito: se o acesso automático não funcionar, o pipeline diário (Sprint 3) precisa de outra forma de obter o PLD do ano corrente.
+
+## Estações do INMET e temperatura do submercado
+Contexto: o INMET publica ~565 estações por ano, com completude muito diferente entre elas (na temperatura de 2024: 0% de nulos em Bauru, 36,6% no Rio Copacabana) e a rede muda de um ano para o outro. Uma estação boa pode degradar: a A652 (Copacabana) tinha 100% de horas válidas em 2021 e 63,4% em 2024.
+Opções: (A) escolher estações por cidade (as capitais); (B) escolher por completude da temperatura, exigindo o mínimo em todos os anos; (C) usar todas as estações e deixar a falta para o modelo.
+Escolha: B. Entram as estações do Sudeste com pelo menos 95% de horas válidas de temperatura em cada ano analisado (hora ausente no arquivo conta como inválida). A temperatura do submercado é a média horária das estações escolhidas, tolerante a falhas: numa hora, a média usa só as estações com dado, em vez de anular o valor se uma falhar. Escolher por cidade deixaria de fora estações confiáveis e incluiria estações que falham meses seguidos.
+Resultado: com 2021 e 2024, 54 de 145 estações do Sudeste passam (ES 5, MG 30, RJ 12, SP 7). A lista ainda será recalculada com 2022, 2023 e 2025 e só pode encolher. Em aberto: média simples ou ponderada por estado, porque MG tem 30 das 54 estações e SP só 7, quase todas no interior.
