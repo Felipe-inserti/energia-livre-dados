@@ -552,3 +552,89 @@ Comparação do bronze de 02/10 (carga das ~15:06 UTC) com o ONS baixado em 06/1
 Conclusão: a revisão se concentra no **mês anterior** ao corrente, é pequena (< 1%) e só em valores
 numéricos. É uma observação de 4 dias (decisão da janela do incremental em `decisoes.md`). A diferença de 69
 bytes do dia 02/10 não é recuperável porque o bronze era sobrescrito.
+
+## Sprint 3, Parte B: Airflow (tarefas 3.5 a 3.7)
+
+Medido em 06/10/2026 (UTC), com os logs em `data/logs/` (`airflow_build_3.5.log`,
+`airflow_execucao_completa.txt`, `airflow_falha_proposital.txt`, `airflow_bytes_3.6.log`,
+`airflow_bytes_falha.log`). Duas execuções: a agendada `scheduled__2026-10-06T21:00:00+00:00` (sucesso) e a
+`manual__2026-10-06T22:12:05.158514+00:00`, com `falha_proposital=true`.
+
+### Infra (3.5)
+
+| Medida | Valor |
+|---|---|
+| Build da imagem (`docker compose build`) | 2 min 32 s |
+| Tamanho da imagem `energia-livre-airflow:3.3.2` | 1,1 GB |
+
+### Execução agendada completa (3.6)
+
+Todas as tasks em `success` ou `skipped` (sem arquivo novo nas fontes manuais).
+
+| Task | Estado | Duração |
+|---|---|---|
+| `ccee_ha_arquivo_novo`, `inmet_ha_arquivo_novo` | success | ~4 s |
+| `ccee_ingestao`, `inmet_ingestao`, `ccee_registrar_estado`, `inmet_registrar_estado` | skipped | 0 |
+| `ons_ingestao` | success | 4 min 22 s |
+| `freshness_ons` | success | 11 s |
+| `dbt_run` | success | 37 s |
+| `dbt_test` | success | 1 min 28 s (PASS=173, WARN=1, ERROR=0) |
+| `freshness_manuais` (em paralelo ao `dbt_test`) | success | 8 s |
+| `pipeline_ok` | success | ~1 s |
+| **Total, do início ao `pipeline_ok`** | success | **6 min 40 s** |
+
+O `warn` é `fct_clima_horario_completude_estacao_por_ano`, já conhecido (as 10 estações do INMET).
+
+**Onde o tempo vai (`ons_ingestao`, carga de 250,4 s):**
+
+| Etapa | Tempo | Parcela |
+|---|---|---|
+| Download dos 27 arquivos | 47,7 s | 19% |
+| GCS | 9,1 s | 4% |
+| BigQuery (27 jobs, raw recarregado inteiro) | **193,5 s** | **77%** |
+
+### Bronze por hash dentro da DAG (3.4 em produção)
+
+| Medida | Antes (carga full, Sprint 1) | Depois (DAG, bronze por hash) |
+|---|---|---|
+| Arquivos pulados por hash igual | — | 26 de 27 |
+| **MB gravados no GCS** | **40,9** | **2,47 (−94%)** |
+| Linhas recarregadas no raw do BigQuery | 938.296 | **938.296 (sem mudança)** |
+
+O raw continua recarregando as 938.296 linhas inteiras: é o gargalo da DAG (77% da carga do ONS) e o
+"antes" da Sprint 4.
+
+### Falha proposital (3.7)
+
+| Medida | Valor |
+|---|---|
+| `ons_ingestao` | 3 min 52 s |
+| `dbt_test` | `failed`, sem retentativa (`try_number` 1) |
+| `pipeline_ok` | `upstream_failed` |
+| Alerta no Discord | 1 mensagem, com task, execução e link do log |
+| **Do início da execução até a falha detectada** | **~5 min 47 s** |
+
+Limitação do alerta: o texto do erro é só "Bash command failed", sem os nomes dos testes do dbt que
+falharam (backlog no arquivo de sprints).
+
+### Bytes no BigQuery por execução (`scripts.medir_bytes_bigquery`)
+
+Janelas sem sobreposição: 21:57 a 22:05 UTC (completa) e 22:12 a 22:18 UTC (falha).
+
+| Origem | Jobs | Processados | Faturados |
+|---|---|---|---|
+| dbt (`run` e `test`) | 194 | 1.557,9 MB | **2.965,4 MB** |
+| outros (validação do raw) | 1 | 65,0 MB | 66,1 MB |
+| **Total** | 195 | **1.622,9 MB** | **3.031,4 MB** |
+
+A execução da falha deu exatamente os mesmos números, o que é esperado: o SQL e o tamanho das tabelas
+são os mesmos, e o teste proposital devolve 0 linhas sem a variável.
+
+**Leitura:** o faturado é quase 2× o processado (1,87×) por causa do **piso de 10 MiB por job**: 194 jobs ×
+10 MiB ≈ 1,9 GB. Os testes dominam o custo faturado (ver `decisoes.md`, "Piso de faturamento").
+
+| Projeção (não medida; 30 execuções × 3,03 GB) | Valor |
+|---|---|
+| Faturado por mês | ~90 GB |
+| Parcela do 1 TB gratuito de consultas | ~9% |
+| Custo | R$ 0 |

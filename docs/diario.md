@@ -68,3 +68,9 @@ Três linhas por sprint (ou por bloco de tarefas): o que entreguei, o que aprend
   ficaram para a Sprint 4, junto com a janela de segurança das revisões. Seguem abertos, sem bloquear a Sprint 3:
   o tratamento do degrau de 2023 da carga (decidir antes da Sprint 5), os pesos da EPE por estado para a
   temperatura, os pisos e tetos do PLD por ano na ANEEL (testes da Sprint 3) e a unidade do consumo por ramo.
+
+## Sprint 3, Parte B: Airflow (06/10/2026)
+
+- **Entreguei:** o Airflow local (compose com LocalExecutor, imagem de 1,1 GB, build de 2 min 32 s) e a DAG `energia_livre_diaria`: ONS, ramos opcionais da CCEE e do INMET (só quando a pasta muda), freshness, `dbt run`, `dbt test` e `pipeline_ok`. Execução agendada completa em 6 min 40 s. Retentativas só onde a falha é transitória e alerta no Discord; a falha proposital interrompeu o pipeline (`pipeline_ok` em `upstream_failed`) e o aviso chegou com task, execução e link, ~5 min 47 s depois do início.
+- **Aprendi:** (1) o BigQuery fatura no mínimo 10 MiB por job: 194 jobs do dbt deram 2,97 GB faturados para 1,56 GB processados, então os testes dominam o custo faturado (projeção de ~90 GB/mês, ~9% do 1 TB gratuito, R$ 0). (2) O gargalo da DAG continua sendo o raw do ONS, que recarrega as 938.296 linhas (77% da carga), mesmo com o bronze gravando 94% menos no GCS. (3) `dags unpause` mostra o estado anterior e, se o horário do dia já passou, cria a execução `scheduled` na hora. (4) Medições idênticas entre duas execuções não são bug quando o SQL e as tabelas são os mesmos; conferi o filtro de tempo antes de confiar.
+- **Travou:** o `airflow-init` falhou por o uid 1000 não existir no passwd da imagem (resolvido usando o entrypoint da imagem). Ficaram abertos, para a Sprint 4: a revisão do ONS de 06/10 (328 valores, diferença máxima de 93,8%, sem causa investigada), o custo dos testes (agrupar, rodar menos vezes ou incremental) e o alerta do Discord sem os nomes dos testes que falharam.

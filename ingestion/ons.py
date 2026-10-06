@@ -1,6 +1,7 @@
 """Extrator da curva de carga horária do ONS: carga FULL no raw, bronze gravado só se mudou.
 
-    uv run python -m ingestion.ons [--ano-inicial 2000] [--ano-final 2026] [--sem-consulta]
+    uv run python -m ingestion.ons [--ano-inicial 2000] [--ano-final 2026]
+        [--sem-consulta | --sem-medicao]
 
 Para cada ano, de 2000 até o ano atual (sempre tudo, sem incremental):
 1. baixa o CSV (com retry);
@@ -190,6 +191,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--sem-consulta", action="store_true", help="não valida o raw nem mede a consulta típica"
     )
+    parser.add_argument(
+        "--sem-medicao",
+        action="store_true",
+        help="valida o raw, mas não roda a consulta típica (37 MB; é benchmark, não precisa ser "
+        "diária): é o modo da DAG do Airflow",
+    )
     args = parser.parse_args(argv)
 
     config = carregar_config()
@@ -205,8 +212,9 @@ def main(argv: list[str] | None = None) -> int:
                 log.error("validação: %s", problema)
             return 1
         log.info("validação do raw: ok (linhas e vazios batem com os CSVs)")
-        sql = CONSULTA_TIPICA.format(tabela=config.tabela(DATASET_RAW, NOME_TABELA))
-        consulta = medir_consulta_tipica(config, sql)
+        if not args.sem_medicao:
+            sql = CONSULTA_TIPICA.format(tabela=config.tabela(DATASET_RAW, NOME_TABELA))
+            consulta = medir_consulta_tipica(config, sql)
     imprimir_resumo(
         "da carga full do ONS",
         medicoes,

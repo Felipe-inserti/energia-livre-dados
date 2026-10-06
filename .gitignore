@@ -233,3 +233,8 @@ dbt/dbt_packages/
 dbt/logs/
 dbt/target/
 dbt/.user.yml
+
+# Airflow local (Sprint 3): logs das execuções; os segredos ficam em airflow/.env (já ignorado)
+airflow/logs/*
+!airflow/logs/.gitkeep
+airflow/logs/

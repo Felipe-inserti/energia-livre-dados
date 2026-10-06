@@ -235,6 +235,13 @@ sobrescrito); a primeira medição compara o bronze de 02/10 com o ONS de 06/10.
 - **Limite:** é uma observação; fechamentos mensais ou anuais podem revisar mais e mais tarde
   (as 5 linhas de agosto já mostram revisão de dois meses atrás). A janela do incremental está
   em `decisoes.md`.
+- **Segunda medição, de outra data (DAG da Parte B, 06/10/2026):** 328 valores alterados no arquivo de
+  2026 (setembro 178, outubro 150), com diferença máxima de **7.212 MWmed (93,8%)**. A medição anterior
+  (0,517%) e esta são de datas e bases de comparação diferentes, então os números **não são comparáveis
+  entre si** e este registro não conclui nada sobre a causa da diferença maior. O que ela sustenta: o ONS
+  revisa o **mês corrente e o anterior**, o que justifica a janela do incremental (`decisoes.md`). A causa
+  e o tamanho típico da revisão ficam como item de investigação da Sprint 4 (`data/logs/revisoes_ons.jsonl`
+  tem o detalhe linha a linha).
 - **Atraso de publicação:** o arquivo traz dados até **2 dias antes do download** (a última hora é
   23:00 do dia D-2), o que calibrou a freshness do ONS (`decisoes.md`).
 
