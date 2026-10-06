@@ -36,6 +36,13 @@ class Medicoes:
     t_gcs: float = 0.0
     t_bigquery: float = 0.0
     por_arquivo: list[tuple[str, int, int]] = field(default_factory=list)  # nome, bytes, linhas
+    # Escrita no bronze (só o ONS, desde a 3.4): gravar só o que mudou, por hash
+    gcs_gravados: int = 0
+    gcs_pulados: int = 0  # hash igual ao do objeto que já está no bucket
+    gcs_versoes: int = 0  # versões antigas arquivadas porque o arquivo mudou
+    gcs_bytes_gravados: int = 0
+    gcs_bytes_versoes: int = 0
+    revisoes: list[dict] = field(default_factory=list)  # resultado de ingestion.revisoes
     # tabela -> chave -> (linhas, valores vazios na coluna de valor), para validar o raw
     esperado: dict[str, dict[tuple[str, ...], tuple[int, int]]] = field(default_factory=dict)
 
@@ -174,6 +181,19 @@ def imprimir_resumo(
         f"({rotulo_origem} {medicoes.t_origem:.1f} s, GCS {medicoes.t_gcs:.1f} s, "
         f"BigQuery {medicoes.t_bigquery:.1f} s)"
     )
+    if medicoes.gcs_gravados + medicoes.gcs_pulados:
+        print(
+            f"GCS (bronze): {medicoes.gcs_gravados} arquivos gravados "
+            f"({medicoes.gcs_bytes_gravados / 1e6:.2f} MB), "
+            f"{medicoes.gcs_pulados} pulados por hash igual, "
+            f"{medicoes.gcs_versoes} versões antigas arquivadas "
+            f"({medicoes.gcs_bytes_versoes / 1e6:.2f} MB)"
+        )
+        total = medicoes.gcs_bytes_gravados + medicoes.gcs_bytes_versoes
+        print(
+            f"MB gravados no GCS nesta execução: {total / 1e6:.2f} "
+            f"(a carga full anterior gravava {medicoes.bytes_origem / 1e6:.1f} MB)"
+        )
     if listar_arquivos:
         print("linhas por arquivo:")
         for nome, tamanho, linhas in medicoes.por_arquivo:

@@ -1,13 +1,16 @@
-"""Extrator da curva de carga horária do ONS: carga FULL, de propósito ingênua (o "antes").
+"""Extrator da curva de carga horária do ONS: carga FULL no raw, bronze gravado só se mudou.
 
     uv run python -m ingestion.ons [--ano-inicial 2000] [--ano-final 2026] [--sem-consulta]
 
 Para cada ano, de 2000 até o ano atual (sempre tudo, sem incremental):
 1. baixa o CSV (com retry);
-2. grava o CSV ORIGINAL, sem alteração, no GCS: bronze/ons/curva_carga/ano=AAAA/;
+2. grava o CSV ORIGINAL, sem alteração, no GCS (bronze/ons/curva_carga/ano=AAAA/), mas SÓ se o
+   hash (MD5) for diferente do objeto que já está lá; se mudou, antes arquiva a versão antiga em
+   bronze/ons/curva_carga_versoes/ e mede a revisão (ingestion/revisoes.py, tarefa 3.4);
 3. carrega no BigQuery raw.ons_curva_carga (sem partição) com as colunas padronizadas, todas
    como STRING (a tipagem é do dbt), mais `_arquivo_origem` e `_carregado_em`.
 
+O raw continua em carga full (a carga incremental é da Sprint 4): só a escrita no bronze mudou.
 Nulos e casos conhecidos (docs/fontes.md) entram como estão: o tratamento é do staging e dos
 testes da Sprint 3. Ao final valida a carga contra os CSVs e mede a consulta típica.
 
@@ -20,6 +23,7 @@ import sys
 import time
 from datetime import UTC, datetime
 
+from ingestion import revisoes
 from ingestion.common import gcp
 from ingestion.common.config import DATASET_RAW, Config, carregar_config
 from ingestion.common.csv_utils import transformar_csv
@@ -76,6 +80,46 @@ def caminho_gcs(ano: int) -> str:
     return f"bronze/ons/curva_carga/ano={ano}/{nome_arquivo(ano)}"
 
 
+def caminho_versao(ano: int, gravado_em: datetime) -> str:
+    """Onde fica a versão antiga: a pasta leva o momento em que ELA foi gravada (sua carga)."""
+    momento = gravado_em.astimezone(UTC).strftime("%Y%m%dT%H%M%SZ")
+    return f"bronze/ons/curva_carga_versoes/ano={ano}/carga={momento}/{nome_arquivo(ano)}"
+
+
+def sincronizar_bronze(
+    storage_cli, bucket: str, ano: int, original: bytes, medicoes: Medicoes
+) -> str:
+    """Grava o CSV no bronze só se o hash mudou; se mudou, arquiva a versão antiga e mede a revisão.
+
+    Devolve o texto do que aconteceu com o bronze, para o log: "pulado (hash igual)" ou
+    "gravado em gs://..." (com "versão antiga arquivada" quando havia um arquivo diferente).
+
+    A versão antiga é copiada ANTES de a nova sobrescrevê-la, para uma falha no meio não perder
+    o que existia. Os anos fechados não mudam (medido: 2000 a 2025 idênticos entre duas cargas),
+    então na prática só o ano corrente gera versões.
+    """
+    caminho = caminho_gcs(ano)
+    existente = gcp.buscar_objeto(storage_cli, bucket, caminho)
+    if existente is not None and existente.md5_hash == gcp.md5_base64(original):
+        medicoes.gcs_pulados += 1
+        return "pulado (hash igual)"
+
+    if existente is not None:
+        registro = revisoes.comparar_csv_ons(existente.download_as_bytes(), original, ano)
+        revisoes.registrar(registro, origem="ingestao")
+        medicoes.revisoes.append(registro)
+        log.info("revisão: %s", revisoes.resumir(registro))
+        gcp.copiar_objeto(storage_cli, bucket, existente, caminho_versao(ano, existente.updated))
+        medicoes.gcs_versoes += 1
+        medicoes.gcs_bytes_versoes += existente.size or 0
+
+    destino = gcp.enviar_para_gcs(storage_cli, bucket, caminho, original)
+    medicoes.gcs_gravados += 1
+    medicoes.gcs_bytes_gravados += len(original)
+    arquivada = ", versão antiga arquivada" if existente is not None else ""
+    return f"gravado em {destino}{arquivada}"
+
+
 def anos_a_carregar(ano_inicial: int, ano_final: int) -> list[int]:
     if ano_inicial < ANO_INICIAL:
         raise ValueError(f"O ONS publica a partir de {ANO_INICIAL}, não de {ano_inicial}")
@@ -115,7 +159,7 @@ def carregar_anos(anos: list[int], config: Config, ano_atual: int) -> Medicoes:
         # bronze: os bytes originais, sem alteração
         t0 = time.perf_counter()
         caminho = caminho_gcs(ano)
-        origem = gcp.enviar_para_gcs(storage_cli, config.bucket, caminho, original)
+        bronze = sincronizar_bronze(storage_cli, config.bucket, ano, original, medicoes)
         medicoes.t_gcs += time.perf_counter() - t0
 
         # raw: colunas padronizadas + colunas de controle
@@ -128,7 +172,13 @@ def carregar_anos(anos: list[int], config: Config, ano_atual: int) -> Medicoes:
         medicoes.registrar_esperado(
             NOME_TABELA, (caminho,), csv_raw.linhas, csv_raw.vazios[COLUNA_VALOR]
         )
-        log.info("%d: %.2f MB baixados, %d linhas -> %s", ano, len(original) / 1e6, linhas, origem)
+        log.info(
+            "%d: %.2f MB baixados, %d linhas carregadas no raw; bronze: %s",
+            ano,
+            len(original) / 1e6,
+            linhas,
+            bronze,
+        )
     return medicoes
 
 

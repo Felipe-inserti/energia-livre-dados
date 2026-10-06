@@ -5,6 +5,8 @@ Proteção de custo: TODA consulta ao BigQuery passa por `executar_consulta`, qu
 Jobs de carga (`carregar_csv_no_bigquery`) não são cobrados e não usam esse limite.
 """
 
+import base64
+import hashlib
 import io
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -38,6 +40,22 @@ def enviar_para_gcs(
     blob = cliente.bucket(bucket).blob(caminho)
     blob.upload_from_string(conteudo, content_type=tipo, checksum="crc32c")
     return f"gs://{bucket}/{caminho}"
+
+
+def md5_base64(conteudo: bytes) -> str:
+    """MD5 em base64, o mesmo formato de `blob.md5_hash` do GCS (para comparar sem baixar)."""
+    return base64.b64encode(hashlib.md5(conteudo, usedforsecurity=False).digest()).decode()
+
+
+def buscar_objeto(cliente: storage.Client, bucket: str, caminho: str) -> storage.Blob | None:
+    """O objeto (com metadados: md5, tamanho, data de gravação) ou None se não existir."""
+    return cliente.bucket(bucket).get_blob(caminho)
+
+
+def copiar_objeto(cliente: storage.Client, bucket: str, origem: storage.Blob, destino: str) -> str:
+    """Cópia dentro do bucket, feita no servidor (nada passa pela minha máquina)."""
+    cliente.bucket(bucket).copy_blob(origem, cliente.bucket(bucket), destino)
+    return f"gs://{bucket}/{destino}"
 
 
 def enviar_arquivo_para_gcs(

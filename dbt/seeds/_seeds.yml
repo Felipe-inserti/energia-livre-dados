@@ -1,0 +1,41 @@
+version: 2
+
+# Referência para os testes de faixa da Sprint 3 (tarefa 3.2). Valores de documentos da ANEEL lidos
+# em fontes secundárias: `confirmado_em_fonte_oficial` fica false até o texto do documento ser lido
+# (pendência 10 de docs/premissas.md). Conferência cruzada com os dados: em todos os anos o mínimo
+# observado do PLD horário é igual a `pld_min`, e em 2024 e 2026 o máximo observado é igual a
+# `pld_max_horario`.
+seeds:
+  - name: pld_limites
+    description: >
+      Limites regulatórios do PLD por ano (R$/MWh): piso, teto estrutural e teto horário. O PLD
+      horário da CCEE é limitado pelo teto HORÁRIO; o estrutural fica aqui só como documentação
+      (vale para o PLD semanal e para a formação de preço, e em 2021 o PLD horário passou dele).
+    config:
+      column_types:
+        ano: int64
+        pld_min: numeric
+        pld_max_estrutural: numeric
+        pld_max_horario: numeric
+        confirmado_em_fonte_oficial: boolean
+    columns:
+      - name: ano
+        description: "Ano de vigência dos limites (ano civil, no horário local)."
+        data_tests:
+          - unique
+          - not_null
+      - name: pld_min
+        description: "PLD mínimo (piso) do ano, em R$/MWh. É o maior valor entre a TEO e a TEO Itaipu."
+        data_tests: [not_null]
+      - name: pld_max_estrutural
+        description: "PLD máximo estrutural do ano, em R$/MWh. Só documentação: não limita o PLD horário."
+        data_tests: [not_null]
+      - name: pld_max_horario
+        description: "PLD máximo horário do ano, em R$/MWh. É o teto usado no teste de faixa do PLD horário."
+        data_tests: [not_null]
+      - name: documento
+        description: "Resolução Homologatória ou Despacho da ANEEL que fixou os limites."
+      - name: fonte_consultada
+        description: "Onde o valor foi lido, e se o texto oficial foi lido ou não."
+      - name: confirmado_em_fonte_oficial
+        description: "Verdadeiro só quando o valor foi conferido no texto do documento oficial da ANEEL."

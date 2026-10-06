@@ -11,7 +11,10 @@ Nunca otimizar antes de medir a versão simples. Preencher "Antes" na versão in
 | Engenharia | Dados lidos por consulta típica (**bytes processados**) | 0,037 GB (ONS, raw STRING sem partição: 37,3 MB processados; 37,7 MB faturados) | tipado sem partição: 0,018 GB (18,3 MB); **fato particionado por mês e clusterizado: 0,0007 GB (0,74 MB processados, −98,0% contra o raw)**. O faturado cai para 10,5 MB, o piso de 10 MiB do BigQuery, então a métrica de comparação são os bytes processados | 1 → 2 |
 | Engenharia | Tempo de carga diária | full: **9,3 min** (ONS 4,9 + CCEE 1,2 + INMET 3,1 + feriados 0,2; sem o tempo do download manual) | incremental: __ min | 1 → 4 |
 | Engenharia | Tempo do backfill completo (2021–hoje) | — | __ min | 4 |
-| Engenharia | Problemas de dados capturados pelos testes | — | __ registros (tipos: __) | 3 |
+| Engenharia | Problemas de dados capturados pelos testes | — | **10 registros em 173 testes** (10 estações do INMET abaixo de 95% de horas válidas em 2026, `warn`), 0 `error`; mais 240 horas nulas e 20 horas inexistentes, já conhecidas e cobertas por exceções. Detalhe na seção "Sprint 3, Parte A" | 3 |
+| Engenharia | MB gravados no GCS por execução da ingestão do ONS | full: **40,9 MB** (os 27 arquivos, toda vez) | por hash: **2,45 MB** na execução com revisão (−94,0%) e **0,00 MB** na seguinte (−100%) | 3 |
+| Engenharia | Revisões retroativas do ONS | não medidas (o bronze era sobrescrito) | 1 de 27 arquivos mudou: 480 valores revisados (1,8% das linhas do arquivo), diferença máxima de 0,517% | 3 |
+| Engenharia | Freshness do ONS | sem freshness | antes da carga `ERROR STALE` (120 h); depois, com os limites iniciais, `WARN` (48,8 h); com os limites calibrados (72 h e 120 h), `PASS` | 3 |
 | Engenharia | Idempotência | — | 2 execuções → mesma contagem: sim/não | 4 |
 
 ---
@@ -459,3 +462,93 @@ Todas abaixo do teto de 200 MiB por consulta. Estimado antes (dry-run): ~94 MB; 
 piso de 10 MiB por consulta, então o total faturado é maior que o processado.
 Arquivos: o notebook sem saídas tem 23,7 KB (executado, com as imagens embutidas, tem 620 KB); as 5 figuras somam
 ~630 KB em `docs/figuras/` (a de dispersão tem 238 KB; limite por figura: 300 KB). O `lineage.png` tem 155 KB.
+
+## Sprint 3, Parte A: qualidade de dados (tarefas 3.1 a 3.4)
+
+Medido em 06/10/2026 (UTC), na máquina local, com os logs em `data/logs/` (`dbt_test_3.2.log`,
+`resumo_testes_3.2.log`, `revisoes_3.4_comparacao.log`, `ons_3.4_carga1.log`, `ons_3.4_carga2.log`,
+`freshness_3.3_antes.log`, `freshness_3.3_depois.log`).
+
+### Testes do dbt (3.1 e 3.2)
+
+| Medida | Antes (Sprint 2) | Depois |
+|---|---|---|
+| Testes do dbt | 145 | **173** (+28: 6 singulares novos, 5 do seed, 11 nas colunas de chave do raw e 6 das lacunas da 3.1) |
+| Resultado do `dbt test` | — | **172 pass, 1 warn, 0 error** (61,3 s; os 30 testes de staging da Sprint 2 levavam 13,9 s) |
+| `dbt run` (16 modelos) | — | 25,9 s, sem erro |
+| Lacunas achadas pela auditoria da 3.1 | não medido | 4 (mais as sources sem teste), todas fechadas |
+
+Por tipo (`scripts/resumir_testes.py`): `not_null` 81, `relationships` 24, `singular` 24, `accepted_values` 16,
+`unique_combination_of_columns` 12, `equal_rowcount` 9, `unique` 7. Só o tipo `singular` teve registros
+problemáticos.
+
+**Registros problemáticos encontrados:**
+
+| Teste | Severidade | Registros | O que são |
+|---|---|---|---|
+| `fct_clima_horario_completude_estacao_por_ano` | warn | **10** | estações do INMET com menos de 95% de horas válidas de temperatura em 2026: A037 (13,6%), A704 (72,5%), A554 (77,6%), A516 (81,6%), A502 (83,8%), A508 (90,1%), A539 (90,5%), A659 (90,6%), A570 (93,9%), A614 (94,7%); iguais às 10 de `fontes.md` |
+| os outros 5 testes novos e os 167 antigos | error/warn | 0 | passaram |
+
+**Leitura honesta:** os testes novos **não acharam dado corrompido** nos dados atuais; acharam exatamente
+a degradação do INMET que a exploração já tinha documentado, e provaram que a regra funciona. Provas de que
+o teste pega: com o teto do PLD de 2024 trocado de 1.470,57 para 1.400, 4 horas falharam (teste manual,
+fora do `dbt test`). Os casos já conhecidos passam por exceção declarada: 240 horas de carga nula (3 dias
+inteiros de 2013 a 2015) e 20 horas locais inexistentes descartadas no staging. Piso e teto do PLD: 0 violações
+em 201.696 horas. Faixa da carga: 610 a 62.150 MWmed por subsistema (teto do teste: 100.000). Temperatura
+observada: de −4,7 a 42,7 °C (faixa do teste: −10 a 46).
+
+### Freshness (3.3)
+
+| Fonte | Antes da carga do ONS | Depois, limites iniciais | Depois, limites calibrados |
+|---|---|---|---|
+| ONS (warn 72 h, error 120 h) | `ERROR STALE`, 120,4 h | `WARN`, 48,8 h (limites antigos: 48 h e 96 h) | `PASS`, 48,9 h |
+| PLD horário (warn 7 dias) | `PASS`, 95 h | `PASS`, 95,8 h | `PASS` |
+| INMET (warn 60 dias) | `PASS`, 866 h (36 dias) | `PASS` | `PASS` |
+| Consumo por ramo (warn 75 dias) | `PASS`, 842 h (35 dias) | `PASS` | `PASS` |
+
+O aviso do ONS com os limites iniciais ensinou que o atraso normal é de 2 dias, não de 1 (ver
+`decisoes.md`, "Recalibração"). Custo da freshness: leituras de uma coluna por fonte, ~1,5 s cada.
+
+### Bronze do ONS por hash e MB gravados no GCS (3.4)
+
+Duas execuções seguidas de `ingestion.ons` (27 arquivos, 40,9 MB baixados; o raw continua em carga full):
+
+| Medida | Antes (carga full, Sprint 1) | 1ª execução com hash | 2ª execução com hash |
+|---|---|---|---|
+| Arquivos gravados no GCS | 27 | 1 (o de 2026, 1,23 MB) | 0 |
+| Pulados por hash igual | — | 26 | 27 |
+| Versões antigas arquivadas | — | 1 (1,22 MB) | 0 |
+| **MB gravados no GCS** | **40,9** | **2,45 (−94,0%)** | **0,00 (−100%)** |
+| Tempo no GCS | 40,6 s | 9,8 s (−76%) | 5,3 s (−87%) |
+| Tempo no BigQuery | 188,6 s | 187,4 s | 165,6 s |
+| Tempo total | 275,5 s e 292,2 s (duas execuções) | 243,2 s | 217,5 s |
+| Bytes processados (consulta típica) | 37,3 MB | 37,3 MB | 37,3 MB |
+
+O ganho está na escrita no bronze, não no tempo total: o raw ainda recarrega os 40,9 MB em 27 jobs (cerca de
+76% a 77% do tempo), e isso só muda na Sprint 4. A diferença de tempo total contra a Sprint 1 vem quase toda
+do GCS (~31 s a menos na 1ª execução, ~35 s na 2ª), o resto é variação de rede. A consulta típica não mudou,
+como esperado. A 2ª execução não gravou nada: a idempotência do bronze está provada com o ONS sem ter
+publicado entre as duas.
+
+### Revisões retroativas do ONS (3.4): primeira medição real
+
+Comparação do bronze de 02/10 (carga das ~15:06 UTC) com o ONS baixado em 06/10 às ~02:35 UTC
+(`scripts/comparar_revisoes_ons.py`, só leitura; a carga seguinte mediu o mesmo, linha a linha):
+
+| Medida | Valor |
+|---|---|
+| Arquivos comparados | 27 |
+| Idênticos (hash) | **26** (2000 a 2025) |
+| Com revisão | **1** (2026: 1.216.589 para 1.229.830 bytes) |
+| Linhas do arquivo antigo / novo | 26.208 / 26.496 |
+| Linhas novas / removidas | +288 (dias 1 a 3 de outubro) / 0 |
+| **Valores revisados** | **480** (1,8% das linhas do arquivo antigo) |
+| Nulo virou valor / valor virou nulo / nome mudou | 0 / 0 / 0 |
+| Por mês | setembro **475** (16,5% das 2.880 horas), agosto 5, outubro 0 |
+| Por subsistema | N 247, NE 101, SE 90, S 42 |
+| Diferença máxima | 281,6 MWmed = **0,517%** do valor antigo |
+| Diferença absoluta média / líquida | 9,2 MWmed por linha revisada / −545,0 MWmed no total |
+
+Conclusão: a revisão se concentra no **mês anterior** ao corrente, é pequena (< 1%) e só em valores
+numéricos. É uma observação de 4 dias (decisão da janela do incremental em `decisoes.md`). A diferença de 69
+bytes do dia 02/10 não é recuperável porque o bronze era sobrescrito.

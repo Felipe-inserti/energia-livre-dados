@@ -1,0 +1,7 @@
+ano,pld_min,pld_max_estrutural,pld_max_horario,documento,fonte_consultada,confirmado_em_fonte_oficial
+2021,49.77,583.88,1141.85,Resolução Homologatória ANEEL 2.828 (15/12/2020),Brasil Energia e Abraceel (busca; texto oficial não lido),false
+2022,55.70,646.58,1326.50,Resolução Homologatória ANEEL 2.994 (14/12/2021),Busca na web; o teto horário bate com 1.404.77/1.059 (texto oficial não lido),false
+2023,69.04,684.73,1404.77,Resolução Homologatória ANEEL de dezembro de 2022 (número por confirmar),Abraceel e ANEEL (busca; texto oficial não lido),false
+2024,61.07,716.80,1470.57,Despacho ANEEL de dezembro de 2023 (número por confirmar),Abraceel e Agência Gov (busca; texto oficial não lido),false
+2025,58.60,751.73,1542.23,Despacho ANEEL 3.625 (17/12/2024),Cenário Energia (página lida; texto oficial não lido),false
+2026,57.31,785.27,1611.04,Despacho ANEEL 3.850 (dezembro de 2025),Notícia da ANEEL e Cenário Energia (busca; página oficial exige login),false

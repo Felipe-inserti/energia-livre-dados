@@ -27,13 +27,27 @@ sources:
             granularidade: horária, por subsistema
             fuso: horário oficial local (America/Sao_Paulo, com horário de verão até 2018)
             origem_dos_arquivos: download automático
-  
+          # Freshness pela DATA DO CONTEÚDO (última hora da série), não pelo `_carregado_em`:
+          # a data de carga só diz quando EU carreguei, e uma carga de arquivo velho pareceria
+          # fresca. Atraso normal medido: o arquivo traz dados até 2 dias antes da data do
+          # download (a última hora é 23:00 do dia D-2), então a idade da última hora oscila de
+          # ~25 h (logo depois da meia-noite local) a ~49 h (antes da meia-noite): observado
+          # 37 h (02/10, meio-dia) e 48,8 h (05/10, 23:39 local). 72 h = o pior atraso normal
+          # mais um dia de publicação perdido; 120 h = 5 dias, quando já faltam ~3 dias de dados.
+          # É a única fonte automática, então é a única com `error` (a que pode parar a DAG).
+          # Recalibrar quando a DAG (Sprint 3, Parte B) registrar o atraso todo dia.
+          loaded_at_field: "timestamp(din_instante, 'America/Sao_Paulo')"
+          freshness:
+            warn_after: {count: 72, period: hour}
+            error_after: {count: 120, period: hour}
         columns:
           - name: id_subsistema
+            data_tests: [not_null]
             description: "Código do subsistema (N, NE, S ou SE)."
           - name: nom_subsistema
             description: "Nome do subsistema (NORTE, NORDESTE, SUL ou SUDESTE). O SE passa a SUDESTE/CENTRO-OESTE a partir de 01/01/2026; o código não muda."
           - name: din_instante
+            data_tests: [not_null]
             description: "Início da hora, texto `AAAA-MM-DD HH:MM:SS`, em horário local."
           - name: val_cargaenergiahomwmed
             description: "Carga média da hora em MWmed, texto com ponto decimal; vazio quando não há valor."
@@ -57,19 +71,30 @@ sources:
             granularidade: horária, por submercado
             fuso: horário de Brasília (America/Sao_Paulo)
             origem_dos_arquivos: download manual
-  
+          # Fonte MANUAL (arquivo baixado à mão): só `warn_after`, nunca `error_after`. O
+          # `dbt source freshness` só sai com erro quando há `error`, então uma fonte manual
+          # atrasada avisa e não derruba o pipeline diário. O PLD é publicado todo dia (o arquivo
+          # inclui o dia seguinte); 7 dias sem atualizar o arquivo já merecem aviso.
+          loaded_at_field: "timestamp(parse_date('%Y%m%d', concat(mes_referencia, lpad(dia, 2, '0'))), 'America/Sao_Paulo')"
+          freshness:
+            warn_after: {count: 7, period: day}
         columns:
           - name: mes_referencia
+            data_tests: [not_null]
             description: "Mês de referência, texto `AAAAMM`."
           - name: submercado
+            data_tests: [not_null]
             description: "NORDESTE, NORTE, SUDESTE ou SUL."
           - name: periodo_comercializacao
             description: "Hora sequencial dentro do mês (1 a 744), texto."
           - name: dia
+            data_tests: [not_null]
             description: "Dia do mês, texto (com ou sem zero à esquerda conforme o ano)."
           - name: hora
+            data_tests: [not_null]
             description: "Hora do dia (0 a 23), texto (com ou sem zero à esquerda conforme o ano)."
           - name: pld_hora
+            data_tests: [not_null]
             description: "Preço em R$/MWh, texto com ponto decimal."
           - name: _arquivo_origem
             description: "Caminho do CSV original no bronze do GCS."
@@ -123,9 +148,14 @@ sources:
             granularidade: mensal, por ramo de atividade
             fuso: não se aplica
             origem_dos_arquivos: download manual
-  
+          # Mensal e manual: o dado de um mês só existe depois que o mês acaba e a CCEE publica,
+          # então a idade conta do FIM do mês de referência; 75 dias = mês + ~45 dias de folga.
+          loaded_at_field: "timestamp(date_add(parse_date('%Y%m%d', concat(mes_referencia, '01')), interval 1 month))"
+          freshness:
+            warn_after: {count: 75, period: day}
         columns:
           - name: mes_referencia
+            data_tests: [not_null]
             description: "Mês de referência, texto `AAAAMM`."
           - name: ramo_atividade
             description: "Ramo de atividade (ex.: COMÉRCIO, SERVIÇOS, METALURGIA E PRODUTOS DE METAL)."
@@ -157,15 +187,22 @@ sources:
             granularidade: horária, por estação
             fuso: UTC
             origem_dos_arquivos: download manual
-  
+          # Anual, em lote e manual: o ZIP do ano corrente é parcial (2026 vai até 31/08). 60 dias
+          # sem dado novo avisam; sem `error` por ser fonte manual.
+          loaded_at_field: "parse_timestamp('%Y/%m/%d', `data`)"
+          freshness:
+            warn_after: {count: 60, period: day}
         columns:
           - name: data
+            data_tests: [not_null]
             description: "Data, texto `AAAA/MM/DD`."
           - name: hora_utc
+            data_tests: [not_null]
             description: "Hora em UTC, texto `HHMM UTC` (ex.: `0000 UTC`)."
           - name: temperatura_do_ar_bulbo_seco_horaria_c
             description: "Temperatura do ar em °C, texto com vírgula decimal; vazio quando não houve medição."
           - name: estacao_codigo
+            data_tests: [not_null]
             description: "Código da estação (WMO), ex.: A701."
           - name: estacao_uf
             description: "UF da estação."

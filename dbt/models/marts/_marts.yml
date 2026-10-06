@@ -184,8 +184,10 @@ models:
         description: "Quantos nomes distintos a estação teve nos arquivos (a A521 BH Pampulha tem 2)."
       - name: primeiro_instante_utc
         description: "Primeira hora UTC em que a estação aparece nos dados do INMET carregados."
+        data_tests: [not_null]
       - name: ultimo_instante_utc
         description: "Última hora UTC em que a estação aparece nos dados carregados (2026 vai até 31/08)."
+        data_tests: [not_null]
 
   # ----------------------------------------------------------------- fatos (tarefa 2.5)
   - name: fct_carga_horaria
