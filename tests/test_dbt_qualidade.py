@@ -59,6 +59,12 @@ def test_fontes_manuais_so_avisam_e_o_ons_e_o_unico_que_pode_falhar():
         assert (freshness is None) or tabela["config"]["loaded_at_field"], nome
 
 
+def test_teste_de_alerta_nao_devolve_linha_a_menos_que_a_variavel_peca():
+    texto = (TESTES / "teste_alerta_falha_proposital.sql").read_text()
+    assert "config(severity='error')" in texto
+    assert "env_var('FORCAR_FALHA', 'false')" in texto  # o padrão tem de ser "não falhar"
+
+
 def test_todo_teste_singular_novo_declara_a_severidade_de_proposito():
     novos = [
         "fct_pld_horario_dentro_dos_limites",

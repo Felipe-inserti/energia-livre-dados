@@ -117,3 +117,14 @@ def test_arquivo_mudado_arquiva_a_versao_antiga_antes_de_sobrescrever(monkeypatc
 
 def test_md5_do_gcs_e_base64_do_digest():
     assert gcp.md5_base64(b"") == "1B2M2Y8AsgTpgAmY7PhCfg=="
+
+
+def test_sem_medicao_valida_o_raw_mas_nao_roda_a_consulta_tipica(monkeypatch):
+    chamadas = []
+    monkeypatch.setattr(ons, "carregar_config", lambda: type("C", (), {"bucket": "b"})())
+    monkeypatch.setattr(ons, "carregar_anos", lambda *a: Medicoes())
+    monkeypatch.setattr(ons, "validar_raw", lambda *a: chamadas.append("validar") or [])
+    monkeypatch.setattr(ons, "medir_consulta_tipica", lambda *a: chamadas.append("medir"))
+    monkeypatch.setattr(ons, "imprimir_resumo", lambda *a, **k: None)
+    assert ons.main(["--ano-inicial", "2026", "--ano-final", "2026", "--sem-medicao"]) == 0
+    assert chamadas == ["validar"]

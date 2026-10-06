@@ -95,9 +95,13 @@ Ao abrir uma conversa com o Claude, diga a sprint e a tarefa (ex.: "Sprint 1, ta
 - [x] 3.2 Testes de faixa: PLD entre piso e teto horário do ano (seed `pld_limites`), carga positiva (com exceções conhecidas), temperatura plausível e completude do INMET (warn).
 - [x] 3.3 Freshness nas sources, pela data do conteúdo (fontes manuais só avisam).
 - [x] 3.4 Investigar revisões retroativas do ONS: gravar o bronze só quando o hash mudar (versões em pasta separada), detectar e medir as revisões. O upsert pela chave natural e a carga incremental ficam na 4.1 e 4.2.
-- [ ] 3.5 Subir Airflow com docker-compose.
-- [ ] 3.6 Primeira DAG: extrair → carregar → `dbt run` → `dbt test`, rodando diariamente.
-- [ ] 3.7 Retentativas e alerta de falha (e-mail ou webhook do Discord).
+- [x] 3.5 Subir Airflow com docker-compose.
+- [x] 3.6 Primeira DAG: extrair → carregar → `dbt run` → `dbt test`, rodando diariamente.
+- [x] 3.7 Retentativas e alerta de falha (e-mail ou webhook do Discord).
+
+**Backlog (registrado ao fechar a Parte B, não implementado):**
+- Alerta do Discord: hoje mostra só "Bash command failed"; melhorar para incluir os nomes dos testes do dbt que falharam.
+- Sprint 4: investigar a revisão do ONS de 06/10/2026 (328 valores, diferença máxima de 93,8%) e o custo faturado dos testes do dbt (`decisoes.md`, "Piso de faturamento").
 
 **Medir**
 - Quantos registros problemáticos os testes encontraram e de que tipo.

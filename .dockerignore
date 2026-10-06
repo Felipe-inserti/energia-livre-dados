@@ -1,0 +1,6 @@
+# O build da imagem só usa pyproject.toml, uv.lock e .python-version (o código entra por volume).
+# Lista branca: sem isso o Docker copiaria data/ (centenas de MB), .venv e .git para o contexto.
+*
+!pyproject.toml
+!uv.lock
+!.python-version

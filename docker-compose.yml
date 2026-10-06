@@ -1,0 +1,114 @@
+# Airflow local do projeto (Sprint 3): LocalExecutor, sem Celery, sem Redis.
+# Serviços: postgres (metadados), airflow-init (migra o banco e instala os pacotes do dbt),
+# airflow-apiserver (UI na porta 8080), airflow-scheduler e airflow-dag-processor.
+#
+# Segredos: nada aqui. As chaves do Airflow e o webhook do Discord ficam em airflow/.env (ignorado
+# pelo git; modelo em airflow/.env.example) e as credenciais do GCP vêm do ADC da sua máquina,
+# montado como somente leitura. Não existe arquivo de chave no repositório.
+name: energia-livre
+
+x-airflow-comum: &airflow-comum
+  build:
+    context: .
+    dockerfile: airflow/Dockerfile
+  image: energia-livre-airflow:3.3.2
+  # Seu uid (1000): o ADC tem permissão 600 e uma imagem rodando como outro uid não o leria.
+  # O grupo 0 é o que torna o AIRFLOW_HOME gravável na imagem oficial.
+  user: "${AIRFLOW_UID:-1000}:0"
+  env_file:
+    - .env # projeto, bucket e região do GCP (IDs não sensíveis)
+    - airflow/.env # chaves do Airflow e DISCORD_WEBHOOK_URL (segredos, fora do git)
+  environment:
+    AIRFLOW__CORE__EXECUTOR: LocalExecutor
+    AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+    AIRFLOW__CORE__EXECUTION_API_SERVER_URL: http://airflow-apiserver:8080/execution/
+    # Sem login: a UI só escuta em 127.0.0.1 (ver a porta abaixo). Para publicar, trocar (Sprint 7).
+    AIRFLOW__CORE__SIMPLE_AUTH_MANAGER_ALL_ADMINS: "true"
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
+    # A DAG importa ingestion/orquestracao.py (só biblioteca padrão e requests)
+    PYTHONPATH: /opt/projeto
+    GOOGLE_APPLICATION_CREDENTIALS: /run/gcp/adc.json
+    # Sem isso o google.auth avisa "No project ID could be determined" (o ADC de usuário não traz
+    # projeto). O valor vem do .env da raiz, que o compose lê para interpolar; falta = erro no up.
+    GOOGLE_CLOUD_PROJECT: ${GCP_PROJECT_ID:?defina GCP_PROJECT_ID no .env}
+    TZ: UTC
+  volumes:
+    - ./airflow/dags:/opt/airflow/dags
+    - ./airflow/logs:/opt/airflow/logs
+    - .:/opt/projeto # código, dbt, data/manual e data/logs
+    - ${HOME}/.config/gcloud/application_default_credentials.json:/run/gcp/adc.json:ro
+  depends_on:
+    postgres:
+      condition: service_healthy
+
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+      POSTGRES_DB: airflow
+    volumes:
+      - postgres-dados:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "airflow"]
+      interval: 5s
+      retries: 10
+    restart: unless-stopped
+
+  airflow-init:
+    <<: *airflow-comum
+    # NÃO sobrescrever o `entrypoint`: o /entrypoint da imagem cria a entrada do uid 1000 no
+    # /etc/passwd e exporta o HOME=/home/airflow (o Airflow precisa de um usuário com nome e home, e
+    # está instalado em /home/airflow/.local). Com `command: [bash, ...]` o entrypoint faz isso e
+    # depois executa o bash. Ver docs/decisoes.md, "Airflow local".
+    command:
+      - bash
+      - -c
+      - |
+        set -e
+        airflow db migrate
+        cd /opt/projeto
+        /opt/projeto-venv/bin/dbt deps --project-dir dbt --profiles-dir dbt
+    restart: "no"
+
+  airflow-apiserver:
+    <<: *airflow-comum
+    command: api-server
+    ports:
+      - "127.0.0.1:8080:8080" # só a sua máquina acessa
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8080/api/v2/monitor/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      airflow-init:
+        condition: service_completed_successfully
+
+  airflow-scheduler:
+    <<: *airflow-comum
+    command: scheduler
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      airflow-init:
+        condition: service_completed_successfully
+
+  airflow-dag-processor:
+    <<: *airflow-comum
+    command: dag-processor
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      airflow-init:
+        condition: service_completed_successfully
+
+volumes:
+  postgres-dados:
