@@ -10,7 +10,7 @@ Pendências estão marcadas com **[pendente]**.
 
 | Fonte | Granularidade | Período | Fuso | Atualização | Tamanho | Formato |
 |---|---|---|---|---|---|---|
-| ONS, curva de carga | Horária, por subsistema | 2000–2026 (ingestão desde 2000) | Horário oficial local (com horário de verão até 2018) | 2x ao dia, com revisões | ~1,5 MB/ano | CSV, Parquet, XLSX |
+| ONS, curva de carga | Horária, por subsistema | 2000–2026 (ingestão desde 2000) | Horário oficial local (com horário de verão até 2018) | 2x ao dia, com ~2 dias de atraso e revisões | ~1,5 MB/ano | CSV, Parquet, XLSX |
 | CCEE, PLD horário | Horária, por submercado | 2021–2026 (+ arquivo 2001–2020) | Brasília | Mensal (publicação diária) | ~1 MB/ano | CSV |
 | CCEE, consumo por ramo | Mensal, por ramo | abr/2024 em diante | n/a | Mensal | ~15 KB/ano | CSV |
 | INMET, estações automáticas | Horária, por estação | 2000–2026 (usado: 2021+) | UTC | Anual (2026 parcial) | ~80–100 MB/ano (ZIP) | ZIP de CSVs |
@@ -69,7 +69,7 @@ Formato do arquivo: CSV UTF-8, separador `;`, ponto decimal.
   com cerca de 75 minutos de diferença (13:50 e 15:06 UTC), os arquivos de 2000 a 2025 ficaram
   iguais em tamanho de texto (e os de 2024 e 2025 idênticos em hash), mas o arquivo do ano
   corrente (2026, as mesmas 26.208 linhas) mudou: a consulta típica leu 69 bytes a menos. Não
-  dá para ver o que mudou porque o bronze sobrescreve o arquivo. Serão investigadas na tarefa 3.4.
+  dá para ver o que mudou porque o bronze sobrescreve o arquivo. As revisões passaram a ser versionadas e medidas na tarefa 3.4 (abaixo): o arquivo de 2026 mudou, com 480 valores revisados.
 - Veja abaixo o histórico 2000–2025 (layout, nulos, horário de verão e degraus de nível).
 - **Carga no BigQuery (tarefa 1.6, 02/10/2026):** os campos vazios do CSV (259 em 2013–2018, os
   nulos documentados abaixo) chegam ao `raw.ons_curva_carga` como **`NULL`**, e não como string
@@ -215,7 +215,34 @@ tarefa 1.10):
   +3 a +8 p.p. de variação anual entre abr e mai/2023, com ruído de feriados) é só uma
   estimativa dos dados, não do ONS.
 
+### Revisões do ONS: como são versionadas e medidas (tarefa 3.4)
+
+Desde a Sprint 3 o bronze só é regravado quando o MD5 do arquivo muda, e a versão antiga vai para
+`bronze/ons/curva_carga_versoes/ano=AAAA/carga=AAAAMMDDTHHMMZ/`. Cada mudança é comparada pela chave
+(`id_subsistema`, `din_instante`) e registrada em `data/logs/revisoes_ons.jsonl`. A primeira medição
+real está em `docs/metricas.md`. A diferença de 69 bytes de 02/10 não é recuperável (o bronze foi
+sobrescrito); a primeira medição compara o bronze de 02/10 com o ONS de 06/10.
+
+**Padrão observado (1 comparação, 02/10 a 06/10/2026; detalhe em `metricas.md`):**
+- **Só o ano corrente muda.** Os arquivos de 2000 a 2025 ficaram idênticos (hash).
+- **A revisão se concentra no mês anterior ao corrente:** 475 das 480 linhas revisadas são de
+  setembro (16,5% das horas do mês), 5 são de agosto e nenhuma é de outubro, que só recebeu linhas
+  novas (+288, os dias 1 a 3). Nenhuma linha foi removida e nenhum nulo virou valor ou o contrário:
+  só valores numéricos mudaram.
+- **A magnitude é pequena:** máxima de 281,6 MWmed, **0,517% do valor antigo** (< 1%), média
+  absoluta de 9,2 MWmed e soma líquida de −545 MWmed (as revisões tendem a baixar a carga).
+  Por subsistema: N 247, NE 101, SE 90, S 42 linhas.
+- **Limite:** é uma observação; fechamentos mensais ou anuais podem revisar mais e mais tarde
+  (as 5 linhas de agosto já mostram revisão de dois meses atrás). A janela do incremental está
+  em `decisoes.md`.
+- **Atraso de publicação:** o arquivo traz dados até **2 dias antes do download** (a última hora é
+  23:00 do dia D-2), o que calibrou a freshness do ONS (`decisoes.md`).
+
 ### Testes de qualidade previstos para a Sprint 3 (ONS, curva de carga)
+
+> **Implementados** na 3.2 (ver `decisoes.md`, "Severidade dos testes"): os casos 1 e 2 já são
+> cobertos pelo descarte no staging e pelo teste do raw; o 3, pelos dois testes de nulos (error e
+> warn); o 4 não virou teste (a lacuna de 1 h por ano até 2018 é aceita).
 
 Cada item é um caso real encontrado na exploração. Os testes devem sinalizá-lo e, onde o caso é
 conhecido e permanente, ter uma lista de exceções esperadas para não parar o pipeline por algo
@@ -297,12 +324,29 @@ Não há coluna de timestamp. Ele se monta com `MES_REFERENCIA` + `DIA` + `HORA`
 | 2026 (até 02/10) | 57,31 | 24,6% | 186,59 | 1.611,04 |
 
   Esses mínimos parecem coincidir com o piso regulatório de cada ano, mas isso precisa ser
-  confirmado na ANEEL (fonte da seção 4 do planejamento). Consequências: (1) o backtest
+  confirmado na ANEEL (fonte da seção 4 do planejamento): os mínimos batem com o piso de cada ano (ver tabela de limites abaixo). Consequências: (1) o backtest
   2021–2025 mistura regimes muito diferentes de preço (seca em 2021, piso em 2022–2024,
   preços altos em 2025); (2) os cenários de PLD (tarefa 5.7) não podem assumir distribuição
   estável; (3) o teste de faixa da tarefa 3.2 precisa do piso e do teto por ano. Parece haver
-  um teto horário e um teto estrutural, com valores diferentes. **[pendente]** confirmar
-  piso e teto por ano na ANEEL.
+  um teto horário e um teto estrutural, com valores diferentes (confirmado: são dois limites, e o
+  PLD horário usa o horário). Limites por ano (R$/MWh), guardados em `dbt/seeds/pld_limites.csv`:
+
+  | Ano | Piso | Teto estrutural | Teto horário | Documento |
+  |---|---|---|---|---|
+  | 2021 | 49,77 | 583,88 | 1.141,85 | REH ANEEL 2.828 (15/12/2020) |
+  | 2022 | 55,70 | 646,58 | 1.326,50 | REH ANEEL 2.994 (14/12/2021) |
+  | 2023 | 69,04 | 684,73 | 1.404,77 | REH ANEEL (dez/2022, número por confirmar) |
+  | 2024 | 61,07 | 716,80 | 1.470,57 | Despacho ANEEL (dez/2023, número por confirmar) |
+  | 2025 | 58,60 | 751,73 | 1.542,23 | Despacho ANEEL 3.625 (17/12/2024) |
+  | 2026 | 57,31 | 785,27 | 1.611,04 | Despacho ANEEL 3.850 (dez/2025) |
+
+  **Fonte dos valores:** notícias e sites do setor (Abraceel, Cenário Energia, Brasil Energia, Agência
+  Gov e a notícia da ANEEL de 2026, esta lida só na busca porque a página exige login); o texto das
+  resoluções e despachos **não foi lido**. **[pendente]** conferir o texto oficial de cada ano
+  (coluna `confirmado_em_fonte_oficial` do seed). Evidência cruzada com os dados: o mínimo
+  observado de cada ano é igual ao piso, e em 2024 e 2026 o máximo observado é igual ao teto
+  horário; em 2021 o máximo observado (1.128,72) passou do estrutural, o que mostra que o teto
+  do PLD horário é o horário. Usado em `fct_pld_horario_dentro_dos_limites` (error).
 
 ### PLD histórico semanal 2001–2020 (tarefa 1.10)
 

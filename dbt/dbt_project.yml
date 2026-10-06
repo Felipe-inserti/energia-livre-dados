@@ -20,6 +20,17 @@ vars:
   hora_ponta_inicio: 18 # primeira hora local do horário de ponta (18h)
   horas_de_ponta: 3 # a ANEEL define a ponta como 3 horas consecutivas: 18h, 19h e 20h
   limite_mudanca_estacao_m: 500 # deslocamento a partir do qual uma estação "mudou de lugar"
+  # Testes de faixa e de qualidade (Sprint 3, tarefa 3.2)
+  pld_tolerancia_rs: 0.01 # folga de arredondamento na comparação do PLD com piso e teto
+  carga_maxima_mwmed: 100000 # teto de plausibilidade da carga horária de UM subsistema (o SE chega a 62.150)
+  temperatura_minima_c: -10 # faixa plausível das 37 estações do SE/CO (observado: -4,7 a 42,7)
+  temperatura_maxima_c: 46
+  completude_minima_inmet: 0.95 # mesmo critério de seleção das estações (docs/fontes.md)
+
+# Seeds: tabelas de referência versionadas (limites do PLD), no dataset `staging`.
+seeds:
+  energia_livre:
+    +schema: staging
 
 models:
   energia_livre:

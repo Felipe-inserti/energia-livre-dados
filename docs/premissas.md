@@ -313,7 +313,7 @@ regime de preço de cada ano.
 8. Lastro: fórmula da penalidade, janela, tolerância e VR 2021–2025. Só necessários se a
    penalidade for modelada (extra); o limite inferior de `V` já está decidido (seção 4).
 9. Fuso do ONS (dicionário de dados; `fontes.md`).
-10. Piso e teto do PLD por ano, na ANEEL (testes de qualidade; `fontes.md`).
+10. Piso e teto do PLD por ano, na ANEEL: **valores encontrados e em uso** (seed `pld_limites`, teto horário); **[pendente]** só a conferência no texto oficial das resoluções e despachos de 2021 a 2026 (`fontes.md`).
 11. Unidade do consumo por ramo da CCEE (`fontes.md`).
 12. Número e método de geração dos cenários de PLD e de consumo (Sprint 5).
 13. Definição final do CVaR ex-ante no relatório do backtest (Sprint 6).

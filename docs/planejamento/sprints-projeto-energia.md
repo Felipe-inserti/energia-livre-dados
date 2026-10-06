@@ -91,10 +91,10 @@ Ao abrir uma conversa com o Claude, diga a sprint e a tarefa (ex.: "Sprint 1, ta
 **Objetivo:** o pipeline detecta dado ruim sozinho e passa a rodar orquestrado.
 
 **Tarefas**
-- [ ] 3.1 Testes genéricos do dbt: `not_null`, `unique`, `relationships` nas chaves.
-- [ ] 3.2 Testes de faixa: PLD entre piso e teto do ano, carga positiva, temperatura plausível.
-- [ ] 3.3 Freshness nas sources.
-- [ ] 3.4 Investigar revisões retroativas do ONS/CCEE e implementar upsert por chave natural.
+- [x] 3.1 Testes genéricos do dbt: `not_null`, `unique`, `relationships` nas chaves.
+- [x] 3.2 Testes de faixa: PLD entre piso e teto horário do ano (seed `pld_limites`), carga positiva (com exceções conhecidas), temperatura plausível e completude do INMET (warn).
+- [x] 3.3 Freshness nas sources, pela data do conteúdo (fontes manuais só avisam).
+- [x] 3.4 Investigar revisões retroativas do ONS: gravar o bronze só quando o hash mudar (versões em pasta separada), detectar e medir as revisões. O upsert pela chave natural e a carga incremental ficam na 4.1 e 4.2.
 - [ ] 3.5 Subir Airflow com docker-compose.
 - [ ] 3.6 Primeira DAG: extrair → carregar → `dbt run` → `dbt test`, rodando diariamente.
 - [ ] 3.7 Retentativas e alerta de falha (e-mail ou webhook do Discord).
@@ -103,7 +103,7 @@ Ao abrir uma conversa com o Claude, diga a sprint e a tarefa (ex.: "Sprint 1, ta
 - Quantos registros problemáticos os testes encontraram e de que tipo.
 - Quantas revisões retroativas apareceram no histórico.
 
-**Decisão a registrar:** estratégia para revisões retroativas.
+**Decisão a registrar:** estratégia para revisões retroativas (bronze por hash, versões em pasta separada).
 
 **Pronto quando:** a DAG roda de ponta a ponta no Airflow e um teste que falha interrompe o pipeline e avisa.
 

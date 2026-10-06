@@ -116,6 +116,7 @@ models:
       - name: inicio_semana_utc
         description: "Início da semana operativa (00:00 de Brasília do primeiro dia), em UTC."
         data_tests:
+          - not_null
           - relationships:
               arguments:
                 to: ref('dim_tempo')
@@ -157,6 +158,12 @@ models:
         description: "Ramo de atividade do consumidor (15 ramos, ex.: COMÉRCIO, SERVIÇOS)."
         data_tests:
           - not_null
+          # `warn`: um ramo novo é decisão da CCEE, não dado corrompido; só precisa ser notado.
+          - accepted_values:
+              config:
+                severity: warn
+              arguments:
+                values: ["ALIMENTÍCIOS", "BEBIDAS", "COMÉRCIO", "EXTRAÇÃO DE MINERAIS METÁLICOS", "MADEIRA, PAPEL E CELULOSE", "MANUFATURADOS DIVERSOS", "METALURGIA E PRODUTOS DE METAL", "MINERAIS NÃO-METÁLICOS", "QUÍMICOS", "SANEAMENTO", "SERVIÇOS", "TELECOMUNICAÇÕES", "TRANSPORTE", "TÊXTEIS", "VEÍCULOS"]
       - name: consumo_cl_esp_acl
         description: "Consumo dos consumidores livres e especiais no mercado livre (ACL). Unidade por confirmar."
       - name: consumo_autop_acl
@@ -202,6 +209,11 @@ models:
         description: "Temperatura do ar (bulbo seco), em °C. Nulo em ~1,35% das horas."
       - name: uf
         description: '{{ doc("uf") }}'
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["DF", "ES", "GO", "MG", "MS", "RJ", "SP"]
       - name: estacao_nome
         description: "Nome da estação, como no arquivo do INMET daquele ano."
       - name: latitude
