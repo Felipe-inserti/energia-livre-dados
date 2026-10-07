@@ -316,7 +316,7 @@ fusos no container, declare `tzdata` no `pyproject.toml`, rode `uv lock` e `dock
 | Configuração | Efeito |
 |---|---|
 | `{"desde": "2026-07", "ate": "2026-08"}` | backfill dos meses, inclusive (AAAA-MM, os dois juntos; validados antes de virar linha de comando) |
-| `{"execucao_completa": true}` | `dbt run` e `dbt test` **sem seleção**: roda também os 47 testes de calendário, seeds e dimensões estáticas que nenhuma fonte seleciona (convém de vez em quando e depois de mudar o código do dbt) |
+| `{"execucao_completa": true}` | `dbt run` e `dbt test` **sem seleção**: roda também os 62 testes de calendário, seeds e dimensões estáticas que nenhuma fonte seleciona (convém de vez em quando e depois de mudar o código do dbt) |
 | `{"falha_proposital": true}` | o `dbt_test` falha de propósito, para provar o alerta do Discord |
 
 ---
@@ -367,7 +367,7 @@ uv run --env-file .env python -m ingestion.ons --full --sem-medicao 2>&1 | tee d
 uv run --env-file .env dbt run --select stg_ons__curva_carga fct_carga_horaria fct_submercado_horario --full-refresh --project-dir dbt --profiles-dir dbt
 ```
 
-**Execução completa do dbt** (os 47 testes que nenhuma fonte seleciona), pela DAG: `bash scripts/operar_dag.sh completa`; ou
+**Execução completa do dbt** (os 62 testes que nenhuma fonte seleciona), pela DAG: `bash scripts/operar_dag.sh completa`; ou
 pela linha de comando (precisa das vars da janela):
 
 ```bash

@@ -1,0 +1,7 @@
+serie,baseline,ano,previsto_medio_mwmed,real_medio_mwmed,erro_mwmed,erro_pct
+original,sazonal_ingenuo,2020,37162.4237,36310.9305,851.4932,2.345
+original,sazonal_crescimento,2020,37843.1353,36310.9305,1532.2049,4.2197
+ajustada,sazonal_ingenuo,2020,39651.342,38882.9798,768.3622,1.9761
+ajustada,sazonal_crescimento,2020,40474.4806,38882.9798,1591.5008,4.0931
+original_nos_pares_da_ajustada,sazonal_ingenuo,2020,37162.4237,36310.9305,851.4932,2.345
+original_nos_pares_da_ajustada,sazonal_crescimento,2020,37843.1353,36310.9305,1532.2049,4.2197

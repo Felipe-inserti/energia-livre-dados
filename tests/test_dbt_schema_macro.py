@@ -16,7 +16,8 @@ import pytest
 DBT = Path(__file__).resolve().parent.parent / "dbt"
 MACRO = DBT / "macros" / "generate_schema_name.sql"
 
-# O dataset de cada modelo e seed na PRODUÇÃO (os que existem no BigQuery em 07/10/2026). Escrito
+# O dataset de cada modelo e seed na PRODUÇÃO (os que existem no BigQuery em 07/10/2026; o seed e o
+# mart da Sprint 4, Parte B, passam a existir com `scripts/passo2_carga_mensal.sh`). Escrito
 # à mão de propósito: é o oráculo, independente do macro. Modelo novo obriga a atualizar a lista.
 PRODUCAO = {
     "stg_ccee__consumo_ramo_atividade": "staging",
@@ -28,6 +29,7 @@ PRODUCAO = {
     "int_clima_estado_horario": "staging",
     "int_clima_submercado_horario": "staging",
     "pld_limites": "staging",  # seed
+    "ajuste_definicao_carga": "staging",  # seed (Sprint 4, Parte B)
     "dim_estacao": "marts",
     "dim_submercado": "marts",
     "dim_tempo": "marts",
@@ -36,6 +38,7 @@ PRODUCAO = {
     "fct_pld_horario": "marts",
     "fct_pld_semanal": "marts",
     "fct_submercado_horario": "marts",
+    "fct_carga_mensal": "marts",
 }
 
 

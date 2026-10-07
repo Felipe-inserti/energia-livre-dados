@@ -137,7 +137,7 @@ def selecao_da_execucao(
 
     Normal: o ONS sempre (mais o INMET e a CCEE quando houve arquivo novo) e, nos testes, o teste
     do alerta. `completa=True` (conf `execucao_completa`): sem seleção, o dbt roda tudo, inclusive
-    os 47 testes de calendário, seeds e dimensões estáticas que nenhuma fonte seleciona.
+    os 62 testes de calendário, seeds e dimensões estáticas que nenhuma fonte seleciona.
     """
     if completa:
         return {"run": "", "test": "", "fontes": "todas (execução completa)"}

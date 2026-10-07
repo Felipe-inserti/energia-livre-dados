@@ -67,7 +67,9 @@ SEM_DBT = pytest.mark.skipif(
     not (DBT / "dbt_packages").exists() or not shutil.which("dbt"),
     reason="precisa do dbt instalado e de `dbt deps`",
 )
-ESTATICOS = re.compile(r"dim_tempo|stg_feriados|dim_submercado|pld_limites|teste_alerta_falha")
+ESTATICOS = re.compile(
+    r"dim_tempo|stg_feriados|dim_submercado|pld_limites|ajuste_definicao_carga|teste_alerta_falha"
+)
 
 
 def dbt_ls(tmp_path: Path, selecao: list[str] | None) -> set[str]:

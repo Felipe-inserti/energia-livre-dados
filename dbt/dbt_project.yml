@@ -30,6 +30,26 @@ vars:
   # raw_mes_fim) NÃO têm padrão de propósito: vêm de `python -m ingestion.janela`, e uma execução
   # incremental sem elas falha. `fct_carga_materializacao`: table (padrão) ou incremental.
   fct_carga_materializacao: table
+  # Quebras de definição da carga do ONS e cobertura da API de Carga Verificada (Sprint 4, Parte B).
+  # As datas são as do DADO, medidas contra a carga líquida da API (docs/decisoes.md); a documentação
+  # do ONS diz 29/04/2023 para a MMGD.
+  inicio_api_carga: "2018-01-01" # primeiro mês com carga global na API (antes, o tipo III não é medível)
+  mes_quebra_tipo3: "2021-03-01" # a curva passa a incluir as usinas não despachadas (tipo III)
+  mes_quebra_mmgd: "2023-05-01" # a curva passa a incluir a MMGD estimada
+  # Transição do tipo III depois de 2021-03: o ajuste continua enquanto |API líquida - curva| for maior
+  # que k x desvio-padrão dessa diferença em `ano_ruido_tipo3` (ano em que a curva já traz o tipo III e
+  # ainda não traz a MMGD). k = 3: ver docs/decisoes.md.
+  ruido_k_tipo3: 3
+  ano_ruido_tipo3: 2022
+  # A transição termina no 1º mês que abre uma sequência de N meses dentro do ruído (N = 2: um mês
+  # isolado dentro do ruído por sorte não encerra a transição; docs/decisoes.md, sensibilidade).
+  meses_ruido_para_encerrar: 2
+  # Cobertura do mês (horas válidas / horas esperadas em hora local). 0,95 aceita 1 dia faltando
+  # (cobertura de 96,4% a 96,8%; viés da média do SE até 0,9%) e recusa 2 (93,5% ou menos; até 1,7%).
+  cobertura_minima: 0.95
+  # Meses fechados com lacuna CONHECIDA (dias sem dado no ONS; docs/fontes.md). O teste de aviso
+  # `fct_carga_mensal_lacunas_so_as_conhecidas` avisa se aparecer lacuna fora desta lista.
+  meses_com_lacuna_conhecida: ["2013-12-01", "2014-02-01", "2015-04-01"]
 
 # Seeds: tabelas de referência versionadas (limites do PLD), no dataset `staging`.
 seeds:

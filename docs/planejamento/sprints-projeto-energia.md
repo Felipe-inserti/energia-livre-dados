@@ -144,7 +144,7 @@ Ao abrir uma conversa com o Claude, diga a sprint e a tarefa (ex.: "Sprint 1, ta
 - Investigar a CAUSA, dentro do ONS, da revisão de 06/10 (o NE vem subestimado nos 2 a 3 últimos dias do arquivo e é preenchido depois; os dados mostram o quê, não o porquê).
 - Opções A (agrupar testes) e B (testes pesados com menos frequência) do piso de faturamento: só se o custo mensal chegar perto de ~25% do 1 TB gratuito ou o número de testes dobrar (hoje 1,6%).
 - Reavaliar o `fct_carga_horaria` incremental quando a reconstrução completa passar de ~31,5 MB faturados (o fato cresce ~3,7% ao ano: não antes de ~5 anos).
-- Agendar a execução completa do dbt (`execucao_completa`) para rodar os 47 testes que nenhuma fonte seleciona.
+- Agendar a execução completa do dbt (`execucao_completa`) para rodar os 62 testes que nenhuma fonte seleciona (47 até a Sprint 4, Parte A; +15 do seed `ajuste_definicao_carga` na Parte B).
 - Apagar `raw.ons_curva_carga_backup` e o dataset `verificacao_incremental` (os comandos foram passados no fechamento da Parte A).
 
 **Estudar:** idempotência, upsert/MERGE no BigQuery e validação de séries temporais.

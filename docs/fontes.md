@@ -223,6 +223,19 @@ tarefa 1.10):
   +3 a +8 p.p. de variação anual entre abr e mai/2023, com ruído de feriados) é só uma
   estimativa dos dados, não do ONS.
 
+**Anomalia sem causa conhecida: out/2021 no SE (a curva e a API divergem por 1 mês).** Em
+outubro/2021 a carga líquida da API (`val_cargaglobalsmmgd`, área SECO) fica acima da curva horária do
+ONS em **todos os dias do mês**, entre +609 e +1.468 MWmed (média mensal **+972 MWmed**, ~2,4% da carga),
+depois de uma diferença de +202 em set/2021 e de −55 em nov/2021 (nos últimos dias de set e nos
+primeiros de nov a diferença diária é de ~100 a 350 MWmed). A API tem 48 intervalos por dia e a curva 24 horas por dia, sem
+falta de dado nos dois lados. Os dados mostram o quê, não o porquê: não sei dizer se é a curva ou a API que sai do
+padrão, nem se é revisão, mudança de critério ou erro de publicação (**hipótese não verificada**). Não é a
+transição do tipo III (que termina em jun/2021 pela regra de `decisoes.md`) nem a MMGD (que só entra na curva
+em mai/2023). Efeito: nenhum ajuste foi feito (a regra de transição termina em jun/2021 e não volta), então
+`carga_original_mwmed` e `carga_ajustada_mwmed` de out/2021 do SE valem o mesmo e, se a curva for a que está
+errada, o alvo de out/2021 no teste final carrega esse erro. **[pendente]** perguntar ao ONS ou comparar com
+a "Carga Mensal" e a "Carga Diária" de out/2021 antes de usar o mês como alvo.
+
 ### Revisões do ONS: como são versionadas e medidas (tarefa 3.4, revisado na Sprint 4)
 
 Desde a Sprint 3 o bronze só é regravado quando o MD5 do arquivo muda, e a versão antiga vai para

@@ -1,0 +1,46 @@
+{
+  "gerado_em_utc": "2026-10-07T16:55:50Z",
+  "commit": "983318ed70fd64b19487dedcb653442d217abff9",
+  "arvore_com_mudancas": true,
+  "periodo": "estresse_2020",
+  "alvo_inicio": "2020-01-01",
+  "alvo_fim": "2020-12-01",
+  "submercado": "SE",
+  "horizontes": [
+    1,
+    12
+  ],
+  "baselines": [
+    "sazonal_ingenuo",
+    "sazonal_crescimento"
+  ],
+  "series": {
+    "original": {
+      "meses_utilizaveis": 252,
+      "primeiro": "2000-01-01",
+      "ultimo": "2020-12-01"
+    },
+    "ajustada": {
+      "meses_utilizaveis": 36,
+      "primeiro": "2018-01-01",
+      "ultimo": "2020-12-01"
+    }
+  },
+  "pares_avaliados": {
+    "original/sazonal_ingenuo": 144,
+    "original/sazonal_crescimento": 144,
+    "ajustada/sazonal_ingenuo": 144,
+    "ajustada/sazonal_crescimento": 78,
+    "original_nos_pares_da_ajustada/sazonal_ingenuo": 144,
+    "original_nos_pares_da_ajustada/sazonal_crescimento": 78
+  },
+  "definicoes": {
+    "erro": "previsto - real (positivo = previu acima do real)",
+    "mape_pct": "media de |erro| / real, em %",
+    "vies_pct": "media de erro / real, em %",
+    "origem_dezembro": "origens em dezembro: a decisao do contrato (Sprint 6)"
+  },
+  "bytes_processados": 29796,
+  "bytes_faturados": 10485760,
+  "seed_consultado_em": "2026-10-07"
+}

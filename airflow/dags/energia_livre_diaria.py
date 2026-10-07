@@ -20,7 +20,7 @@ Airflow.
 
 Configuração da execução manual (`airflow dags trigger -c '<json>'` ou o formulário):
 - `{"desde": "2026-07", "ate": "2026-08"}`: BACKFILL dos meses (AAAA-MM, inclusive, os dois juntos);
-- `{"execucao_completa": true}`: dbt sem seleção (os 47 testes que nenhuma fonte seleciona);
+- `{"execucao_completa": true}`: dbt sem seleção (os 62 testes que nenhuma fonte seleciona);
 - `{"falha_proposital": true}`: prova o alerta (o `dbt test` falha de propósito).
 A data de referência da janela vem da execução (`data_interval_end`, com `logical_date` e
 `run_after` de reserva), nunca do relógio: reexecutar um dia dá sempre a mesma janela.

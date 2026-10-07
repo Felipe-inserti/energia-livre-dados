@@ -1,0 +1,67 @@
+[
+{
+        "cod_areacarga": "SECO",
+        "din_atualizacao":"2020-09-24T12:52:27.000Z",
+        "dat_referencia": "2018-01-01",
+        "din_referenciautc": "2018-01-01T02:30:00.000Z",
+        "val_cargaglobal": 31336.965,
+        "val_cargaglobalcons": 31336.965,
+        "val_cargaglobalsmmgd": ,
+        "val_cargasupervisionada": 31336.965,
+        "val_carganaosupervisionada": 0,
+        "val_cargammgd": ,
+        "val_consistencia": 0
+     },
+{
+        "cod_areacarga": "SECO",
+        "din_atualizacao":"2020-09-24T12:52:27.000Z",
+        "dat_referencia": "2018-01-01",
+        "din_referenciautc": "2018-01-01T03:00:00.000Z",
+        "val_cargaglobal": 30967.17,
+        "val_cargaglobalcons": 30967.17,
+        "val_cargaglobalsmmgd": ,
+        "val_cargasupervisionada": 30967.17,
+        "val_carganaosupervisionada": 0,
+        "val_cargammgd": ,
+        "val_consistencia": 0
+     },
+{
+        "cod_areacarga": "SECO",
+        "din_atualizacao":"2023-04-28T10:22:19.005Z",
+        "dat_referencia": "2019-02-15",
+        "din_referenciautc": "2019-02-15T02:30:00.000Z",
+        "val_cargaglobal": 39313.547,
+        "val_cargaglobalcons": 39313.547,
+        "val_cargaglobalsmmgd": 39271.74,
+        "val_cargasupervisionada": 39271.74,
+        "val_carganaosupervisionada": 0,
+        "val_cargammgd": 41.8102,
+        "val_consistencia": 0
+     },
+{
+        "cod_areacarga": "SECO",
+        "din_atualizacao":"2026-08-14T03:01:48.376Z",
+        "dat_referencia": "2023-05-10",
+        "din_referenciautc": "2023-05-10T03:30:00.000Z",
+        "val_cargaglobal": 39308.062,
+        "val_cargaglobalcons": 39308.062,
+        "val_cargaglobalsmmgd": 39201.69,
+        "val_cargasupervisionada": 35150.168,
+        "val_carganaosupervisionada": 4051.5227,
+        "val_cargammgd": 106.37,
+        "val_consistencia": 0
+     },
+{
+        "cod_areacarga": "SECO",
+        "din_atualizacao":"2026-08-14T03:01:48.376Z",
+        "dat_referencia": "2023-05-10",
+        "din_referenciautc": "2023-05-10T04:00:00.000Z",
+        "val_cargaglobal": 38195.848,
+        "val_cargaglobalcons": 38195.848,
+        "val_cargaglobalsmmgd": 38089.477,
+        "val_cargasupervisionada": 34039.18,
+        "val_carganaosupervisionada": 4050.2983,
+        "val_cargammgd": 106.37,
+        "val_consistencia": 0
+     }
+]

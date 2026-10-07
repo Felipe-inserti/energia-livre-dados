@@ -408,3 +408,112 @@ models:
         description: "PLD da hora em R$/MWh (NUMERIC). Nulo antes de 2021 (a série horária da CCEE começa em 2021)."
       - name: temperatura_c
         description: "Temperatura média do submercado na hora, em °C (só o SE; nula para os demais e antes de 2021)."
+
+  # ----------------------------------------------------------------- série mensal (Sprint 4, Parte B)
+  - name: fct_carga_mensal
+    description: >
+      Carga mensal por submercado em MWmed, com a série ORIGINAL do ONS e uma série AJUSTADA para uma
+      definição só (carga bruta: com usinas não despachadas e com MMGD). Grão: (submercado, mês
+      local). Sem partição (tabela pequena). A curva do ONS mudou de definição em 01/03/2021 (tipo
+      III) e em 01/05/2023 (MMGD); o ajuste usa a API de Carga Verificada (seed
+      `ajuste_definicao_carga`) e a série original fica sempre ao lado. O mês corrente vem marcado
+      como incompleto e não deve ser usado como alvo nem como treino. Detalhes no cabeçalho do SQL.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [codigo_submercado, mes]
+    columns:
+      - name: codigo_submercado
+        description: '{{ doc("codigo_submercado") }}'
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_submercado')
+                field: codigo_submercado
+      - name: mes
+        description: "Primeiro dia do mês, na data local (America/Sao_Paulo)."
+        data_tests: [not_null]
+      - name: horas_esperadas
+        description: >
+          Horas que o mês tem NO RELÓGIO LOCAL (como o ONS publica: 24 valores por dia local; 23 no dia
+          em que o relógio pula uma hora; 24, e não 25, no fim do horário de verão). Horas locais
+          distintas da dim_tempo.
+        data_tests: [not_null]
+      - name: horas_com_linha
+        description: "Horas do mês que existem na `fct_carga_horaria` (valor nulo ou não). Fica abaixo de `horas_esperadas` quando o ONS não publicou o dia (N em 2014-02 e 2015-04)."
+        data_tests: [not_null]
+      - name: horas_validas
+        description: "Horas do mês com carga não nula. A média usa só essas."
+        data_tests: [not_null]
+      - name: mes_incompleto
+        description: >
+          Verdadeiro só para o mês corrente (data de São Paulo na hora do `dbt run`): o mês ainda não
+          terminou. Definido pela data, não pela contagem de horas. Nunca use o mês como alvo nem
+          como treino. Mês passado com lacuna NÃO é incompleto: veja `cobertura`.
+        data_tests: [not_null]
+      - name: cobertura
+        description: >
+          Horas válidas / horas esperadas do mês (de 0 a 1). Meses com lacuna conhecida: 2013-12,
+          2014-02 e 2015-04 (cobertura de 96,4% a 96,8%; docs/fontes.md). No mês corrente é a fração
+          já publicada.
+        data_tests: [not_null]
+      - name: cobertura_suficiente
+        description: "Verdadeiro quando `cobertura` >= var `cobertura_minima` (0,95)."
+        data_tests: [not_null]
+      - name: mes_utilizavel
+        description: >
+          Mês fechado com cobertura suficiente: o filtro que a previsão deve usar para alvo e treino.
+        data_tests: [not_null]
+      - name: carga_original_mwmed
+        description: >
+          Média das horas válidas da curva do ONS, em MWmed, SEM ajuste. Muda de definição em
+          2021-03 e em 2023-05. Nula só se o mês não tiver nenhuma hora válida.
+      - name: ajuste_tipo3_mwmed
+        description: >
+          MWmed somados para incluir as usinas não despachadas (tipo III): carga líquida da API menos a
+          curva. Medido de 2018-01 a 2021-02 e, depois da quebra, enquanto a diferença for maior que o
+          ruído (`medido_transicao`); zero depois, porque a curva já as traz; nulo antes de 2018, onde
+          não há medida e o ajuste não é inventado.
+      - name: ajuste_tipo3_status
+        description: "medido, medido_transicao, incorporado_na_curva ou nao_disponivel (antes de 2018-01)."
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [medido, medido_transicao, incorporado_na_curva, nao_disponivel]
+      - name: ajuste_tipo3_limiar_mwmed
+        description: >
+          Limiar de ruído do submercado em MWmed: `ruido_k_tipo3` x desvio-padrão da diferença mensal
+          (API líquida - curva) em 2022. A transição dura enquanto |diferença| for maior que ele.
+          Igual em todas as linhas do submercado.
+      - name: ajuste_tipo3_fim_transicao
+        description: >
+          Primeiro mês, depois de 2021-03, cuja diferença cabe no ruído: dele em diante o ajuste de
+          tipo III é zero. Se nenhum mês coubesse, valeria a quebra da MMGD (e um teste falha).
+          Igual em todas as linhas do submercado.
+      - name: ajuste_mmgd_mwmed
+        description: >
+          MWmed somados para incluir a MMGD: `r` x MMGD da API de 2019-02 a 2023-04; zero antes de
+          2019-02 (premissa: a API não tem e a MMGD era < 0,5% da carga) e a partir de 2023-05 (a curva
+          já a traz).
+      - name: ajuste_mmgd_status
+        description: "zero_por_premissa, medido_parcial, medido ou incorporado_na_curva."
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [zero_por_premissa, medido_parcial, medido, incorporado_na_curva]
+      - name: ajuste_mmgd_fator_r
+        description: >
+          Fração da MMGD da API que a curva traz: soma(curva - líquida da API) / soma(MMGD da API) nos
+          12 meses seguintes à quebra de 2023, por submercado. Igual em todas as linhas do submercado.
+      - name: carga_ajustada_mwmed
+        description: >
+          Carga bruta consistente em MWmed: original + tipo III + MMGD. Nula onde algum componente é
+          `nao_disponivel` (antes de 2018). Onde os dois ajustes são zero (a partir de 2023-05), é
+          igual à original.
+      - name: carga_ajustada_r1_mwmed
+        description: >
+          Sensibilidade da série ajustada: igual à `carga_ajustada_mwmed`, mas com a MMGD da API
+          inteira (r = 1) em vez de `r` x MMGD. Mostra quanto o resultado depende da calibração de `r`.

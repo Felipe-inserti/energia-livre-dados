@@ -18,6 +18,7 @@ FATOS = {
     "fct_clima_horario",
     "fct_pld_semanal",
     "fct_submercado_horario",
+    "fct_carga_mensal",
 }
 INTERMEDIARIOS = {"int_clima_estado_horario", "int_clima_submercado_horario"}
 PARTICIONADOS = {
@@ -117,6 +118,13 @@ def test_todo_fato_tem_chave_unica_contagem_contra_o_staging_e_relationships():
         modelo = modelos[nome]
         testes = [next(iter(t)) for t in modelo["data_tests"]]
         assert "dbt_utils.unique_combination_of_columns" in testes, nome
+        if nome == "fct_carga_mensal":
+            # agregado mensal (1 linha por submercado e mês): não há staging com a mesma contagem, e
+            # a conferência equivalente é o teste singular que reconcilia a soma com a carga horária
+            assert "fct_carga_mensal_reconcilia_com_horaria" in {
+                p.stem for p in TESTES.glob("*.sql")
+            }
+            continue
         if nome != "fct_submercado_horario":  # junção completa: tem mais linhas que cada fonte
             assert "dbt_utils.equal_rowcount" in testes, nome
         relacionamentos = [
