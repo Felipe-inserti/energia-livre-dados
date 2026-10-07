@@ -410,6 +410,33 @@ escreve essa mensagem no stdout).
 
 ---
 
+## Operações da série mensal e dos baselines (Sprint 4, Parte B)
+
+Da raiz, com o `.env` carregado. O `fct_carga_mensal` entra sozinho na DAG (descende do ONS); o seed e os resultados dos baselines são manuais.
+
+**O ONS revisou a API de Carga Verificada** (ou o seed está velho): refaça o seed e reconstrua o mart. O seed grava a data da consulta (`consultado_em`).
+
+```bash
+uv run python -m scripts.baixar_mmgd_ons 2>&1 | tee data/logs/baixar_mmgd.log   # lê a API pública (~2 min), grava dbt/seeds/ajuste_definicao_carga.csv
+bash scripts/passo2_carga_mensal.sh          # seed + mart + testes + reconciliação + bytes (grava na nuvem, idempotente)
+bash scripts/passo2_carga_mensal.sh mart     # só o mart e os testes dele (o seed já está lá)
+```
+
+**Aviso `fct_carga_mensal_lacunas_so_as_conhecidas`:** há um mês fechado com cobertura menor que 100% fora da lista `meses_com_lacuna_conhecida`
+(`dbt/dbt_project.yml`): em geral o ONS ainda não publicou ou revisou os últimos dias do mês anterior. Não derruba a DAG. Se a cobertura cair
+abaixo de 95%, o teste `fct_carga_mensal_cobertura_dos_meses_fechados` falha e o mês não é `mes_utilizavel`.
+
+**Resultados dos baselines** (só leitura na nuvem, ~20 MiB faturados cada; gravam em `docs/resultados/`):
+
+```bash
+uv run --env-file .env python -m ml.avaliar --periodo desenvolvimento
+uv run --env-file .env python -m ml.avaliar --periodo estresse_2020
+```
+
+O teste final (2021–2025) já foi usado: **não rode** `--periodo teste_final --liberar-teste-final` de novo; os resultados dele são a referência.
+
+---
+
 ## Operação do dia a dia
 
 ### Abrir a UI

@@ -124,20 +124,20 @@ Ao abrir uma conversa com o Claude, diga a sprint e a tarefa (ex.: "Sprint 1, ta
 - [x] 4.2 Garantir idempotência: reexecutar o mesmo dia não duplica nada. **Feito:** janela do dia 2 vezes (ingestão + dbt) dá 5.152 grupos iguais, 0 diferenças.
 - [x] 4.3 Backfill parametrizado por intervalo de datas. **Feito:** `--desde/--ate AAAA-MM` na ingestão e `{"desde","ate"}` na configuração da DAG; 2021 a hoje em ~125 s.
 - [x] 4.4 Testes Python (pytest) para as funções de ingestão. **Feito:** janela (todas as bordas e a virada de ano), partições, idempotência da lógica, HEAD/ETag, guarda, conf da DAG, macros do dbt e a DAG executada com um Airflow de mentira.
-- [ ] 4.5 Baseline ingênuo: mesmo mês do ano anterior (carga mensal do SE/CO, 12 meses à frente).
-- [ ] 4.6 Definir a validação temporal que todos os modelos vão usar: rolling origin mensal, horizonte de 12 meses, sempre só com informação anterior ao início de cada ano de decisão.
+- [x] 4.5 Baseline ingênuo: mesmo mês do ano anterior (carga mensal do SE/CO, 12 meses à frente). **Feito:** `ml/baselines.py` com o sazonal ingênuo e o sazonal × crescimento de 12 meses; série mensal `fct_carga_mensal` (original e ajustada para uma definição só, com cobertura e `mes_utilizavel`); degrau da MMGD (01/05/2023) e do tipo III (01/03/2021) medidos pela API de Carga Verificada. Sazonal ingênuo: MAPE 2,92% no desenvolvimento (2012–2019) e 5,61% no teste final (2021–2025), 4,30% na série ajustada.
+- [x] 4.6 Definir a validação temporal que todos os modelos vão usar: rolling origin mensal, horizonte de 12 meses, sempre só com informação anterior ao início de cada ano de decisão. **Feito:** `ml/validacao.py` (origem móvel, janela crescente, horizontes de 1 a 12, desenvolvimento 2012–2019, estresse 2020, teste final 2021–2025 usado uma vez), `ml/metricas.py` (MAPE, MAE, viés com sinal, erro anual e recorte da origem de dezembro) e `ml/avaliar.py`; resultados em `docs/resultados/`; testes de ausência de vazamento.
 
 **Medir**
 - Tempo da carga incremental vs. full da Sprint 1.
 - Tempo do backfill completo (2021 até hoje).
 - Idempotência: rodar duas vezes e comparar contagens.
-- MAPE mensal do baseline no rolling origin (2021–2025).
+- MAPE mensal do baseline no rolling origin (2021–2025). **Medido:** 5,61% (sazonal ingênuo, série original) e 4,30% (série ajustada); desenvolvimento 2012–2019: 2,92% (`docs/metricas.md`).
 
 **Decisão a registrar:** tamanho da janela de segurança na carga incremental.
 
 **Pronto quando:** a DAG diária roda incremental, o backfill funciona e o baseline tem erro medido.
 
-**Parte A (4.1 a 4.4) concluída em 07/10/2026; a Parte B (4.5 baseline e 4.6 validação temporal) fica para depois.** Resultados em `docs/metricas.md` ("Sprint 4, Parte A"); decisões em `docs/decisoes.md`.
+**Concluída em 07/10/2026: Parte A (4.1 a 4.4, ingestão incremental) e Parte B (4.5 e 4.6, baseline e validação temporal).** Resultados em `docs/metricas.md` ("Sprint 4, Parte A" e "Sprint 4, Parte B"); decisões em `docs/decisoes.md`; resultados dos baselines em `docs/resultados/`.
 
 **Backlog (registrado ao fechar a Parte A, não implementado):**
 - Alerta do Discord: hoje mostra só "Bash command failed"; melhorar para incluir os nomes dos testes do dbt que falharam.
@@ -146,6 +146,12 @@ Ao abrir uma conversa com o Claude, diga a sprint e a tarefa (ex.: "Sprint 1, ta
 - Reavaliar o `fct_carga_horaria` incremental quando a reconstrução completa passar de ~31,5 MB faturados (o fato cresce ~3,7% ao ano: não antes de ~5 anos).
 - Agendar a execução completa do dbt (`execucao_completa`) para rodar os 62 testes que nenhuma fonte seleciona (47 até a Sprint 4, Parte A; +15 do seed `ajuste_definicao_carga` na Parte B).
 - Apagar `raw.ons_curva_carga_backup` e o dataset `verificacao_incremental` (os comandos foram passados no fechamento da Parte A).
+
+**Backlog (registrado ao fechar a Parte B, não implementado):**
+- Sprint 5: decidir o tratamento do histórico anterior a 2018, onde o tipo III não é medido (a série ajustada começa em 2018-01; `premissas.md`, pendência 16).
+- Sprint 5: tratamento dos outliers de 2001–2002 e 2020 no treino; o teste final de 2021–2025 já foi usado, então a confirmação do modelo escolhido roda uma vez.
+- Verificar com o ONS a anomalia de out/2021 no SE/CO (+972 MWmed da API acima da curva, sem causa conhecida) e se houve uma segunda fase da MMGD depois de mai/2023 (o fator `r` varia de 0,69 a 0,99).
+- Se o ONS revisar a API, refazer o seed (`python -m scripts.baixar_mmgd_ons`, depois `bash scripts/passo2_carga_mensal.sh`).
 
 **Estudar:** idempotência, upsert/MERGE no BigQuery e validação de séries temporais.
 

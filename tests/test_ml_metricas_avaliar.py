@@ -206,3 +206,20 @@ def test_defesa_em_profundidade_um_baseline_que_tenta_ler_o_alvo_nao_encontra_na
         a, "BASELINES", {"ler_o_alvo": lambda hist, origem, h: hist.get(v.somar_meses(origem, h))}
     )
     assert a.gerar_registros(series_de(linhas_do_mart(sintetica())), DEV) == []
+
+
+def test_os_proprios_resultados_nao_contam_como_mudanca_na_arvore(monkeypatch):
+    chamadas = []
+
+    def falso(args, **_):
+        chamadas.append(args)
+
+        class R:
+            stdout = "abc123\n"
+
+        return R()
+
+    monkeypatch.setattr(a.subprocess, "run", falso)
+    a.referencia_git()
+    status = next(c for c in chamadas if "status" in c)
+    assert ":(exclude)docs/resultados" in status

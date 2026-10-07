@@ -185,7 +185,11 @@ def gravar_csv(caminho: Path, linhas: list[dict]) -> None:
 
 
 def referencia_git() -> dict:
-    """Commit de referência (HEAD) e se a árvore de trabalho tinha mudanças não commitadas."""
+    """Commit de referência (HEAD) e se a árvore tinha mudanças não commitadas.
+
+    Os próprios resultados (`docs/resultados`) não contam: eles são gravados antes do meta, e
+    contá-los faria toda execução parecer "com mudanças".
+    """
 
     def git(*args):
         return subprocess.run(
@@ -194,7 +198,9 @@ def referencia_git() -> dict:
 
     return {
         "commit": git("rev-parse", "HEAD"),
-        "arvore_com_mudancas": bool(git("status", "--porcelain")),
+        "arvore_com_mudancas": bool(
+            git("status", "--porcelain", "--", ".", ":(exclude)docs/resultados")
+        ),
     }
 
 
