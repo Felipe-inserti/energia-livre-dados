@@ -9,13 +9,13 @@ Nunca otimizar antes de medir a versão simples. Preencher "Antes" na versão in
 | Negócio | Exposição ao PLD (MWh descobertos ou sobrando) | __ | __ | 6 |
 | Ciência | MAPE mensal da previsão de carga (12 meses à frente, rolling origin) | baseline: __% | modelo: __% | 5 |
 | Engenharia | Dados lidos por consulta típica (**bytes processados**) | 0,037 GB (ONS, raw STRING sem partição: 37,3 MB processados; 37,7 MB faturados) | tipado sem partição: 0,018 GB (18,3 MB); **fato particionado por mês e clusterizado: 0,0007 GB (0,74 MB processados, −98,0% contra o raw)**. O faturado cai para 10,5 MB, o piso de 10 MiB do BigQuery, então a métrica de comparação são os bytes processados | 1 → 2 |
-| Engenharia | Tempo de carga diária | full: **9,3 min** (ONS 4,9 + CCEE 1,2 + INMET 3,1 + feriados 0,2; sem o tempo do download manual) | incremental: __ min | 1 → 4 |
-| Engenharia | Tempo do backfill completo (2021–hoje) | — | __ min | 4 |
+| Engenharia | Tempo de carga diária | full: **9,3 min** (ONS 4,9 + CCEE 1,2 + INMET 3,1 + feriados 0,2; sem o tempo do download manual) | incremental (DAG diária, ONS): **1,6 min** (1 min 33 s; só a ingestão do ONS leva 20 s, contra 4,9 min da carga full do ONS). Seção "Sprint 4, Parte A" | 1 → 4 |
+| Engenharia | Tempo do backfill completo (2021–hoje) | — | **~125 s (2,1 min)**: ingestão 74 s + dbt 51 s, de 2021-01 a 2026-10 (70 partições). A carga full de 2000 a hoje leva 94 s | 4 |
 | Engenharia | Problemas de dados capturados pelos testes | — | **10 registros em 173 testes** (10 estações do INMET abaixo de 95% de horas válidas em 2026, `warn`), 0 `error`; mais 240 horas nulas e 20 horas inexistentes, já conhecidas e cobertas por exceções. Detalhe na seção "Sprint 3, Parte A" | 3 |
 | Engenharia | MB gravados no GCS por execução da ingestão do ONS | full: **40,9 MB** (os 27 arquivos, toda vez) | por hash: **2,45 MB** na execução com revisão (−94,0%) e **0,00 MB** na seguinte (−100%) | 3 |
-| Engenharia | Revisões retroativas do ONS | não medidas (o bronze era sobrescrito) | 1 de 27 arquivos mudou: 480 valores revisados (1,8% das linhas do arquivo), diferença máxima de 0,517% | 3 |
+| Engenharia | Revisões retroativas do ONS | não medidas (o bronze era sobrescrito) | 1 de 27 arquivos mudou: 480 valores revisados (1,8% das linhas do arquivo), diferença máxima de 0,517%. Na Sprint 4: a revisão depende da idade do dado (nada de real passou de 27 dias; as "5 linhas de agosto" eram ruído de 7e-12), e os 93,8% de 06/10 eram valor provisório do NE substituído | 3 → 4 |
 | Engenharia | Freshness do ONS | sem freshness | antes da carga `ERROR STALE` (120 h); depois, com os limites iniciais, `WARN` (48,8 h); com os limites calibrados (72 h e 120 h), `PASS` | 3 |
-| Engenharia | Idempotência | — | 2 execuções → mesma contagem: sim/não | 4 |
+| Engenharia | Idempotência | — | **sim**: janela do dia duas vezes (ingestão + dbt) → 5.152 grupos (mês × submercado, 4 tabelas) iguais, 0 diferenças, sem tolerância; o backfill, idem | 4 |
 
 ---
 
@@ -638,3 +638,100 @@ são os mesmos, e o teste proposital devolve 0 linhas sem a variável.
 | Faturado por mês | ~90 GB |
 | Parcela do 1 TB gratuito de consultas | ~9% |
 | Custo | R$ 0 |
+
+---
+
+## Sprint 4, Parte A: ingestão incremental (tarefas 4.1 a 4.4)
+
+Medido em 07/10/2026 (UTC), na produção, com o medidor de bytes **corrigido** (o job pai de um `SCRIPT` não
+entra na soma e os filhos herdam a classificação do pai; ver `decisoes.md`, "`fct_carga_horaria` continua `table`").
+O "antes" é o da Sprint 3 (execução agendada de 06/10/2026), conferido de novo no INFORMATION_SCHEMA com o medidor
+corrigido: 195 jobs sem nenhum `SCRIPT`, o mesmo resultado. Os arquivos citados ficam em `data/logs/` (a pasta é
+ignorada pelo git, então os números ficam registrados aqui).
+
+### Antes × depois, com a origem de cada número
+
+| Medida | Antes | Depois | Variação | Origem |
+|---|---|---|---|---|
+| DAG, do início ao fim (execução normal, com ingestão) | 6 min 40 s | **1 min 33 s** | -77% | antes: Sprint 3 (agendada de 06/10); depois: `passo8_normal_resumo.txt` |
+| Task `ons_ingestao` | 4 min 22 s | **20 s** | -93% | idem |
+| Linhas recarregadas no raw por dia | 938.296 | **6.336** (3 meses) | -99,3% | `passo6_7_ingestao_dia.log` |
+| Load jobs do ONS por execução | 27 | **3** | -89% | idem |
+| MB baixados por dia | 40,9 (27 arquivos) | **1,2** (1 arquivo) | -97% | idem |
+| Conferência dos anos fechados (26 anos) | não existia | **2,4 s** por HEAD em paralelo (16,7 s em série) | n/a | `passo6_7_ingestao_dia.log` ("ETag: ... 2.4 s"); o 16,7 s é do terminal (o log antigo não imprimia o tempo) |
+| Carga full do raw (2000 a hoje, 27 arquivos) | ~275 s (275,5 e 292,2 s; BigQuery 189 a 204 s) | **94 s** na produção (89,2 s na verificação, BigQuery 36,8 s) | -66% | `passo3_e_tempo.log`, `passo2_1_full.log`; antes: Sprint 1 (`metricas.md`, "ONS ... carga full ingênua") |
+| Backfill de 6 meses por decorador, concorrência 1 e 8 | 45 s | **17 s** | -62% | `passo2_3_tempo_c1.log` e `c8.log` |
+| Backfill de 2021-01 a 2026-10 (70 meses) | n/a | **~125 s**: ingestão 74 s (66,9 s de carga) + dbt 51 s | n/a | `passo6_7_resumo.log` |
+| dbt, execução da DAG (36 jobs, com freshness) | 194 jobs, 1.557,9 MB processados, 2.965,4 MB faturados | **36 jobs, 284,8 MB, 504,4 MB** | -81% jobs, -82% proc., **-83% fat.** | `passo8_normal_bytes.log` |
+| Total faturado por execução (dbt + validações da ingestão) | 3.031,4 MB | **525,3 MB** | -83% | idem |
+| Projeção mensal (30 execuções, sem arquivo manual) | ~90,9 GB (9,1% do 1 TB gratuito) | **~15,8 GB (1,6%)** | -83% | ver "Custo mensal projetado" |
+| Idempotência (a janela do dia 2 vezes) | n/a | **5.152 grupos iguais, 0 diferenças** | n/a | `passo6_7_comparar_dia1_dia2.log` |
+| Testes (`pytest`) | 224 | ****444**** | n/a | `uv run pytest` |
+
+### Execuções da DAG (passo 8)
+
+| Execução | Estado | DAG | `ons_ingestao` | dbt (jobs, MB proc., MB fat.) | Total fat. |
+|---|---|---|---|---|---|
+| normal | success | 1 min 33 s | 20 s | 36, 284,8, 504,4 | 525,3 MB |
+| backfill pela conf (2026-07 a 2026-08) | success | 1 min 15 s | 11 s | 36, 285,6, 504,4 | 514,9 MB |
+| falha proposital | `dbt_test` failed (sem retentativa), `pipeline_ok` upstream_failed, alerta no Discord | 1 min 22 s | 18 s | 36, 284,8, 504,4 | 525,3 MB |
+
+Por task (execução normal): `parametros_execucao` 4 s, `ons_ingestao` 20 s, `freshness_ons` 10 s, `dbt_run` 36 s, `dbt_test` 20 s
+(27 testes; antes 1 min 28 s com 174), `freshness_manuais` 10 s. A medição "agendada" do `subir` foi descartada: era a execução de
+06/10 da Sprint 3 comparada com ela mesma (+0%); o script foi corrigido.
+
+### dbt por cenário (produção; `passo4b_resumo.log`, `passo6_7_resumo.log`)
+
+| Cenário | Jobs | Processado | Faturado | Tempo |
+|---|---|---|---|---|
+| **antes** (06/10, `run` + `test` + freshness) | 194 | 1.557,9 MB | 2.965,4 MB | DAG 6 min 40 s |
+| completa (`run` + `test` de tudo, sem freshness) | 192 | 1.348,6 MB | 2.753,6 MB | 92 s |
+| dia comum (ONS), `run` + `test` (3 testes vieram do cache) | 32 | 183,6 MB | 375,4 MB | 45 s |
+| dia comum com `dbt build` | 32 | 183,6 MB | 375,4 MB | 43 s |
+| **dia comum real** (ingestão antes: o cache não vale), só o dbt | 32 | 240,7 MB | **440,4 MB** | 68 s e 65 s (com a ingestão) |
+| dia + arquivo novo do INMET | 90 | 1.213,0 MB | 1.779,4 MB | 64 s |
+| dia + arquivo novo da CCEE | 85 | 250,8 MB | 919,6 MB | 59 s |
+| backfill 2021-01 a 2026-10 (dbt) | 32 | 298,7 MB | 469,8 MB | 51 s |
+
+**De onde vem o ganho:** a execução completa foi de 2.965,4 para 2.753,6 MB (-7,1%), mas só -72,3 MB (-2,4%) são do incremental (o
+`stg_ons`); -75,5 MB são cache de consultas (3 testes só do raw do ONS, que não mudava) e -64,0 MB são o escopo (o "antes" tinha 4 jobs
+de freshness). O que reduziu o custo foi a **seleção por fonte**: dia comum de 375,4 MB (440,4 MB sem o cache; 504,4 MB com a freshness
+da DAG), -83%. Os testes são o custo que sobra: 27 testes do dia = 351,3 MB faturados, 79,8% do dbt do dia, idênticos no dia e no
+backfill (o backfill de 70 meses custa só +6,7% no dbt, e toda a diferença está nos modelos, +29,4 MB).
+
+### dbt incremental × `table` por modelo (checkpoint 4, `passo4_bytes_corrigido.log`)
+
+| Modelo | Materialização | Jobs | Processado | Faturado | Tempo do modelo |
+|---|---|---|---|---|---|
+| `stg_ons__curva_carga` | `table` | 1 | 102,9 MB | 103,8 MB | 8,0 s |
+| `stg_ons__curva_carga` | incremental (janela de 3 meses) | 3 (CTAS tmp 10,49 + MERGE 20,97 + DROP) | 1,7 a 2,3 MB | **31,5 MB** (-69,7%) | 6,6 a 7,8 s |
+| `fct_carga_horaria` | **`table`** (escolhida) | 1 | 25,8 MB | **26,2 MB** | 7,3 s |
+| `fct_carga_horaria` | incremental (alternável por var) | 3 | 0,3 a 0,5 MB | 31,5 MB (+20,2%) | 7,2 a 8,1 s |
+
+O medidor antigo mostrava "10,5 MB" para os dois incrementais (o MERGE, job filho, caía no balde "outros"); o total sempre estava
+certo (31,5 MB). Provas de correção: `EXCEPT DISTINCT` 0 e 0 e 1.288 de 1.288 grupos (mês × submercado) iguais ao build full, nas
+duas rodadas de cada modelo.
+
+### Revisões do ONS por idade do dado (três versões do arquivo de 2026, 02/10 a 06/10)
+
+| Idade | Horas que mudaram, 02/10 -> 06/10 (madrugada) | Maior diferença | Horas que mudaram, 06/10 (madrugada -> noite) | Maior diferença |
+|---|---|---|---|---|
+| 0 a 2 dias | 87,2% | 0,52% | 52,1% | **93,8%** (NE, valor provisório substituído) |
+| 3 a 6 dias | 36,2% | 0,16% | 31,0% | 0,008% |
+| 7 a 13 dias | 8,3% | 0,05% | 8,8% | 0,001% |
+| 14 a 27 dias | 1,6% | 0,06% | 0% | 0 |
+| 28 dias ou mais | 0 | ruído de 7e-12 | 0 | 0 |
+
+### Custo mensal projetado (estimativa; a frequência dos arquivos manuais é premissa: foram baixados uma vez, em 02/10)
+
+Dia comum medido pela DAG: 525,3 MB (dbt 504,4 + validações 20,9). Dia com INMET: +1.404,0 MB; com CCEE: +544,2 MB (diferenças dos cenários
+acima contra os 375,4 MB do dia comum).
+
+| Cenário | GB/mês | % do 1 TB gratuito |
+|---|---|---|
+| antes: 30 × 3.031,4 MB | 90,9 | 9,1% |
+| 30 dias comuns, sem arquivo manual | **15,8** | 1,6% |
+| + 1 arquivo do INMET e 1 da CCEE por mês | 17,7 | 1,8% |
+| + 4 de cada por mês | 23,6 | 2,4% |
+
+Nos quatro casos o custo continua R$ 0, dentro do teto de R$ 10/mês.

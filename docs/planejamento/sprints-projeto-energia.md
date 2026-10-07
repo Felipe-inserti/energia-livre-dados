@@ -101,7 +101,7 @@ Ao abrir uma conversa com o Claude, diga a sprint e a tarefa (ex.: "Sprint 1, ta
 
 **Backlog (registrado ao fechar a Parte B, não implementado):**
 - Alerta do Discord: hoje mostra só "Bash command failed"; melhorar para incluir os nomes dos testes do dbt que falharam.
-- Sprint 4: investigar a revisão do ONS de 06/10/2026 (328 valores, diferença máxima de 93,8%) e o custo faturado dos testes do dbt (`decisoes.md`, "Piso de faturamento").
+- Sprint 4: investigar a revisão do ONS de 06/10/2026 (328 valores, diferença máxima de 93,8%) e o custo faturado dos testes do dbt (`decisoes.md`, "Piso de faturamento"). **Feito na Sprint 4, Parte A:** a revisão de 93,8% é valor provisório do NE substituído (a causa dentro do ONS segue no backlog) e o custo dos testes foi revisitado (opções A e B só se o custo mensal chegar perto de 25% do gratuito).
 
 **Medir**
 - Quantos registros problemáticos os testes encontraram e de que tipo.
@@ -120,10 +120,10 @@ Ao abrir uma conversa com o Claude, diga a sprint e a tarefa (ex.: "Sprint 1, ta
 **Objetivo:** pipeline eficiente e confiável + primeira previsão para servir de comparação.
 
 **Tarefas**
-- [ ] 4.1 Converter os extratores para incremental: buscar só o período novo (com uma janela de segurança para revisões). Converter também os fatos grandes do dbt para incrementais (`microbatch` por mês, com a mesma janela).
-- [ ] 4.2 Garantir idempotência: reexecutar o mesmo dia não duplica nada.
-- [ ] 4.3 Backfill parametrizado por intervalo de datas.
-- [ ] 4.4 Testes Python (pytest) para as funções de ingestão.
+- [x] 4.1 Converter os extratores para incremental: buscar só o período novo (com uma janela de segurança para revisões). Converter também os fatos grandes do dbt para incrementais (`microbatch` por mês, com a mesma janela). **Feito:** janela de 3 meses com guarda e autocorreção; raw particionado por mês e um load job por partição; staging do ONS incremental (`insert_overwrite` estático, não `microbatch`); o `fct_carga_horaria` ficou `table` porque o incremental faturava mais (31,5 contra 26,2 MB). Seleção do dbt por fonte e DAG nova.
+- [x] 4.2 Garantir idempotência: reexecutar o mesmo dia não duplica nada. **Feito:** janela do dia 2 vezes (ingestão + dbt) dá 5.152 grupos iguais, 0 diferenças.
+- [x] 4.3 Backfill parametrizado por intervalo de datas. **Feito:** `--desde/--ate AAAA-MM` na ingestão e `{"desde","ate"}` na configuração da DAG; 2021 a hoje em ~125 s.
+- [x] 4.4 Testes Python (pytest) para as funções de ingestão. **Feito:** janela (todas as bordas e a virada de ano), partições, idempotência da lógica, HEAD/ETag, guarda, conf da DAG, macros do dbt e a DAG executada com um Airflow de mentira.
 - [ ] 4.5 Baseline ingênuo: mesmo mês do ano anterior (carga mensal do SE/CO, 12 meses à frente).
 - [ ] 4.6 Definir a validação temporal que todos os modelos vão usar: rolling origin mensal, horizonte de 12 meses, sempre só com informação anterior ao início de cada ano de decisão.
 
@@ -136,6 +136,16 @@ Ao abrir uma conversa com o Claude, diga a sprint e a tarefa (ex.: "Sprint 1, ta
 **Decisão a registrar:** tamanho da janela de segurança na carga incremental.
 
 **Pronto quando:** a DAG diária roda incremental, o backfill funciona e o baseline tem erro medido.
+
+**Parte A (4.1 a 4.4) concluída em 07/10/2026; a Parte B (4.5 baseline e 4.6 validação temporal) fica para depois.** Resultados em `docs/metricas.md` ("Sprint 4, Parte A"); decisões em `docs/decisoes.md`.
+
+**Backlog (registrado ao fechar a Parte A, não implementado):**
+- Alerta do Discord: hoje mostra só "Bash command failed"; melhorar para incluir os nomes dos testes do dbt que falharam.
+- Investigar a CAUSA, dentro do ONS, da revisão de 06/10 (o NE vem subestimado nos 2 a 3 últimos dias do arquivo e é preenchido depois; os dados mostram o quê, não o porquê).
+- Opções A (agrupar testes) e B (testes pesados com menos frequência) do piso de faturamento: só se o custo mensal chegar perto de ~25% do 1 TB gratuito ou o número de testes dobrar (hoje 1,6%).
+- Reavaliar o `fct_carga_horaria` incremental quando a reconstrução completa passar de ~31,5 MB faturados (o fato cresce ~3,7% ao ano: não antes de ~5 anos).
+- Agendar a execução completa do dbt (`execucao_completa`) para rodar os 47 testes que nenhuma fonte seleciona.
+- Apagar `raw.ons_curva_carga_backup` e o dataset `verificacao_incremental` (os comandos foram passados no fechamento da Parte A).
 
 **Estudar:** idempotência, upsert/MERGE no BigQuery e validação de séries temporais.
 
