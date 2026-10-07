@@ -98,7 +98,7 @@ def test_colunas_de_controle_estao_documentadas():
 def test_colunas_documentadas_existem_nos_extratores():
     """As colunas descritas no _sources.yml têm de ser as que o raw realmente tem."""
     reais = {
-        ons.NOME_TABELA: {*ons.COLUNAS_ESPERADAS, "_arquivo_origem", "_carregado_em"},
+        ons.NOME_TABELA: {*ons.COLUNAS_ESPERADAS, *ons.TIPOS_EXTRAS},
         inmet.NOME_TABELA: {*inmet.COLUNAS_ESPERADAS, *inmet.TIPOS_EXTRAS},
         feriados.NOME_TABELA: {*feriados.COLUNAS, "_carregado_em"},
     }

@@ -54,7 +54,13 @@ sources:
           - name: _arquivo_origem
             description: "Caminho do CSV original no bronze do GCS (`bronze/ons/curva_carga/ano=AAAA/...`)."
           - name: _carregado_em
-            description: "Momento (UTC) em que a carga full gravou a linha."
+            description: "Momento (UTC) em que a carga gravou a linha."
+          - name: _mes_referencia
+            description: >
+              1º dia do mês LOCAL de `din_instante` (DATE). É a coluna de PARTIÇÃO do raw (por mês) e
+              a que o staging incremental filtra para ler só os meses da janela. Cada load job
+              substitui uma partição inteira (`tabela$AAAAMM`); o mês local difere do mês UTC das
+              tabelas do dbt nas últimas ~3 h de cada mês.
 
       - name: ccee_pld_horario
         description: >
