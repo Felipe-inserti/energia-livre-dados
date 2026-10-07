@@ -9,6 +9,7 @@ import yaml
 RAIZ = Path(__file__).resolve().parent.parent
 COMPOSE = yaml.safe_load((RAIZ / "docker-compose.yml").read_text())
 DOCKERFILE = (RAIZ / "airflow" / "Dockerfile").read_text()
+COMPOSE_TEXTO = (RAIZ / "docker-compose.yml").read_text()
 DAG = (RAIZ / "airflow" / "dags" / "energia_livre_diaria.py").read_text()
 
 
@@ -102,3 +103,53 @@ def test_dbt_test_e_freshness_nao_repetem_e_a_ingestao_repete():
     assert re.search(r'RETENTATIVAS_INGESTAO = \{"retries": 2', DAG)
     dbt_test = DAG[DAG.index('task_id="dbt_test"') :].split("freshness_manuais")[0]
     assert "**SEM_RETENTATIVA" in dbt_test
+
+
+# ---- Sprint 4, passo 8: o que a DAG nova exige da infraestrutura -----------------------------
+def test_o_codigo_chega_ao_container_por_volume_e_so_o_venv_vem_do_uv_lock():
+    """Mudar ingestion/, dbt/ ou a DAG NÃO exige rebuild: o repositório inteiro é montado em
+    /opt/projeto e a imagem só carrega o venv das dependências. Só pyproject e uv.lock exigem."""
+    assert ".:/opt/projeto" in COMPOSE_TEXTO
+    assert (
+        "COPY --chown=airflow:0 pyproject.toml uv.lock .python-version /tmp/projeto/" in DOCKERFILE
+    )
+    assert "COPY ingestion" not in DOCKERFILE and "COPY dbt" not in DOCKERFILE
+
+
+def test_a_dag_so_importa_do_projeto_a_orquestracao_que_usa_so_a_biblioteca_padrao():
+    """A DAG roda no Python do Airflow, que não tem o venv do projeto: o único import do projeto
+    (ingestion.orquestracao) não pode depender de pandas, google-cloud nem dbt."""
+    import ast
+
+    dag = ast.parse(DAG)
+    importados = {n.module for n in ast.walk(dag) if isinstance(n, ast.ImportFrom) and n.module}
+    assert {m for m in importados if m.startswith("ingestion")} == {"ingestion"}
+    orq = ast.parse((RAIZ / "ingestion" / "orquestracao.py").read_text())
+    externos = {
+        (n.module or "").split(".")[0] for n in ast.walk(orq) if isinstance(n, ast.ImportFrom)
+    } | {a.name.split(".")[0] for n in ast.walk(orq) if isinstance(n, ast.Import) for a in n.names}
+    permitidos = {"json", "os", "re", "sys", "datetime", "pathlib", "requests"}
+    assert externos <= permitidos, externos - permitidos
+
+
+def test_a_ingestao_da_dag_usa_o_modo_janela_e_nunca_a_carga_full_nem_outro_dataset():
+    ingestao = DAG[DAG.index('task_id="ons_ingestao"') :].split("pontas_da_ingestao")[0]
+    assert "ingestion.ons --sem-medicao" in ingestao and "--saida-vars" in ingestao
+    assert "--full" not in DAG and "--dataset-raw" not in DAG and "--tabela-raw" not in DAG
+
+
+def test_run_e_test_continuam_separados_e_so_o_run_recebe_as_vars_da_janela():
+    run = DAG[DAG.index('task_id="dbt_run"') :].split("dbt_test = ")[0]
+    teste = DAG[DAG.index('task_id="dbt_test"') :].split("freshness_manuais = ")[0]
+    assert "--vars" in run and "RETENTATIVAS_DBT_RUN" in run
+    assert "--vars" not in teste and "**SEM_RETENTATIVA" in teste
+
+
+def test_o_zoneinfo_do_container_depende_do_tzdata_do_sistema_e_ha_uma_precheck():
+    """O uv.lock só traz `tzdata` para Windows: no container Linux o `zoneinfo` usa o banco de
+    fusos do sistema. A pré-checagem do `operar_dag.sh subir` prova isso dentro da imagem; se
+    falhar, a correção é declarar `tzdata` no pyproject.toml (e aí sim reconstruir a imagem)."""
+    lock = (RAIZ / "uv.lock").read_text()
+    assert "sys_platform == 'win32'" in lock  # o tzdata só entra no Windows
+    script = (RAIZ / "scripts" / "operar_dag.sh").read_text()
+    assert "ZoneInfo('America/Sao_Paulo')" in script and "tzdata" in script
