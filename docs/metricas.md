@@ -735,3 +735,257 @@ acima contra os 375,4 MB do dia comum).
 | + 4 de cada por mês | 23,6 | 2,4% |
 
 Nos quatro casos o custo continua R$ 0, dentro do teto de R$ 10/mês.
+
+## Sprint 4, Parte B: série mensal, baseline e validação temporal (tarefas 4.5 e 4.6)
+
+Medido em 07/10/2026 (UTC). Os resultados dos baselines estão em `docs/resultados/` (CSV e `.meta.json`, versionados); a
+reconciliação do ajuste está em `data/logs/passo2_conferir.log` (a pasta é ignorada pelo git, então os números ficam aqui).
+Duas medidas da seção 1 (o perfil horário de 28 dias e a diferença diária API − curva) vêm de consultas exploratórias que
+não foram versionadas; o que o repositório reproduz é a reconciliação mensal (`scripts/conferir_carga_mensal.py`) e os
+resultados dos baselines (`python -m ml.avaliar`).
+
+### 1. O degrau da definição da carga (SE/CO e demais submercados)
+
+**MMGD, 01/05/2023.** A documentação do ONS diz 29/04/2023; no dado a diferença entre a curva e a carga líquida da API é +22 MWmed em
+29/04, −176 em 30/04 e **+867 em 01/05**. Duas medidas independentes do tamanho:
+
+| Submercado | Salto da curva − líquida da API (média de 4 semanas antes e depois) | % da carga | Perfil horário (28 dias, menos 5 anos normais): média / madrugada / meio-dia, em pontos logarítmicos |
+|---|---|---|---|
+| SE/CO | −59 → +1.235 = **+1.294 MWmed** | 3,3% | +4,3 / −0,1 / **+12,0** |
+| S | −128 → +609 = +737 | 6,3% | +6,9 / +1,1 / +19,2 |
+| NE | +253 → +550 = +297 | 2,6% | +7,1 / +2,1 / +18,7 |
+| N | +204 → +237 = +33 | 0,5% | +4,0 / +0,9 / +10,9 |
+
+O salto está no meio-dia e não na madrugada: é a assinatura da geração solar, o que separa o degrau de crescimento real. A medida do perfil
+horário superestima o N (+16% ao ano em 2023, crescimento real misturado); a da API não. **A MMGD continua crescendo depois do degrau**: a
+média anual da MMGD da API no SE/CO é 157 MWmed em 2019 (desde 15/02), 322 (2020), 631 (2021), 1.128 (2022), 2.172 (2023), 2.966 (2024), 3.995 (2025) e
+4.350 (2026, até 07/10). A diferença curva − líquida passa de 1.240 MWmed em mai/2023 para ~2.850 em nov/2023.
+
+**Usinas não despachadas (tipo III), 01/03/2021.** A diferença carga líquida da API − curva do SE cai de ~1.490 MWmed em 28/02/2021 para ~300 a 400 a
+partir de 03/03. É maior que o degrau da MMGD. Média por ano dos meses `medido` (2018-01 a 2021-02), em MWmed e % da carga:
+
+| | 2018 | 2019 | 2020 |
+|---|---|---|---|
+| SE/CO | 2.351 (6,56%) | 2.370 (6,51%) | 2.293 (6,50%) |
+| S | 282 (2,54%) | 271 (2,39%) | 295 (2,68%) |
+| NE | 463 (4,48%) | 433 (4,09%) | 559 (5,38%) |
+| N | 69 (1,31%) | 62 (1,12%) | 60 (1,11%) |
+
+Antes de 2018 a API não tem dado. Pela Carga Mensal do ONS (que inclui o tipo III desde jan/2015), o vão no SE/CO é **estável em nível e sazonal**: 2.138
+MWmed em 2015, 2.148 em 2016, 2.057 em 2017 (6,1%, 6,1% e 5,8% da curva) e 2.403 em 2018; vai de ~800 a 900 em janeiro a ~3.300 em junho. Começa de repente
+em jan/2015 (919 contra 0 em dez/2014). A decisão sobre o histórico anterior a 2018 fica para a Sprint 5.
+
+### 2. O ajuste (`fct_carga_mensal`, seed `ajuste_definicao_carga`)
+
+| Item | Valor |
+|---|---|
+| Seed | 304 linhas (4 submercados × 76 meses, 2018-01 a 2024-04), consulta de 07/10/2026; 443.912 registros semi-horários baixados em 2 min 2 s |
+| Mart | 1.288 linhas, 21,6 MiB; sem partição |
+| Fator `r` (fração da MMGD da API que a curva traz, 12 meses após a quebra) | SE 0,868, S 0,806, NE 0,846, N 0,846; no SE varia de 0,69 (mai/23) a 0,99 (dez/23) |
+| Ruído pós-incorporação (σ da diferença mensal em 2022; limiar = 3σ) | SE 127 (380), S 165 (495), NE 95 (285), N 60 (179) MWmed |
+| Transição do tipo III | só o SE/CO: mar, abr e mai/2021 (+393, +769 e +741 MWmed); fim em jun/2021 |
+| MMGD ajustada, média anual do SE/CO (com `r`) | 129 (2019, fev a dez), 280, 547, 978 e 1.667 (2023, jan a abr) MWmed |
+| Diferença entre `r = 1` e `r` | +20, +43, +83, +149 e +255 MWmed (2019 a 2023) |
+
+**Salto da variação anual na quebra** (pontos percentuais, mês da quebra menos o mês anterior; o ruído normal no SE/CO é mediana 2,1 e p90 6,3):
+
+| | Quebra de 2023: original → ajustada | Quebra de 2021: original → ajustada |
+|---|---|---|
+| SE/CO | 7,5 → 3,6 | 7,3 → 3,8 |
+| S | 5,5 → 0,4 | 5,7 → 2,6 |
+| NE | 8,0 → 3,2 | 6,5 → 2,8 |
+| N | 2,9 → −1,2 | 6,2 → 4,4 |
+
+O ajuste reduz o salto à metade, não o zera. O de 2021 mistura o rebote da pandemia (base de mar/2020 baixa) e por isso é um critério ruim sozinho; a variação
+anual do SE/CO no pico (abr–mai/2021) cai de 19,5% e 22,0% (original) para 13,1% e 13,0% (ajustada).
+
+### 3. Cobertura, lacunas e mês incompleto
+
+| Medida | Resultado |
+|---|---|
+| Falsos "meses incompletos" do primeiro teste | **81** (80 = os 20 fevereiros de 2000 a 2019 × 4 submercados, onde o dia de 25 horas do fim do horário de verão fazia o calendário contar 1 hora a mais que o ONS publica; 1 = N em 2015-04, 24 linhas ausentes) |
+| Meses fechados com cobertura < 100% | 12 submercado-mês: 2013-12 (96,77%), 2014-02 (96,43%) e 2015-04 (96,67%), nos 4 submercados |
+| Meses fechados abaixo do limiar de 95% | **0** (com 97% seriam 12) |
+| Mês incompleto | 4 (o corrente, out/2026, com 120 de 744 horas = 16,1%) |
+| `mes_utilizavel` | 1.284 de 1.288 |
+| Média nos meses com lacuna | igual à soma/horas válidas em todas as 1.288 linhas (diferença máxima 1,2e-10 MWmed); dividir pelas horas esperadas daria −3,2% em 2013-12 e −3,3% em 2015-04 |
+
+Viés da média mensal do SE/CO ao retirar dias seguidos de um mês (todos os meses de 2000 a 2026):
+
+| Dias faltando | Mediana | p99 | Máximo |
+|---|---|---|---|
+| 1 | 0,18% | 0,63% | 0,89% |
+| 2 | 0,35% | 1,07% | 1,68% |
+| 3 | 0,45% | 1,43% | 2,18% |
+
+### 4. Custo e testes
+
+| Medida | Resultado |
+|---|---|
+| `passo2_carga_mensal.sh` completo (seed + mart + 37 testes + reconciliação) | dbt: 39 jobs, 41,4 MB processados e 450,9 MB faturados; total com as consultas de apoio 524,3 MB faturados |
+| Testes do dbt | 37 de 37 passam (22 do mart, 15 do seed); o de aviso `fct_carga_mensal_lacunas_so_as_conhecidas` sem linhas |
+| Testes do projeto no dbt | 211 no total, 149 em alguma seleção por fonte, **62 fora** (47 antes; +15 do seed); os 22 do mart entram na seleção do ONS |
+| Cada execução de `ml.avaliar` | 2 consultas, ~30 KB processados, 20 MiB faturados (piso de 10 MiB por consulta) |
+| pytest | 508 testes |
+
+### 5. Baselines no desenvolvimento (alvos 2012 a 2019, SE/CO)
+
+Origem móvel com janela crescente (desde 2000), horizontes de 1 a 12, só `mes_utilizavel`. Erro = previsto − real: viés positivo é previsão acima do real. Série original,
+todas as origens (96 alvos por horizonte):
+
+| h | Ingênuo MAPE % | MAE | Viés MWmed | Viés % | Crescimento MAPE % | MAE | Viés MWmed | Viés % |
+|---|---|---|---|---|---|---|---|---|
+| 1 | 2,92 | 1.063 | −330 | −0,83 | 3,04 | 1.099 | +71 | +0,28 |
+| 2 | 2,92 | 1.063 | −330 | −0,83 | 3,17 | 1.147 | +78 | +0,30 |
+| 3 | 2,92 | 1.063 | −330 | −0,83 | 3,20 | 1.155 | +81 | +0,31 |
+| 4 | 2,92 | 1.063 | −330 | −0,83 | 3,23 | 1.163 | +84 | +0,32 |
+| 5 | 2,92 | 1.063 | −330 | −0,83 | 3,35 | 1.203 | +89 | +0,34 |
+| 6 | 2,92 | 1.063 | −330 | −0,83 | 3,41 | 1.225 | +94 | +0,36 |
+| 7 | 2,92 | 1.063 | −330 | −0,83 | 3,41 | 1.224 | +99 | +0,37 |
+| 8 | 2,92 | 1.063 | −330 | −0,83 | 3,43 | 1.235 | +106 | +0,39 |
+| 9 | 2,92 | 1.063 | −330 | −0,83 | 3,52 | 1.270 | +117 | +0,43 |
+| 10 | 2,92 | 1.063 | −330 | −0,83 | 3,62 | 1.307 | +128 | +0,46 |
+| 11 | 2,92 | 1.063 | −330 | −0,83 | 3,63 | 1.310 | +139 | +0,49 |
+| 12 | 2,92 | 1.063 | −330 | −0,83 | 3,61 | 1.302 | +155 | +0,53 |
+| **geral** | 2,92 | 1.063 | −330 | −0,83 | 3,39 | 1.220 | +103 | +0,38 |
+
+O sazonal ingênuo tem o **mesmo erro em todos os horizontes** (a previsão de um alvo é o mesmo mês do ano anterior, qualquer que seja a origem); o de crescimento piora com o
+horizonte (3,04% em h = 1 a 3,61% em h = 12) e fica acima do ingênuo em todos. Em compensação o viés dele é quase zero (+0,38%), e o do ingênuo é −0,83%.
+
+Todas as séries (n = pares previsão-real):
+
+| Série | Baseline | n | MAPE % | MAE MWmed | Viés MWmed | Viés % |
+|---|---|---|---|---|---|---|
+| original | sazonal_ingenuo | 1152 | 2,92 | 1.063 | −330 | −0,83 |
+| original | sazonal_crescimento | 1152 | 3,39 | 1.220 | +103 | +0,38 |
+| ajustada | sazonal_ingenuo | 144 | 3,05 | 1.243 | −806 | −1,94 |
+| original_nos_pares_da_ajustada | sazonal_ingenuo | 144 | 3,06 | 1.175 | −668 | −1,68 |
+
+A ajustada só existe a partir de 2018, então só há alvos em 2019 (12 alvos) e só o ingênuo (o de crescimento pede 24 meses de série ajustada). Dentro de 2019 as duas séries são
+consistentes entre si e a diferença é pequena (3,05% contra 3,06%).
+
+Origem em dezembro (a decisão do contrato; 8 anos × 12 horizontes na original):
+
+| Série | Baseline | n | MAPE % | MAE MWmed | Viés MWmed | Viés % |
+|---|---|---|---|---|---|---|
+| original | sazonal_ingenuo | 96 | 2,92 | 1.063 | −330 | −0,83 |
+| original | sazonal_crescimento | 96 | 3,85 | 1.386 | +95 | +0,36 |
+| ajustada | sazonal_ingenuo | 12 | 3,05 | 1.243 | −806 | −1,94 |
+| original_nos_pares_da_ajustada | sazonal_ingenuo | 12 | 3,06 | 1.175 | −668 | −1,68 |
+
+Erro do ano inteiro (média dos 12 meses previstos contra a média dos 12 reais, origem em dezembro), em % e em MWmed:
+
+| Série / baseline | 2012 | 2013 | 2014 | 2015 | 2016 | 2017 | 2018 | 2019 | Erro absoluto médio |
+|---|---|---|---|---|---|---|---|---|---|
+| original / sazonal_ingenuo | −2,41% (−854) | +2,18% (+753) | −4,55% (−1.652) | +0,95% (+341) | +0,90% (+319) | −1,42% (−513) | −1,00% (−364) | −1,80% (−668) | 1,90% |
+| original / sazonal_crescimento | +1,24% (+440) | +4,70% (+1.628) | −6,58% (−2.389) | +5,76% (+2.071) | −0,05% (−18) | −2,29% (−829) | +0,43% (+156) | −0,81% (−301) | 2,73% |
+| ajustada / sazonal_ingenuo | n/d | n/d | n/d | n/d | n/d | n/d | n/d | −2,03% (−806) | 2,03% |
+
+**Estresse de 2020** (pandemia; 12 alvos, à parte, fora da escolha de modelos):
+
+| Série | Baseline | n | MAPE % | MAE MWmed | Viés MWmed | Viés % |
+|---|---|---|---|---|---|---|
+| original | sazonal_ingenuo | 144 | 5,32 | 1.856 | +851 | +2,70 |
+| original | sazonal_crescimento | 144 | 6,87 | 2.422 | +1.073 | +3,34 |
+| ajustada | sazonal_ingenuo | 144 | 4,49 | 1.686 | +768 | +2,23 |
+| ajustada | sazonal_crescimento | 78 | 4,69 | 1.799 | −124 | −0,04 |
+| original_nos_pares_da_ajustada | sazonal_ingenuo | 144 | 5,32 | 1.856 | +851 | +2,70 |
+| original_nos_pares_da_ajustada | sazonal_crescimento | 78 | 5,73 | 2.052 | −382 | −0,65 |
+
+### 6. Teste final (alvos 2021 a 2025, SE/CO) — rodado UMA vez em 07/10/2026
+
+Código de referência: commit provisório `4bc1a17` (árvore limpa antes da execução). O `.meta.json` mostra `arvore_com_mudancas: true` por um artefato (o
+`git status` rodava depois de gravar os próprios CSVs; corrigido no código depois). Para conferir que o código é o mesmo mesmo que o commit provisório seja substituído,
+os hashes de conteúdo (`git hash-object`) no momento da execução: `ml/validacao.py` ec38c732b3dd, `ml/baselines.py` 2254ee62ea10, `ml/metricas.py` a5d2ed764286,
+`dbt/models/marts/fct_carga_mensal.sql` f314243ba152, `dbt/seeds/ajuste_definicao_carga.csv` 00162a808a94. Só `ml/avaliar.py` mudou depois (o metadado).
+
+**Por horizonte, série original** (todas as origens, 60 alvos por horizonte):
+
+| h | Ingênuo MAPE % | MAE | Viés MWmed | Viés % | Crescimento MAPE % | MAE | Viés MWmed | Viés % |
+|---|---|---|---|---|---|---|---|---|
+| 1 | 5,61 | 2.381 | −1.591 | −3,71 | 5,62 | 2.357 | +148 | +0,39 |
+| 2 | 5,61 | 2.381 | −1.591 | −3,71 | 6,20 | 2.602 | +152 | +0,40 |
+| 3 | 5,61 | 2.381 | −1.591 | −3,71 | 6,65 | 2.789 | +158 | +0,40 |
+| 4 | 5,61 | 2.381 | −1.591 | −3,71 | 7,01 | 2.940 | +159 | +0,40 |
+| 5 | 5,61 | 2.381 | −1.591 | −3,71 | 7,37 | 3.095 | +151 | +0,38 |
+| 6 | 5,61 | 2.381 | −1.591 | −3,71 | 7,65 | 3.211 | +134 | +0,33 |
+| 7 | 5,61 | 2.381 | −1.591 | −3,71 | 7,90 | 3.318 | +110 | +0,27 |
+| 8 | 5,61 | 2.381 | −1.591 | −3,71 | 8,11 | 3.401 | +81 | +0,21 |
+| 9 | 5,61 | 2.381 | −1.591 | −3,71 | 8,20 | 3.431 | +49 | +0,14 |
+| 10 | 5,61 | 2.381 | −1.591 | −3,71 | 8,20 | 3.432 | +13 | +0,06 |
+| 11 | 5,61 | 2.381 | −1.591 | −3,71 | 8,35 | 3.490 | −28 | −0,02 |
+| 12 | 5,61 | 2.381 | −1.591 | −3,71 | 8,46 | 3.538 | −65 | −0,10 |
+| **geral** | 5,61 | 2.381 | −1.591 | −3,71 | 7,48 | 3.134 | +89 | +0,24 |
+
+**Por horizonte, série ajustada:**
+
+| h | Ingênuo MAPE % | MAE | Viés MWmed | Viés % | Crescimento MAPE % | MAE | Viés MWmed | Viés % |
+|---|---|---|---|---|---|---|---|---|
+| 1 | 4,30 | 1.858 | −1.077 | −2,43 | 4,31 | 1.834 | +105 | +0,31 |
+| 2 | 4,30 | 1.858 | −1.077 | −2,43 | 4,65 | 1.981 | +103 | +0,31 |
+| 3 | 4,30 | 1.858 | −1.077 | −2,43 | 4,80 | 2.047 | +104 | +0,30 |
+| 4 | 4,30 | 1.858 | −1.077 | −2,43 | 4,94 | 2.108 | +103 | +0,29 |
+| 5 | 4,30 | 1.858 | −1.077 | −2,43 | 5,20 | 2.217 | +92 | +0,26 |
+| 6 | 4,30 | 1.858 | −1.077 | −2,43 | 5,25 | 2.240 | +75 | +0,21 |
+| 7 | 4,30 | 1.858 | −1.077 | −2,43 | 5,28 | 2.254 | +50 | +0,15 |
+| 8 | 4,30 | 1.858 | −1.077 | −2,43 | 5,48 | 2.336 | +22 | +0,09 |
+| 9 | 4,30 | 1.858 | −1.077 | −2,43 | 5,54 | 2.355 | −9 | +0,02 |
+| 10 | 4,30 | 1.858 | −1.077 | −2,43 | 5,45 | 2.320 | −40 | −0,05 |
+| 11 | 4,30 | 1.858 | −1.077 | −2,43 | 5,53 | 2.352 | −73 | −0,12 |
+| 12 | 4,30 | 1.858 | −1.077 | −2,43 | 5,66 | 2.407 | −99 | −0,17 |
+| **geral** | 4,30 | 1.858 | −1.077 | −2,43 | 5,18 | 2.204 | +36 | +0,13 |
+
+**Origem em dezembro** (a decisão do contrato; 5 anos × 12 horizontes = 60 pares):
+
+| Série | Baseline | n | MAPE % | MAE MWmed | Viés MWmed | Viés % |
+|---|---|---|---|---|---|---|
+| original | sazonal_ingenuo | 60 | 5,61 | 2.381 | −1.591 | −3,71 |
+| original | sazonal_crescimento | 60 | 6,93 | 2.879 | −24 | −0,04 |
+| ajustada | sazonal_ingenuo | 60 | 4,30 | 1.858 | −1.077 | −2,43 |
+| ajustada | sazonal_crescimento | 60 | 4,72 | 2.004 | −67 | −0,12 |
+| original_nos_pares_da_ajustada | sazonal_ingenuo | 60 | 5,61 | 2.381 | −1.591 | −3,71 |
+| original_nos_pares_da_ajustada | sazonal_crescimento | 60 | 6,93 | 2.879 | −24 | −0,04 |
+
+**Erro do ano inteiro** (origem em dezembro), em % e em MWmed:
+
+| Série / baseline | 2021 | 2022 | 2023 | 2024 | 2025 | Erro absoluto médio |
+|---|---|---|---|---|---|---|
+| original / sazonal_ingenuo | −7,34% (−2.877) | −1,26% (−501) | −5,25% (−2.198) | −5,80% (−2.579) | +0,44% (+197) | 4,02% |
+| original / sazonal_crescimento | −9,46% (−3.709) | +6,56% (+2.604) | −4,04% (−1.691) | −0,58% (−259) | +6,63% (+2.934) | 5,45% |
+| ajustada / sazonal_ingenuo | −3,03% (−1.214) | −1,40% (−569) | −4,18% (−1.776) | −4,55% (−2.023) | +0,44% (+197) | 2,72% |
+| ajustada / sazonal_crescimento | −4,91% (−1.968) | +1,68% (+683) | −2,82% (−1.199) | −0,38% (−170) | +5,23% (+2.316) | 3,01% |
+
+**Viés por ano-alvo** (sazonal ingênuo, todas as origens). A comparação do viés de 2021 é o resultado a destacar: o ajuste leva o viés do ano de **−7,39% (−2.877
+MWmed) para −2,98% (−1.214 MWmed)** e o MAPE de 7,99% para 4,80%:
+
+| Ano-alvo | Original: viés MWmed | viés % | MAPE % | Ajustada: viés MWmed | viés % | MAPE % |
+|---|---|---|---|---|---|---|
+| 2021 | −2.877 | −7,39 | 7,99 | −1.214 | −2,98 | 4,80 |
+| 2022 | −501 | −1,16 | 2,91 | −569 | −1,34 | 2,56 |
+| 2023 | −2.198 | −4,93 | 6,53 | −1.776 | −3,96 | 4,74 |
+| 2024 | −2.579 | −5,75 | 7,11 | −2.023 | −4,55 | 5,91 |
+| 2025 | +197 | +0,68 | 3,52 | +197 | +0,68 | 3,52 |
+
+2021 mês a mês (erro % do ingênuo; é o mesmo em qualquer horizonte):
+
+| Mês de 2021 | 01 | 02 | 03 | 04 | 05 | 06 | 07 | 08 | 09 | 10 | 11 | 12 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| original (erro %) | −3,2 | −3,2 | −9,6 | −16,3 | −18,0 | −13,2 | −7,8 | −9,0 | −5,2 | +3,6 | −5,4 | −1,5 |
+| ajustada (erro %) | −3,4 | −3,2 | −6,6 | −11,6 | −11,5 | −5,4 | −0,3 | −2,5 | +0,3 | +9,4 | −2,1 | +1,2 |
+
+Leitura, com o que os números permitem afirmar:
+- **O ajuste ajuda onde há quebra de definição.** O MAPE geral do ingênuo cai de 5,61% para 4,30% e o viés de −3,71% para −2,43%; o ganho vem de 2021, 2023 e 2024
+  (os anos com base de antes de uma quebra). Em 2025 as duas séries são idênticas, porque a base (2024) já está na definição nova; em 2022 o MAPE melhora (2,91% → 2,56%) mas o
+  viés piora um pouco (−1,16% → −1,34%).
+- **Resta viés negativo.** O ingênuo prevê abaixo do real em 4 dos 5 anos (a carga cresce e ele não vê o crescimento): −2,43% na ajustada, −1.077 MWmed. O ajuste não remove
+  o crescimento real nem o rebote da pandemia em 2021.
+- **O de crescimento não vence o ingênuo no MAPE** (7,48% contra 5,61% na original; 5,18% contra 4,30% na ajustada), mas tem viés ~0 (+0,24% e +0,13%). O erro dele cresce
+  com o horizonte (5,62% em h = 1 a 8,46% em h = 12 na original). No erro anual de dezembro ele erra mais que o ingênuo em 3 dos 5 anos (−9,5% em 2021, +6,6% em 2022 e +6,6% em 2025 na original) e menos em 2023 e 2024 (−4,0% e −0,6%).
+- **Do desenvolvimento ao teste final o MAPE do ingênuo quase dobra** (2,92% → 5,61% na original): o período 2021–2025 atravessa as duas quebras e a recuperação da pandemia.
+- **Out/2021:** o erro da ajustada (+9,4%) é bem diferente do da original (+3,6%) nesse único mês. É compatível com a anomalia sem causa conhecida do SE/CO (`fontes.md`): o valor
+  da curva em out/2021 está ~972 MWmed abaixo da carga da API, e a série ajustada não corrige esse mês. Não é uma conclusão, só a coerência entre os dois fatos.
+
+### O que medir depois (Sprint 5 em diante)
+
+O MAPE do modelo linear e do LightGBM contra estes números, no mesmo protocolo e só depois do desenvolvimento; a escolha do tratamento do histórico anterior a 2018; e o
+mesmo teste final com o modelo escolhido (uma vez).

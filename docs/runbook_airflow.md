@@ -316,7 +316,7 @@ fusos no container, declare `tzdata` no `pyproject.toml`, rode `uv lock` e `dock
 | Configuração | Efeito |
 |---|---|
 | `{"desde": "2026-07", "ate": "2026-08"}` | backfill dos meses, inclusive (AAAA-MM, os dois juntos; validados antes de virar linha de comando) |
-| `{"execucao_completa": true}` | `dbt run` e `dbt test` **sem seleção**: roda também os 47 testes de calendário, seeds e dimensões estáticas que nenhuma fonte seleciona (convém de vez em quando e depois de mudar o código do dbt) |
+| `{"execucao_completa": true}` | `dbt run` e `dbt test` **sem seleção**: roda também os 62 testes de calendário, seeds e dimensões estáticas que nenhuma fonte seleciona (convém de vez em quando e depois de mudar o código do dbt) |
 | `{"falha_proposital": true}` | o `dbt_test` falha de propósito, para provar o alerta do Discord |
 
 ---
@@ -367,7 +367,7 @@ uv run --env-file .env python -m ingestion.ons --full --sem-medicao 2>&1 | tee d
 uv run --env-file .env dbt run --select stg_ons__curva_carga fct_carga_horaria fct_submercado_horario --full-refresh --project-dir dbt --profiles-dir dbt
 ```
 
-**Execução completa do dbt** (os 47 testes que nenhuma fonte seleciona), pela DAG: `bash scripts/operar_dag.sh completa`; ou
+**Execução completa do dbt** (os 62 testes que nenhuma fonte seleciona), pela DAG: `bash scripts/operar_dag.sh completa`; ou
 pela linha de comando (precisa das vars da janela):
 
 ```bash
@@ -407,6 +407,33 @@ escreve essa mensagem no stdout).
 
 **Se uma execução falhar depois de o dbt apagar o staging** (o `--full-refresh` de uma tabela com outro particionamento faz
 `drop` e `create`): a tabela é derivada do raw, então basta repetir o mesmo `--full-refresh`.
+
+---
+
+## Operações da série mensal e dos baselines (Sprint 4, Parte B)
+
+Da raiz, com o `.env` carregado. O `fct_carga_mensal` entra sozinho na DAG (descende do ONS); o seed e os resultados dos baselines são manuais.
+
+**O ONS revisou a API de Carga Verificada** (ou o seed está velho): refaça o seed e reconstrua o mart. O seed grava a data da consulta (`consultado_em`).
+
+```bash
+uv run python -m scripts.baixar_mmgd_ons 2>&1 | tee data/logs/baixar_mmgd.log   # lê a API pública (~2 min), grava dbt/seeds/ajuste_definicao_carga.csv
+bash scripts/passo2_carga_mensal.sh          # seed + mart + testes + reconciliação + bytes (grava na nuvem, idempotente)
+bash scripts/passo2_carga_mensal.sh mart     # só o mart e os testes dele (o seed já está lá)
+```
+
+**Aviso `fct_carga_mensal_lacunas_so_as_conhecidas`:** há um mês fechado com cobertura menor que 100% fora da lista `meses_com_lacuna_conhecida`
+(`dbt/dbt_project.yml`): em geral o ONS ainda não publicou ou revisou os últimos dias do mês anterior. Não derruba a DAG. Se a cobertura cair
+abaixo de 95%, o teste `fct_carga_mensal_cobertura_dos_meses_fechados` falha e o mês não é `mes_utilizavel`.
+
+**Resultados dos baselines** (só leitura na nuvem, ~20 MiB faturados cada; gravam em `docs/resultados/`):
+
+```bash
+uv run --env-file .env python -m ml.avaliar --periodo desenvolvimento
+uv run --env-file .env python -m ml.avaliar --periodo estresse_2020
+```
+
+O teste final (2021–2025) já foi usado: **não rode** `--periodo teste_final --liberar-teste-final` de novo; os resultados dele são a referência.
 
 ---
 

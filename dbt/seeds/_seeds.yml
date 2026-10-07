@@ -39,3 +39,82 @@ seeds:
         description: "Onde o valor foi lido, e se o texto oficial foi lido ou não."
       - name: confirmado_em_fonte_oficial
         description: "Verdadeiro só quando o valor foi conferido no texto do documento oficial da ANEEL."
+
+  # Ajuste de definição da carga (Sprint 4, Parte B). Gerado por `scripts/baixar_mmgd_ons.py` a partir
+  # da API de Carga Verificada do ONS; NÃO editar à mão. O ONS revisa a série: `consultado_em` diz de
+  # quando é a cópia. Médias mensais da API, não o ajuste pronto (o ajuste compara com a curva e é
+  # calculado em `fct_carga_mensal`). Cobre 2018-01 a 2024-04: o começo da API e os 12 meses seguintes
+  # à quebra da MMGD, de onde sai o fator r.
+  - name: ajuste_definicao_carga
+    description: >
+      Médias mensais da carga verificada do ONS (API de Carga Verificada), por submercado: global
+      (bruta, com MMGD), líquida de MMGD e a própria MMGD, mais o status de cada componente. Serve de
+      régua para levar a curva horária a uma definição só (`fct_carga_mensal`).
+    config:
+      column_types:
+        mes: date
+        api_global_mwmed: float64
+        api_liquida_mwmed: float64
+        api_mmgd_mwmed: float64
+        api_intervalos: int64
+        api_intervalos_sem_mmgd: int64
+        api_ultima_atualizacao: date
+        consultado_em: date
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [mes, codigo_submercado]
+    columns:
+      - name: mes
+        description: "Primeiro dia do mês (data local)."
+        data_tests: [not_null]
+      - name: codigo_submercado
+        description: "Código do ONS do submercado (SE, S, NE ou N). SE vem da área de carga SECO da API."
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [SE, S, NE, N]
+      - name: api_global_mwmed
+        description: "Carga global (bruta, COM MMGD) média do mês, em MWmed (`val_cargaglobal`)."
+        data_tests: [not_null]
+      - name: api_liquida_mwmed
+        description: >
+          Carga líquida de MMGD média do mês, em MWmed (`val_cargaglobalsmmgd`). Onde a API não traz a
+          líquida (antes de 2019-02-15), vale a global, porque nada foi descontado.
+        data_tests: [not_null]
+      - name: api_mmgd_mwmed
+        description: "Carga atendida por MMGD média do mês, em MWmed. Intervalos sem valor contam como 0."
+        data_tests: [not_null]
+      - name: api_intervalos
+        description: "Número de intervalos de meia hora do mês na API (48 por dia, mais ou menos o horário de verão)."
+        data_tests: [not_null]
+      - name: api_intervalos_sem_mmgd
+        description: "Intervalos do mês em que a API não trouxe MMGD (antes de 2019-02-15)."
+        data_tests: [not_null]
+      - name: api_ultima_atualizacao
+        description: "Maior `din_atualizacao` entre os registros do mês: quando o ONS revisou o mês pela última vez."
+      - name: status_mmgd
+        description: >
+          Situação da MMGD no mês. zero_por_premissa: a API não tem MMGD, assume-se 0 (era < 0,5% da
+          carga). medido_parcial: a API só tem MMGD de parte do mês (fev/2019). medido: a API tem.
+          incorporado_na_curva: a curva do ONS já traz a MMGD (a partir de 2023-05).
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [zero_por_premissa, medido_parcial, medido, incorporado_na_curva]
+      - name: status_tipo3
+        description: >
+          Situação do tipo III (usinas não despachadas) pela DATA DA QUEBRA. medido: a curva não as
+          inclui e a API sim (2018-01 a 2021-02). incorporado_na_curva: a curva já as inclui (a partir
+          de 2021-03). A transição logo depois da quebra (`medido_transicao`) é decidida em
+          `fct_carga_mensal`, comparando a API com a curva, que o seed não enxerga e o ONS revisa.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [medido, incorporado_na_curva]
+      - name: consultado_em
+        description: "Data (UTC) da consulta à API. O ONS revisa a série: esta é a idade da cópia."
+        data_tests: [not_null]

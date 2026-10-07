@@ -99,3 +99,19 @@ Três linhas por sprint (ou por bloco de tarefas): o que entreguei, o que aprend
   temporal (4.5 e 4.6), o alerta do Discord com os nomes dos testes que falharam, a causa do NE subestimado nos últimos dias do arquivo
   e as opções A e B do piso de faturamento, que passam a valer só se o custo mensal chegar perto de 25% do gratuito.
 
+## Sprint 4, Parte B: baseline e validação temporal (07/10/2026)
+
+- **Entreguei:** a série mensal `fct_carga_mensal` (original e ajustada para uma definição só, com cobertura e `mes_utilizavel`) a partir de um seed gerado da API de Carga
+  Verificada do ONS; o pacote `ml/` (validação por origem móvel, dois baselines, MAPE/MAE/viés/erro anual); os resultados do desenvolvimento, do estresse de 2020 e do teste final
+  (rodado uma vez) em `docs/resultados/`; 6 decisões, as métricas e as fontes novas. O sazonal ingênuo erra 2,92% no desenvolvimento e 5,61% no teste final (4,30% na série ajustada);
+  o viés de 2021 vai de −7,39% para −2,98% com o ajuste.
+- **Aprendi:** (1) **a quebra de definição da carga era maior do que a que eu ia tratar**: o tipo III de 2021 (~6,5% da carga) é quase o dobro do degrau da MMGD de 2023 (3,3%) e só apareceu
+  porque a API permitia comparar com a curva; (2) o **perfil horário separa mudança de definição de crescimento real** (o salto está no meio-dia, não na madrugada); (3) a documentação diz
+  29/04/2023 e o dado diz 01/05; (4) **um teste que falha pode estar certo sobre o sintoma e errado sobre a causa**: os 81 "meses incompletos" eram 80 fevereiros por causa do horário de verão
+  e 1 lacuna real, e a lição foi separar "o mês não terminou" de "o mês tem cobertura menor"; (5) uma regra "1 mês de sorte dentro do ruído encerra" dependia de 13 MWmed, e 2 meses seguidos a
+  estabilizou; (6) mutação em teste: entregar a série inteira aos baselines **não** vaza (eles só olham para trás), então a defesa que conta é a visão cortada; (7) escolhi o limiar de cobertura
+  medindo o viés de dias faltantes, não por intuição.
+- **Travou:** o `set -e` do script derrubou a reconciliação no primeiro teste que falhou (agora o script roda tudo e sai com o código dos testes); a CTE `dentro` colidiu com a coluna `dentro` no
+  BigQuery; e o `git status` do meta contava os próprios resultados (corrigido; o do teste final não foi regravado de propósito). Ficou para a Sprint 5: o histórico anterior a 2018, os outliers
+  no treino, a anomalia de out/2021 e a verificação com o ONS de uma segunda fase da MMGD.
+

@@ -165,7 +165,7 @@ longos são:
   seguido de +13% a +29% em jun/2002–fev/2003, coincidindo com o racionamento e a
   recuperação); abr–mai/2020 (−14,5% a −12,6%, pandemia) e o rebote de mar–set/2021 (+5,4% a
   +22,0%); dez/2008–jan/2009 (−7,6% a −5,2%); nov/2009–set/2010 (+5,9% a +13,1%).
-- **Degrau no N em jul–ago/2013:** a carga média do N passa de ~3.900–4.100 MWmed (2012 e
+- **Degrau no N em jul–ago/2013 (observação; não ajustado na Parte B da Sprint 4, que não toca no N de 2013):** a carga média do N passa de ~3.900–4.100 MWmed (2012 e
   1º semestre de 2013) para ~5.100 em ago/2013 (+25%) e fica nesse nível (2013: +13,2% no
   ano; 2014: +11,9%). O SE não tem degrau (−2,1% em 2013). A participação do SE no total
   cai de 60,9% (2012) para 58,9% (2013) em grande parte por isso. A causa não pode ser
@@ -216,12 +216,59 @@ tarefa 1.10):
   (variação anual de +10,6% no SE em mar/2021, com base baixa em mar/2020), então o degrau de
   definição dessa data não é isolável. A de jan/2015 é citada só na página do dataset mensal;
   para a curva horária não há evidência.
-- **Não confirmado (aparece só em resultados de busca, sem fonte oficial lida):** uma segunda
-  fase da MMGD na carga, com a expansão projetada, depois de mai/2023. **[pendente]** verificar,
-  porque alteraria a definição de novo.
-- **Magnitude:** a documentação diz o que mudou, não quanto. O tamanho do degrau (cerca de
-  +3 a +8 p.p. de variação anual entre abr e mai/2023, com ruído de feriados) é só uma
-  estimativa dos dados, não do ONS.
+- **Segunda fase da MMGD na carga (não confirmada em fonte oficial):** os dados não mostram um segundo
+  degrau nítido depois de mai/2023. A diferença curva − carga líquida da API cresce de forma contínua
+  (1.240 MWmed em mai/2023, ~2.850 em nov/2023, ~3.100 a 3.600 em 2025–26) e a fração da MMGD da API que a
+  curva traz sobe de 0,69 (mai/23) a 0,99 (dez/23); isso é compatível com expansão da capacidade e também
+  com um ajuste de método. **[pendente]** verificar com o ONS; o fator `r` do ajuste (`decisoes.md`) absorve
+  a diferença no passado, e a sensibilidade `r = 1` mostra o tamanho do efeito (de +20 a +255 MWmed).
+- **Magnitude (medida na Sprint 4, Parte B, com a API de Carga Verificada; ver abaixo e `metricas.md`):** a
+  documentação diz o que mudou, não quanto. Quebra da MMGD **no dado em 01/05/2023** (a documentação diz
+  29/04): +1.294 MWmed no SE/CO (3,3% da carga), +737 no S, +297 no NE, +33 no N. Quebra do tipo III em
+  **01/03/2021**: ~2.300 MWmed no SE/CO (6,5% da carga), 270 a 300 no S, 430 a 560 no NE e ~60 a 70 no N. A estimativa do
+  parágrafo anterior (+3 a +8 p.p. de variação anual) é a leitura indireta; vale a medida direta.
+
+**Anomalia sem causa conhecida: out/2021 no SE (a curva e a API divergem por 1 mês).** Em
+outubro/2021 a carga líquida da API (`val_cargaglobalsmmgd`, área SECO) fica acima da curva horária do
+ONS em **todos os dias do mês**, entre +609 e +1.468 MWmed (média mensal **+972 MWmed**, ~2,4% da carga),
+depois de uma diferença de +202 em set/2021 e de −55 em nov/2021 (nos últimos dias de set e nos
+primeiros de nov a diferença diária é de ~100 a 350 MWmed). A API tem 48 intervalos por dia e a curva 24 horas por dia, sem
+falta de dado nos dois lados. Os dados mostram o quê, não o porquê: não sei dizer se é a curva ou a API que sai do
+padrão, nem se é revisão, mudança de critério ou erro de publicação (**hipótese não verificada**). Não é a
+transição do tipo III (que termina em jun/2021 pela regra de `decisoes.md`) nem a MMGD (que só entra na curva
+em mai/2023). Efeito: nenhum ajuste foi feito (a regra de transição termina em jun/2021 e não volta), então
+`carga_original_mwmed` e `carga_ajustada_mwmed` de out/2021 do SE valem o mesmo e, se a curva for a que está
+errada, o alvo de out/2021 no teste final carrega esse erro. **[pendente]** perguntar ao ONS ou comparar com
+a "Carga Mensal" e a "Carga Diária" de out/2021 antes de usar o mês como alvo.
+
+### API de Carga Verificada, Carga Mensal e lacunas da curva (Sprint 4, Parte B)
+
+**API de Carga Verificada** (https://dados.ons.org.br/dataset/carga-energia-verificada), a única fonte pública que separa a
+MMGD da carga. Não há arquivo para baixar (o S3 só tem o dicionário); há uma API aberta, **sem token**:
+`https://apicarga.ons.org.br/prd/cargaverificada?dat_inicio=AAAA-MM-DD&dat_fim=AAAA-MM-DD&cod_areacarga=SECO`
+(áreas `SECO` = SE/CO, `S`, `NE`, `N`; `SIN` devolve zeros). Meia hora por registro, 48 por dia, ~700 KB por mês e área.
+- **Campos:** `val_cargaglobal` (carga **bruta**, com MMGD), `val_cargaglobalsmmgd` (líquida; o dicionário escreve `smmg`, a API
+  devolve `smmgd`), `val_cargammgd`, mais `val_cargasupervisionada`, `val_carganaosupervisionada` e `din_atualizacao`. Global =
+  líquida + MMGD (diferença máxima 0,0005 MWmed nas médias mensais).
+- **Cobertura:** carga global de **2018-01-01** em diante (2010 e 2000 devolvem vazio). A MMGD só existe a partir de **2019-02-15**
+  (antes, os campos vêm vazios): é uma reconstrução retroativa do ONS, com `din_atualizacao` de 2023 a 2026.
+- **O ONS revisa a série:** há meses de 2023 atualizados em 14/08/2026. O seed guarda a data da consulta (`consultado_em`).
+- **O JSON vem inválido quando um campo está vazio** (`"val_cargammgd": ,`). `json.loads` falha; `scripts/baixar_mmgd_ons.py`
+  troca por `null` e o teste usa uma resposta real (`tests/fixtures/carga_verificada_exemplo.json`).
+- **MMGD média da API no SE/CO por ano (MWmed):** 157 (2019, desde 15/02), 322, 631, 1.128, 2.172, 2.966, 3.995, 4.350 (2026, até 07/10).
+- **Uso no projeto:** só como régua do ajuste (`dbt/seeds/ajuste_definicao_carga.csv`, 2018-01 a 2024-04; `decisoes.md`). Não é
+  ingerida na DAG.
+
+**Carga Mensal do ONS (`CARGA_MENSAL.xlsx`): não usada como fonte.** Os meses de **2026-08 a 2026-10 vêm com valor 0** (provisório; o dataset
+não os marca). Além disso é outra fonte (medição da CCEE) e difere da curva por ~6% em 2015–2020 e de ~1% a 3,5% depois (média anual de 2021 a 2025). Serviu só para medir o vão do tipo
+III antes de 2018: SE/CO 2.138 MWmed em 2015, 2.148 em 2016, 2.057 em 2017 (6,1%, 6,1% e 5,8% da curva), 2.403 em 2018; sazonal (~800 em
+janeiro a ~3.300 em junho); começa em jan/2015 (919 contra 0 em dez/2014). Nos meses conferidos de 2018 a 2020 fica entre −0,6% e +0,2% da carga global da API.
+
+**Lacunas conhecidas da curva horária (meses fechados com cobertura < 100%)**, nos 4 submercados, todas dias inteiros sem dado:
+2013-12 (24 horas, cobertura 96,77%), 2014-02 (24 horas, 96,43%) e 2015-04 (24 horas, 96,67%). SE, S e NE as publicam com valor nulo; o **N**
+não publica as linhas em 2014-02 e 2015-04 (24 linhas ausentes em cada). Estão na lista `meses_com_lacuna_conhecida` (`dbt_project.yml`) e
+entram na previsão (a cobertura passa do limiar de 95%; `decisoes.md`). A contagem de horas esperadas é em **hora local** (24 por dia local): o dia de
+25 horas do fim do horário de verão (fevereiro de 2000 a 2019) tem 24 valores no ONS, e o de 23 horas tem 23.
 
 ### Revisões do ONS: como são versionadas e medidas (tarefa 3.4, revisado na Sprint 4)
 

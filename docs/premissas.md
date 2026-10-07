@@ -64,6 +64,12 @@ Com um `k` único, o consumo anual varia como a carga real do SE/CO varia.
 (o perfil tem média 1 por dia). Por isso prever a **carga mensal do SE/CO** é prever o consumo
 mensal do consumidor, a menos do fator `k`.
 
+**Qual definição de carga:** a **bruta** (consumo total, com a MMGD e as usinas não despachadas).
+A MMGD de terceiros não reduz o que a loja consome; a carga líquida cai ao meio-dia só porque há
+mais painéis. A curva do ONS não tem uma definição só (líquida de MMGD até abr/2023; sem as
+usinas não despachadas até fev/2021), então a série usada é a **ajustada** de `fct_carga_mensal`
+(`carga_ajustada_mwmed`), com a original preservada ao lado (pendência 6, resolvida).
+
 **Sazonalidade como checagem de plausibilidade:** a sazonalidade mensal da curva é comparada
 com a do ramo COMÉRCIO da CCEE (disponível de abr/2024 em diante, unidade **[pendente]**). Ela
 não calibra nada; só indica se a forma é razoável.
@@ -115,19 +121,27 @@ O contrato é decidido **uma vez por ano, antes do início do ano**. Nesse horiz
 previsão de temperatura nem defasagem de curto prazo. Por isso o alvo é a carga **mensal** do
 SE/CO, 12 meses à frente, e não a horária.
 
-- **Histórico:** ONS desde 2000 (carga horária agregada para mensal).
-- **Baseline:** mesmo mês do ano anterior.
+- **Histórico:** ONS desde 2000 (carga horária agregada para mensal). A série ajustada para a
+  definição bruta só existe a partir de 2018 (a API do ONS que mede os ajustes começa aí); antes
+  de 2018 vale a série original (pendência 16).
+- **Baseline:** mesmo mês do ano anterior (**sazonal ingênuo**), mais o sazonal multiplicado pelo
+  crescimento dos últimos 12 meses. Medidos na Sprint 4 (`docs/metricas.md`, `docs/resultados/`).
 - **Modelo:** começa por uma **regressão linear regularizada** com tendência, calendário (dias
   úteis, feriados, dias do mês) e defasagens de pelo menos 12 meses. **LightGBM entra como
   desafiante**, com a mesma validação. A escolha final fica para a Sprint 5, pelo erro medido.
-- **Validação:** backtest mensal em **rolling origin**, sempre só com informação anterior ao
-  início de cada ano de decisão.
+- **Validação:** backtest mensal em **rolling origin** com janela crescente, horizontes de 1 a
+  12 meses, sempre só com informação anterior à origem (a previsão só recebe a série até a
+  origem). Alvos: desenvolvimento 2012–2019 (escolha de modelos), 2020 à parte (estresse) e
+  teste final 2021–2025 (usado uma vez, alinhado ao backtest da Sprint 6). Métricas: MAPE, MAE
+  em MWmed e **viés com sinal** (por horizonte, geral e na origem de dezembro) e o erro do ano
+  inteiro. Só entram meses fechados com cobertura de pelo menos 95% (`mes_utilizavel`).
 - **O erro desse backtest gera os cenários de consumo** da otimização. O erro é medido na
   mesma escala da decisão (mensal), porque o erro horário subestimaria a incerteza do consumo
   anual.
 - **Outliers:** os períodos de 2001–2002 (racionamento) e 2020 (pandemia) afetam o treino e a
-  distribuição do erro. **[pendente, Sprint 5]** decidir o tratamento (excluir do treino,
-  variável indicadora) e registrar em `decisoes.md`.
+  distribuição do erro. Na validação, 2020 é reportado à parte (estresse) e não entra na escolha
+  de modelos. **[pendente, Sprint 5]** decidir o tratamento no treino (excluir, variável
+  indicadora) e registrar em `decisoes.md`.
 
 ### Extra opcional: previsão horária D+1
 
@@ -301,15 +315,13 @@ regime de preço de cada ano.
 4. Pesos por estado no consumo do SE/CO: fonte, ano de referência, fixos ou variáveis (seção 3).
 5. ~~Perfil do arquivo PLD 2001–2020~~ (resolvido na tarefa 1.10: PLD 2020 do SUDESTE =
    R$ 178,03/MWh; ver `fontes.md`).
-6. **Degrau de 2023 na carga do ONS: é mudança de definição, a decidir o tratamento.** A
-   documentação do ONS (dataset de carga diária, que a curva horária reproduz) diz que a
-   partir de 29/04/2023 a carga passou a incorporar a MMGD estimada, e que em mar/2021 entrou
-   a geração de usinas não despachadas (`fontes.md`). A curva do consumidor e a previsão
-   mensal herdam o degrau em 2023–2025. Opções: (a) aceitar a série como está (e dizer que o
-   consumo do consumidor-exemplo inclui o efeito); (b) ajustar a série com uma estimativa do
-   degrau; (c) incluir uma variável de mudança de nível na previsão. Decidir antes da Sprint 5.
-   Também verificar se houve uma segunda fase da MMGD depois de mai/2023.
-7. Tratamento dos outliers 2001–2002 e 2020 na previsão mensal (seção 3, Sprint 5).
+6. ~~Degrau de 2023 na carga do ONS: é mudança de definição, a decidir o tratamento.~~ (resolvido
+   na Sprint 4, Parte B: o consumo segue a carga **bruta**; a série ajustada soma o tipo III
+   e a MMGD medidos pela API de Carga Verificada, com a original preservada, e as quebras do
+   dado são 01/03/2021 e 01/05/2023, e não 29/04; ver `decisoes.md` e `metricas.md`). Resta
+   verificar com o ONS se há uma segunda fase da MMGD depois de mai/2023 (`fontes.md`).
+7. Tratamento dos outliers 2001–2002 e 2020 no treino da previsão mensal (seção 3, Sprint 5).
+   Na validação da Sprint 4, 2020 já é reportado à parte.
 8. Lastro: fórmula da penalidade, janela, tolerância e VR 2021–2025. Só necessários se a
    penalidade for modelada (extra); o limite inferior de `V` já está decidido (seção 4).
 9. Fuso do ONS (dicionário de dados; `fontes.md`).
@@ -322,3 +334,9 @@ regime de preço de cada ano.
 15. Estações do INMET que degradaram em 2026 (10 das 37 abaixo de 95% de horas válidas, 5 abaixo
     de 90%, em especial Silvânia-GO e Três Lagoas-MS): decidir na Sprint 2/3 como tratar nas
     análises que usarem 2026 e se vale um teste de completude mensal por estação (`fontes.md`).
+16. Tipo III antes de 2018: a API do ONS não tem dado e o ajuste não foi inventado, então a
+    série ajustada começa em 2018-01. A Carga Mensal sugere um vão estável em nível (~6% da
+    curva) e sazonal desde jan/2015. Decidir na Sprint 5, quando os modelos usarem o histórico
+    longo, se e como reconstruir 2000–2017 (`fontes.md`, `decisoes.md`).
+17. Out/2021 no SE/CO: a carga líquida da API fica ~972 MWmed (2,4%) acima da curva no mês
+    inteiro, sem causa conhecida. Verificar com o ONS antes de usar o mês como alvo (`fontes.md`).
