@@ -136,3 +136,145 @@ def test_alertar_falha_monta_o_contexto_do_airflow(monkeypatch):
     assert orq.alertar_falha({"task_instance": TI(), "exception": ValueError("boom")}) is True
     assert "tentativa 3 de 3" in enviados[0] and "boom" in enviados[0]
     assert "/dags/d/runs/r1/tasks/t" in enviados[0]
+
+
+# ---- Sprint 4, passo 8: parâmetros da execução, seleção e XCom da DAG ---------------------------
+from datetime import UTC, datetime  # noqa: E402
+
+
+def utc(*args):
+    return datetime(*args, tzinfo=UTC)
+
+
+def parametros(**kw):
+    base = {
+        "data_interval_end": utc(2026, 10, 7, 21),
+        "logical_date": None,
+        "run_after": utc(2026, 10, 7, 21, 0, 3),
+        "params": {"desde": None, "ate": None, "execucao_completa": False},
+        "conf": {},
+        "run_id": "scheduled__2026-10-07T21:00:00+00:00",
+    }
+    return orq.parametros_da_execucao(**{**base, **kw})
+
+
+def test_data_de_referencia_prefere_o_fim_do_intervalo_depois_logical_date_depois_run_after():
+    assert (
+        orq.data_referencia(utc(2026, 10, 7, 21), utc(2026, 10, 6, 21), utc(2026, 10, 9))
+        == "2026-10-07"
+    )
+    assert orq.data_referencia(None, utc(2026, 10, 6, 21), utc(2026, 10, 9)) == "2026-10-06"
+    assert orq.data_referencia(None, None, utc(2026, 10, 9, 3)) == "2026-10-09"
+    with pytest.raises(ValueError):
+        orq.data_referencia(None, None, None)
+
+
+def test_a_data_de_referencia_e_sempre_em_utc_mesmo_com_outro_fuso():
+    from datetime import timedelta, timezone
+
+    brasilia = timezone(timedelta(hours=-3))
+    assert orq.data_referencia(datetime(2026, 10, 7, 23, 30, tzinfo=brasilia)) == "2026-10-08"
+
+
+def test_execucao_agendada_e_modo_janela_com_a_data_do_fim_do_intervalo():
+    p = parametros()
+    assert p["modo"] == "janela" and p["referencia"] == "2026-10-07"
+    assert p["argumentos_ons"] == "--data-referencia 2026-10-07"
+    assert p["completa"] is False and p["desde"] == p["ate"] == ""
+
+
+def test_execucao_manual_sem_intervalo_usa_o_run_after_e_nao_o_relogio():
+    p = parametros(data_interval_end=None, logical_date=None, run_after=utc(2026, 10, 9, 1, 2))
+    assert p["referencia"] == "2026-10-09"
+    # a mesma execução reexecutada (clear) dá a mesma janela: nada depende de "agora"
+    assert (
+        parametros(data_interval_end=None, logical_date=None, run_after=utc(2026, 10, 9, 1, 2)) == p
+    )
+
+
+def test_conf_de_backfill_vira_desde_ate_e_vence_os_params():
+    p = parametros(conf={"desde": "2026-07", "ate": "2026-08"})
+    assert p["modo"] == "backfill" and p["argumentos_ons"] == "--desde 2026-07 --ate 2026-08"
+    q = parametros(
+        params={"desde": "2025-01", "ate": "2025-03"}, conf={"desde": "2026-07", "ate": "2026-08"}
+    )
+    assert q["desde"] == "2026-07"  # conf > params
+    r = parametros(params={"desde": "2025-01", "ate": "2025-03"})
+    assert r["modo"] == "backfill" and r["ate"] == "2025-03"  # params do formulário também valem
+
+
+@pytest.mark.parametrize(
+    "conf",
+    [
+        {"desde": "2026-07"},  # só um dos dois
+        {"ate": "2026-08"},
+        {"desde": "2026-08", "ate": "2026-07"},  # invertido
+        {"desde": "2026-7", "ate": "2026-08"},  # formato
+        {"desde": "2026-13", "ate": "2026-14"},
+        {"desde": "2026-07; rm -rf /", "ate": "2026-08"},  # a conf vira linha de comando: validar
+        {"desde": "2026-07", "ate": "$(whoami)"},
+    ],
+)
+def test_conf_invalida_ou_perigosa_e_recusada_antes_de_virar_comando(conf):
+    with pytest.raises(ValueError):
+        parametros(conf=conf)
+
+
+def test_strings_vazias_na_conf_contam_como_ausentes():
+    assert parametros(conf={"desde": "", "ate": ""})["modo"] == "janela"
+    assert parametros(params={"desde": None, "ate": ""})["modo"] == "janela"
+
+
+def test_execucao_completa_aceita_booleano_e_texto():
+    for valor in (True, "true", "True", "1"):
+        assert parametros(conf={"execucao_completa": valor})["completa"] is True
+    for valor in (False, "false", "0", ""):
+        assert parametros(conf={"execucao_completa": valor})["completa"] is False
+
+
+def test_arquivo_de_vars_e_por_execucao_e_com_nome_seguro():
+    a = parametros(run_id="scheduled__2026-10-07T21:00:00+00:00")["arquivo_vars"]
+    b = parametros(run_id="manual__2026-10-07T22:12:05.158514+00:00")["arquivo_vars"]
+    assert a != b and a.startswith("data/estado/ons_vars_") and a.endswith(".json")
+    for nome in (a, b):
+        assert not set(nome.removeprefix("data/estado/").removesuffix(".json")) & set(":+ /\\;$()")
+    assert (
+        parametros(run_id="x; rm -rf /")["arquivo_vars"] == "data/estado/ons_vars_x__rm_-rf__.json"
+    )
+
+
+def test_selecao_da_execucao_normal_e_por_fonte_e_completa_sem_select():
+    assert orq.selecao_da_execucao() == {
+        "run": "--select source:raw.ons_curva_carga+",
+        "test": "--select source:raw.ons_curva_carga+ teste_alerta_falha_proposital",
+        "fontes": "ons",
+    }
+    inmet = orq.selecao_da_execucao(inmet_novo=True)
+    assert "source:raw.inmet_estacoes_horario+" in inmet["run"] and inmet["fontes"] == "ons+inmet"
+    ambas = orq.selecao_da_execucao(ccee_novo=True, inmet_novo=True)
+    assert ambas["fontes"] == "ons+inmet+ccee" and ambas["run"].count("source:") == 5
+    assert ambas["test"].endswith("teste_alerta_falha_proposital")
+    completa = orq.selecao_da_execucao(ccee_novo=True, completa=True)
+    assert completa["run"] == "" and completa["test"] == ""  # sem --select: o dbt roda tudo
+
+
+class TiFalso:
+    def __init__(self):
+        self.enviados = {}
+
+    def xcom_push(self, key, value):
+        self.enviados[key] = value
+
+
+def test_checar_arquivo_novo_grava_o_resultado_no_xcom_e_devolve_o_mesmo_valor(tmp_path):
+    pasta = tmp_path / "manual"
+    pasta.mkdir()
+    (pasta / "a.csv").write_text("x")
+    estado = tmp_path / "estado.json"
+    ti = TiFalso()
+    assert orq.checar_arquivo_novo(pasta, "*.csv", estado, ti) is True  # nunca carregado
+    assert ti.enviados == {"novo": True}
+    orq.registrar_estado(pasta, "*.csv", estado)
+    ti2 = TiFalso()
+    assert orq.checar_arquivo_novo(pasta, "*.csv", estado, ti2) is False  # nada mudou
+    assert ti2.enviados == {"novo": False}

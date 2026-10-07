@@ -21,15 +21,18 @@ Duas fontes em horário local (ONS, PLD) e uma em UTC (INMET): ver `decisoes.md`
 
 | Tabela em `raw` | Fonte | Linhas | Origem dos arquivos | Bronze no GCS |
 |---|---|---|---|---|
-| `ons_curva_carga` | ONS, curva de carga horária, 2000 a 2026 | 937.816 | download automático | `bronze/ons/curva_carga/ano=AAAA/` |
+| `ons_curva_carga` | ONS, curva de carga horária, 2000 a 2026 | 938.296 | download automático | `bronze/ons/curva_carga/ano=AAAA/` |
 | `ccee_pld_horario` | CCEE, PLD horário, 2021 a 2026 | 201.696 | download manual | `bronze/ccee/pld_horario/ano=AAAA/` |
 | `ccee_pld_semanal` | CCEE, PLD semanal por patamar, 2001 a 2020 | 12.312 | download manual | `bronze/ccee/pld_semanal/` |
 | `ccee_consumo_ramo_atividade` | CCEE, consumo mensal por ramo, 2024 a 2026 | 435 | download manual | `bronze/ccee/consumo_ramo_atividade/ano=AAAA/` |
 | `inmet_estacoes_horario` | INMET, 37 estações do SE/CO, 2021 a 2026 | 1.837.272 | download manual | `bronze/inmet/ano=AAAA/` |
 | `feriados` | biblioteca `holidays`, 2000 a 2030 | 285 | gerada em código | n/a |
 
-Todas as colunas das fontes estão como STRING (a tipagem é do dbt), sem partição, mais
-`_arquivo_origem` e `_carregado_em` (exceto `feriados`, só com `_carregado_em`).
+Todas as colunas das fontes estão como STRING (a tipagem é do dbt), mais `_arquivo_origem` e
+`_carregado_em` (exceto `feriados`, só com `_carregado_em`). **Só a `ons_curva_carga` é particionada**
+(desde a Sprint 4): por MÊS LOCAL, na coluna de controle `_mes_referencia` (DATE, o 1º dia do mês de
+`din_instante`), para a carga incremental substituir só as partições da janela. As outras continuam sem
+partição, carregadas inteiras.
 
 ---
 
@@ -39,6 +42,11 @@ Todas as colunas das fontes estão como STRING (a tipagem é do dbt), sem parti�
 - **Acesso:** download direto por ano, sem API nem autenticação:
   `https://ons-aws-prod-opendata.s3.amazonaws.com/dataset/curva-carga-ho/CURVA_CARGA_{ANO}.csv`
   (também `.parquet` e `.xlsx`). Testado em 2021 e 2025.
+- **Só existe o arquivo do ANO inteiro:** não há arquivo por mês (as URLs `CURVA_CARGA_AAAA-MM.csv` e
+  `CURVA_CARGA_AAAAMM.csv` dão 404). O S3 aceita `Range` (HTTP 206), mas o CSV é ordenado por tempo e
+  sem índice, e o arquivo do ano corrente tem ~1,2 MB: pegar só a cauda não compensa. O `ETag` do
+  objeto é o MD5 do arquivo (upload simples), então um HEAD diz se um ano mudou sem baixá-lo (a
+  ingestão confere os 26 anos fechados assim; `decisoes.md`, "HEAD/ETag dos anos fechados").
 - **Granularidade:** horária, por subsistema (N, NE, S, SE).
 - **Período:** 2000–2026. A ingestão é **desde 2000**: a previsão mensal da carga do SE/CO (12
   meses à frente) precisa do histórico longo, e a curva do consumidor usa a carga real de
@@ -215,35 +223,39 @@ tarefa 1.10):
   +3 a +8 p.p. de variação anual entre abr e mai/2023, com ruído de feriados) é só uma
   estimativa dos dados, não do ONS.
 
-### Revisões do ONS: como são versionadas e medidas (tarefa 3.4)
+### Revisões do ONS: como são versionadas e medidas (tarefa 3.4, revisado na Sprint 4)
 
 Desde a Sprint 3 o bronze só é regravado quando o MD5 do arquivo muda, e a versão antiga vai para
 `bronze/ons/curva_carga_versoes/ano=AAAA/carga=AAAAMMDDTHHMMZ/`. Cada mudança é comparada pela chave
-(`id_subsistema`, `din_instante`) e registrada em `data/logs/revisoes_ons.jsonl`. A primeira medição
-real está em `docs/metricas.md`. A diferença de 69 bytes de 02/10 não é recuperável (o bronze foi
-sobrescrito); a primeira medição compara o bronze de 02/10 com o ONS de 06/10.
+(`id_subsistema`, `din_instante`) e registrada em `data/logs/revisoes_ons.jsonl`. Na Sprint 4 a comparação
+passou a ter **tolerância absoluta de 1e-6 MWmed** e a registrar os meses de qualquer linha alterada,
+adicionada ou removida (`meses_afetados`), que alimenta a guarda da ingestão incremental. A diferença de 69
+bytes de 02/10 não é recuperável (o bronze foi sobrescrito).
 
-**Padrão observado (1 comparação, 02/10 a 06/10/2026; detalhe em `metricas.md`):**
-- **Só o ano corrente muda.** Os arquivos de 2000 a 2025 ficaram idênticos (hash).
-- **A revisão se concentra no mês anterior ao corrente:** 475 das 480 linhas revisadas são de
-  setembro (16,5% das horas do mês), 5 são de agosto e nenhuma é de outubro, que só recebeu linhas
-  novas (+288, os dias 1 a 3). Nenhuma linha foi removida e nenhum nulo virou valor ou o contrário:
-  só valores numéricos mudaram.
-- **A magnitude é pequena:** máxima de 281,6 MWmed, **0,517% do valor antigo** (< 1%), média
-  absoluta de 9,2 MWmed e soma líquida de −545 MWmed (as revisões tendem a baixar a carga).
-  Por subsistema: N 247, NE 101, SE 90, S 42 linhas.
-- **Limite:** é uma observação; fechamentos mensais ou anuais podem revisar mais e mais tarde
-  (as 5 linhas de agosto já mostram revisão de dois meses atrás). A janela do incremental está
-  em `decisoes.md`.
-- **Segunda medição, de outra data (DAG da Parte B, 06/10/2026):** 328 valores alterados no arquivo de
-  2026 (setembro 178, outubro 150), com diferença máxima de **7.212 MWmed (93,8%)**. A medição anterior
-  (0,517%) e esta são de datas e bases de comparação diferentes, então os números **não são comparáveis
-  entre si** e este registro não conclui nada sobre a causa da diferença maior. O que ela sustenta: o ONS
-  revisa o **mês corrente e o anterior**, o que justifica a janela do incremental (`decisoes.md`). A causa
-  e o tamanho típico da revisão ficam como item de investigação da Sprint 4 (`data/logs/revisoes_ons.jsonl`
-  tem o detalhe linha a linha).
+**Padrão observado (três versões do arquivo de 2026: 02/10, 06/10 de madrugada e 06/10 à noite; detalhe e
+tabela de idades em `metricas.md` e `decisoes.md`):**
+- **Só o ano corrente muda.** Os arquivos de 2000 a 2025 ficaram idênticos (hash) nas duas comparações.
+- **A revisão depende da IDADE do dado em relação à borda do arquivo (a última hora publicada), não do
+  mês do calendário:** 87% das horas dos últimos 2 dias mudam, 36% das de 3 a 6 dias, 8% das de 7 a 13 dias,
+  1,6% das de 14 a 27 dias (22 horas, até 5,2 MWmed) e **nenhuma das de 28 dias ou mais**. Nesta amostra
+  **nenhuma revisão real passou de 27 dias**.
+- **Correção (Sprint 4):** a versão anterior desta seção dizia que 5 linhas de agosto mostravam "revisão de
+  dois meses atrás". Eram **ruído de ponto flutuante** (diferenças de até 7,3e-12 MWmed), contadas porque a
+  comparação era exata. Com a tolerância elas somem.
+- **A magnitude típica é pequena:** a comparação de 02/10 a 06/10 teve diferença máxima de 281,6 MWmed
+  (**0,517%**), média absoluta de 9,2 MWmed e soma líquida de -545 MWmed. Só valores numéricos mudam;
+  nenhuma linha removida, nenhum nulo virou valor.
+- **A diferença de 93,8% (06/10) é valor provisório substituído:** todas as 150 alterações de outubro estão
+  no **NE, nos dias 02 e 03/10** (a maior: 7.689 -> 14.902 MWmed), cuja média diária estava em ~10.500 a
+  11.600 MWmed e passou para ~15.000, em linha com os dias vizinhos. Não houve hora faltante preenchida (sem
+  nulo nem zero, e as 192 linhas novas são horas de 04 e 05/10) nem linha removida. As outras 178
+  alterações (setembro) são de até 4,4 MWmed (0,008%). A causa dentro do ONS não é conhecida (backlog).
+- **Limite:** são duas comparações em 5 dias, de um arquivo. Um fechamento mensal ou anual pode revisar
+  mais e mais tarde; por isso a ingestão tem a guarda (recarrega o ano inteiro se uma alteração cair fora
+  da janela de 3 meses) e confere os anos fechados por HEAD.
 - **Atraso de publicação:** o arquivo traz dados até **2 dias antes do download** (a última hora é
-  23:00 do dia D-2), o que calibrou a freshness do ONS (`decisoes.md`).
+  23:00 do dia D-2; em 06/10 às 22:00 UTC o arquivo já ia até 05/10), o que calibrou a freshness do ONS
+  (`decisoes.md`).
 
 ### Testes de qualidade previstos para a Sprint 3 (ONS, curva de carga)
 

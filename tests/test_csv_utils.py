@@ -157,3 +157,23 @@ def test_erro_de_linha_conta_as_linhas_puladas():
 def test_menos_linhas_de_metadados_do_que_o_pedido():
     with pytest.raises(ValueError, match="menos de 8"):
         transformar_csv(b"a;b\n", {}, pular_linhas=8)
+
+
+def test_colunas_derivadas_sao_calculadas_por_linha_e_entram_depois_dos_extras():
+    bruto = b"data;valor\n2026-09-30 23:00:00;1\n2026-10-01 00:00:00;2\n"
+    r = transformar_csv(
+        bruto,
+        {"_origem": "x"},
+        derivadas={"_mes": lambda linha: linha["data"][:7]},
+    )
+    assert r.conteudo.decode().splitlines() == [
+        "data,valor,_origem,_mes",
+        "2026-09-30 23:00:00,1,x,2026-09",
+        "2026-10-01 00:00:00,2,x,2026-10",
+    ]
+    assert r.colunas == ["data", "valor"] and r.linhas == 2
+
+
+def test_coluna_derivada_que_colide_com_a_da_fonte_e_recusada():
+    with pytest.raises(ValueError, match="colidem"):
+        transformar_csv(b"data;valor\n1;2\n", {}, derivadas={"valor": lambda linha: ""})

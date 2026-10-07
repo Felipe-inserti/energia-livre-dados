@@ -26,6 +26,10 @@ vars:
   temperatura_minima_c: -10 # faixa plausível das 37 estações do SE/CO (observado: -4,7 a 42,7)
   temperatura_maxima_c: 46
   completude_minima_inmet: 0.95 # mesmo critério de seleção das estações (docs/fontes.md)
+  # Incremental do ONS (Sprint 4). As vars da janela (utc_inicio, utc_fim, particoes_utc, raw_mes_inicio,
+  # raw_mes_fim) NÃO têm padrão de propósito: vêm de `python -m ingestion.janela`, e uma execução
+  # incremental sem elas falha. `fct_carga_materializacao`: table (padrão) ou incremental.
+  fct_carga_materializacao: table
 
 # Seeds: tabelas de referência versionadas (limites do PLD), no dataset `staging`.
 seeds:

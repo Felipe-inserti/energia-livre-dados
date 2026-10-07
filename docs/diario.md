@@ -74,3 +74,28 @@ Três linhas por sprint (ou por bloco de tarefas): o que entreguei, o que aprend
 - **Entreguei:** o Airflow local (compose com LocalExecutor, imagem de 1,1 GB, build de 2 min 32 s) e a DAG `energia_livre_diaria`: ONS, ramos opcionais da CCEE e do INMET (só quando a pasta muda), freshness, `dbt run`, `dbt test` e `pipeline_ok`. Execução agendada completa em 6 min 40 s. Retentativas só onde a falha é transitória e alerta no Discord; a falha proposital interrompeu o pipeline (`pipeline_ok` em `upstream_failed`) e o aviso chegou com task, execução e link, ~5 min 47 s depois do início.
 - **Aprendi:** (1) o BigQuery fatura no mínimo 10 MiB por job: 194 jobs do dbt deram 2,97 GB faturados para 1,56 GB processados, então os testes dominam o custo faturado (projeção de ~90 GB/mês, ~9% do 1 TB gratuito, R$ 0). (2) O gargalo da DAG continua sendo o raw do ONS, que recarrega as 938.296 linhas (77% da carga), mesmo com o bronze gravando 94% menos no GCS. (3) `dags unpause` mostra o estado anterior e, se o horário do dia já passou, cria a execução `scheduled` na hora. (4) Medições idênticas entre duas execuções não são bug quando o SQL e as tabelas são os mesmos; conferi o filtro de tempo antes de confiar.
 - **Travou:** o `airflow-init` falhou por o uid 1000 não existir no passwd da imagem (resolvido usando o entrypoint da imagem). Ficaram abertos, para a Sprint 4: a revisão do ONS de 06/10 (328 valores, diferença máxima de 93,8%, sem causa investigada), o custo dos testes (agrupar, rodar menos vezes ou incremental) e o alerta do Discord sem os nomes dos testes que falharam.
+
+## Sprint 4, Parte A: ingestão incremental (07/10/2026)
+
+- **Entreguei:** a ingestão do ONS incremental (raw particionado por mês local, um load job por partição, janela de 3 meses
+  autocorretiva com guarda de revisão, HEAD/ETag dos anos fechados), o `stg_ons__curva_carga` incremental (`insert_overwrite`
+  estático, janela vinda de um ponto único), a seleção do dbt por fonte e a DAG nova (backfill pela configuração, vars do dbt
+  vindas da ingestão). A DAG caiu de 6 min 40 s para 1 min 33 s (`ons_ingestao`: 4 min 22 s para 20 s), os 194 jobs do dbt
+  para 36 e o faturado de 2.965,4 para 504,4 MB (-83%); o backfill de 2021 a hoje leva ~125 s e a carga full, 94 s. Tudo é
+  idempotente (5.152 grupos iguais depois de duas execuções) e a produção foi migrada com backup, conferência e ensaio.
+- **Aprendi:** (1) **uma ferramenta de medição também erra, e o número errado era favorável:** o medidor de bytes mostrou 10,5 MB
+  para um incremental que custa 31,5 MB (o `MERGE` é filho de um `SCRIPT` e não tinha o comentário do dbt), e quase decidi o `fct`
+  com isso; o spike, medido por outro caminho, já dizia 31,5. (2) **O ganho de uma otimização precisa ser decomposto:** os -7% da
+  execução completa eram só -2,4% do incremental, mais cache de consultas e uma freshness fora do cenário; o que reduziu o custo
+  foi rodar só o que descende da fonte que mudou. (3) **A revisão do ONS depende da idade do dado, não do mês**, e as "5 linhas de
+  agosto" eram ruído de ponto flutuante (7e-12), não revisão; os 93,8% eram valor provisório do NE nos 2 a 3 últimos dias. (4)
+  **O dbt não substitui uma tabela por outra com partição diferente: apaga e recria** (e o `bq cp` falha escrevendo o erro no
+  stdout, o que um `>/dev/null` engoliu). (5) Uma regra de cobertura vale mais que um teste de exemplo: a partição UTC sobrescrita
+  precisa ser recomposta inteira, senão o `MERGE` apaga dado, e um teste que percorre todas as janelas de 4 anos com e sem horário
+  de verão a garante.
+- **Travou:** a medição "agendada" do `subir` comparou a execução de 06/10 com ela mesma (+0%; corrigida: só vale execução
+  criada depois do `subir`); o `grep` sem resultado derrubou o backfill sob `pipefail` (corrigido em todos os scripts); e o Docker
+  fechado impediu testar o fuso na imagem (a pré-checagem do `subir` cobre). Ficaram para a Parte B e o backlog: o baseline e a validação
+  temporal (4.5 e 4.6), o alerta do Discord com os nomes dos testes que falharam, a causa do NE subestimado nos últimos dias do arquivo
+  e as opções A e B do piso de faturamento, que passam a valer só se o custo mensal chegar perto de 25% do gratuito.
+

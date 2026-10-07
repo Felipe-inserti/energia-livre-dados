@@ -1,10 +1,12 @@
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 
 import pytest
 
 from ingestion import ons
 from ingestion.common import gcp
+from ingestion.common.config import Config
 from ingestion.common.raw import Medicoes
+from ingestion.janela import calcular_janela
 
 
 def test_montar_url_por_ano():
@@ -119,12 +121,120 @@ def test_md5_do_gcs_e_base64_do_digest():
     assert gcp.md5_base64(b"") == "1B2M2Y8AsgTpgAmY7PhCfg=="
 
 
-def test_sem_medicao_valida_o_raw_mas_nao_roda_a_consulta_tipica(monkeypatch):
-    chamadas = []
-    monkeypatch.setattr(ons, "carregar_config", lambda: type("C", (), {"bucket": "b"})())
-    monkeypatch.setattr(ons, "carregar_anos", lambda *a: Medicoes())
+CONFIG = Config("p", "b", "us-central1")
+
+
+def _simular(monkeypatch, modo_chamadas):
+    """Troca as pontas de nuvem do `main` por registradores; devolve a lista de chamadas."""
+    chamadas = modo_chamadas
+    monkeypatch.setattr(ons, "carregar_config", lambda: CONFIG)
+    monkeypatch.setattr(
+        ons, "resolver_janela", lambda *a: chamadas.append(("janela", a[1].id, a[2:])) or JANELA
+    )
+    monkeypatch.setattr(
+        ons,
+        "carregar_incremental",
+        lambda janela, config, raw, conc, **k: (
+            chamadas.append(("incremental", raw.id, k)) or Medicoes()
+        ),
+    )
+    monkeypatch.setattr(
+        ons,
+        "carregar_full",
+        lambda anos, config, raw, ano_atual, conc: (
+            chamadas.append(("full", raw.id, anos[:1])) or Medicoes()
+        ),
+    )
     monkeypatch.setattr(ons, "validar_raw", lambda *a: chamadas.append("validar") or [])
     monkeypatch.setattr(ons, "medir_consulta_tipica", lambda *a: chamadas.append("medir"))
     monkeypatch.setattr(ons, "imprimir_resumo", lambda *a, **k: None)
-    assert ons.main(["--ano-inicial", "2026", "--ano-final", "2026", "--sem-medicao"]) == 0
-    assert chamadas == ["validar"]
+
+
+JANELA = calcular_janela(date(2026, 10, 6))
+
+
+def test_sem_medicao_valida_o_raw_mas_nao_roda_a_consulta_tipica(monkeypatch):
+    chamadas = []
+    _simular(monkeypatch, chamadas)
+    medicoes = Medicoes()
+    medicoes.registrar_esperado("ons_curva_carga", ("c", "2026-10-01"), 1, 0)
+    monkeypatch.setattr(ons, "carregar_incremental", lambda *a, **k: medicoes)
+    assert ons.main(["--sem-medicao"]) == 0
+    assert chamadas[-1] == "validar" and "medir" not in chamadas
+
+
+def test_modo_padrao_e_janela_no_raw_configurado_e_so_verifica_fechados_na_janela(monkeypatch):
+    chamadas = []
+    _simular(monkeypatch, chamadas)
+    argv = ["--sem-consulta", "--dataset-raw", "verificacao_incremental"]
+    assert ons.main([*argv, "--tabela-raw", "t_teste"]) == 0
+    assert chamadas[0][1] == "p.verificacao_incremental.t_teste"
+    assert chamadas[1] == (
+        "incremental",
+        "p.verificacao_incremental.t_teste",
+        {"verificar_fechados": True},
+    )
+
+
+def test_backfill_nao_verifica_anos_fechados(monkeypatch):
+    chamadas = []
+    _simular(monkeypatch, chamadas)
+    assert ons.main(["--sem-consulta", "--desde", "2021-01", "--ate", "2021-03"]) == 0
+    assert chamadas[0][2][:2] == ("2021-01", "2021-03")
+    assert chamadas[1][2] == {"verificar_fechados": False}
+
+
+def test_full_usa_a_carga_full_e_o_raw_de_producao_por_padrao(monkeypatch):
+    chamadas = []
+    _simular(monkeypatch, chamadas)
+    assert ons.main(["--full", "--sem-consulta", "--ano-final", "2002"]) == 0
+    assert chamadas == [("full", "p.raw.ons_curva_carga", [2000])]
+
+
+@pytest.mark.parametrize(
+    "argv",
+    [
+        ["--desde", "2021-01"],
+        ["--ate", "2021-01"],
+        ["--full", "--desde", "2021-01", "--ate", "2021-02"],
+    ],
+)
+def test_combinacoes_invalidas_de_argumentos(monkeypatch, argv):
+    _simular(monkeypatch, [])
+    with pytest.raises(SystemExit):
+        ons.main(argv)
+
+
+def test_tabela_incompativel_vira_codigo_2_sem_gravar_nada(monkeypatch):
+    chamadas = []
+    _simular(monkeypatch, chamadas)
+
+    def recusar(*a):
+        raise gcp.TabelaIncompativel("sem partição: rode a migração")
+
+    monkeypatch.setattr(ons, "resolver_janela", recusar)
+    assert ons.main([]) == 2
+    assert chamadas == []
+
+
+def test_carga_parcial_vira_codigo_1_e_lista_os_meses(monkeypatch, caplog):
+    _simular(monkeypatch, [])
+    monkeypatch.setattr(ons.log, "propagate", True)
+
+    def falhar(*a, **k):
+        raise gcp.ErroCargaParcial({"202609": "BadRequest: x"}, {"202610": 10})
+
+    monkeypatch.setattr(ons, "carregar_incremental", falhar)
+    assert ons.main(["--sem-consulta"]) == 1
+    assert "falhou: 202609" in caplog.text and "idempotente" in caplog.text
+
+
+def test_o_destino_e_o_modo_sao_logados_no_inicio(monkeypatch, caplog):
+    _simular(monkeypatch, [])
+    monkeypatch.setattr(ons.log, "propagate", True)
+    ons.main(["--sem-consulta", "--dataset-raw", "verificacao_incremental"])
+    assert (
+        caplog.records[0]
+        .getMessage()
+        .startswith("destino: p.verificacao_incremental.ons_curva_carga | modo: janela")
+    )
