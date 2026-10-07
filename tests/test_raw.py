@@ -161,3 +161,32 @@ def test_imprimir_resumo(capsys):
     assert "tempo total da carga: 6.0 s (download 1.0 s, GCS 2.0 s, BigQuery 3.0 s)" in saida
     assert "a.csv: 100 linhas" in saida and "consulta típica (consulta Y" in saida
     assert "linhas devolvidas: 24 (esperado: 24)" in saida
+
+
+def test_validar_raw_com_dataset_filtro_e_chave_de_data(monkeypatch):
+    import datetime
+
+    m = raw.Medicoes()
+    m.registrar_esperado("t", ("a.csv", "2026-09-01"), 4, 0)
+    no_raw = [linha("a.csv", 4, _mes_referencia=datetime.date(2026, 9, 1))]
+    conjunto = raw.ConjuntoValidacao(
+        "t",
+        "v",
+        colunas_chave=("_arquivo_origem", "_mes_referencia"),
+        dataset="verificacao_incremental",
+        filtro_sql="_mes_referencia IN ('2026-09-01')",
+    )
+    problemas, sqls = validar(monkeypatch, no_raw, m, conjunto)
+    assert problemas == []  # a chave DATE do BigQuery casa com o texto ISO esperado
+    assert "`p.verificacao_incremental.t`" in sqls[0]
+    assert "WHERE _mes_referencia IN ('2026-09-01')" in sqls[0]
+
+
+def test_imprimir_resumo_mostra_jobs_e_particoes_do_incremental(capsys):
+    m = raw.Medicoes(jobs_bigquery=3, particoes_carregadas=["202608", "202610"])
+    m.anos_recarregados = [2019]
+    raw.imprimir_resumo("x", m, None, rotulo_volume="v", rotulo_origem="o", descricao_consulta="c")
+    saida = capsys.readouterr().out
+    assert "load jobs no BigQuery: 3" in saida
+    assert "partições recarregadas: 2 (202608 a 202610)" in saida
+    assert "anos recarregados por inteiro (ETag/guarda): [2019]" in saida

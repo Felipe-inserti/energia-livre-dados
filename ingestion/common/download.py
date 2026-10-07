@@ -32,16 +32,16 @@ def deve_repetir(status: int) -> bool:
     return status in STATUS_COM_RETRY
 
 
-def baixar_bytes(
+def _requisitar_com_retry(
     url: str,
     *,
-    tentativas: int = 3,
-    espera_base: float = 2.0,
-    timeout: tuple[float, float] = TIMEOUT_PADRAO,
-    requisitar: Callable[..., requests.Response] = requests.get,
-    dormir: Callable[[float], None] = time.sleep,
-) -> bytes:
-    """Baixa `url` e devolve o conteúdo exatamente como veio."""
+    tentativas: int,
+    espera_base: float,
+    timeout: tuple[float, float],
+    requisitar: Callable[..., requests.Response],
+    dormir: Callable[[float], None],
+) -> requests.Response:
+    """GET ou HEAD (o que `requisitar` fizer) com retry; 404 e outros 4xx não se repetem."""
     ultimo_erro: Exception | None = None
     for tentativa in range(1, tentativas + 1):
         try:
@@ -53,7 +53,7 @@ def baixar_bytes(
             if resposta.status_code == 404:
                 raise ArquivoNaoEncontrado(f"404 em {url}")
             if resposta.status_code < 400:
-                return resposta.content
+                return resposta
             if not deve_repetir(resposta.status_code):
                 raise ErroDownload(f"HTTP {resposta.status_code} em {url} (não se repete)")
             ultimo_erro = ErroDownload(f"HTTP {resposta.status_code} em {url}")
@@ -70,3 +70,45 @@ def baixar_bytes(
             )
             dormir(espera)
     raise ErroDownload(f"{tentativas} tentativas esgotadas para {url}") from ultimo_erro
+
+
+def baixar_bytes(
+    url: str,
+    *,
+    tentativas: int = 3,
+    espera_base: float = 2.0,
+    timeout: tuple[float, float] = TIMEOUT_PADRAO,
+    requisitar: Callable[..., requests.Response] = requests.get,
+    dormir: Callable[[float], None] = time.sleep,
+) -> bytes:
+    """Baixa `url` e devolve o conteúdo exatamente como veio."""
+    return _requisitar_com_retry(
+        url,
+        tentativas=tentativas,
+        espera_base=espera_base,
+        timeout=timeout,
+        requisitar=requisitar,
+        dormir=dormir,
+    ).content
+
+
+def buscar_etag(
+    url: str,
+    *,
+    tentativas: int = 3,
+    espera_base: float = 2.0,
+    timeout: tuple[float, float] = TIMEOUT_PADRAO,
+    requisitar: Callable[..., requests.Response] = requests.head,
+    dormir: Callable[[float], None] = time.sleep,
+) -> str | None:
+    """ETag do objeto (HEAD, nada é baixado), sem as aspas, ou None se o servidor não mandar."""
+    resposta = _requisitar_com_retry(
+        url,
+        tentativas=tentativas,
+        espera_base=espera_base,
+        timeout=timeout,
+        requisitar=requisitar,
+        dormir=dormir,
+    )
+    etag = resposta.headers.get("ETag") if getattr(resposta, "headers", None) else None
+    return etag.strip('"') if etag else None

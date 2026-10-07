@@ -21,7 +21,7 @@ SELECT {chaves},
        COUNT(*) AS linhas,
        COUNTIF({valor} IS NULL) AS nulos,
        COUNTIF({valor} = '') AS strings_vazias
-FROM `{tabela}`
+FROM `{tabela}`{filtro}
 GROUP BY {chaves}
 """
 
@@ -43,6 +43,10 @@ class Medicoes:
     gcs_bytes_gravados: int = 0
     gcs_bytes_versoes: int = 0
     revisoes: list[dict] = field(default_factory=list)  # resultado de ingestion.revisoes
+    # Carga incremental do ONS (Sprint 4)
+    jobs_bigquery: int = 0  # load jobs enviados ao BigQuery
+    particoes_carregadas: list[str] = field(default_factory=list)  # `AAAAMM` recarregadas
+    anos_recarregados: list[int] = field(default_factory=list)  # anos inteiros (ETag/guarda)
     # tabela -> chave -> (linhas, valores vazios na coluna de valor), para validar o raw
     esperado: dict[str, dict[tuple[str, ...], tuple[int, int]]] = field(default_factory=dict)
 
@@ -97,6 +101,8 @@ class ConjuntoValidacao:
     tabela: str  # nome da tabela no dataset raw
     coluna_valor: str  # coluna em que se contam os vazios
     colunas_chave: tuple[str, ...] = ("_arquivo_origem",)  # agrupamento da conferência
+    dataset: str = DATASET_RAW  # dataset da tabela (a validação do incremental usa outro)
+    filtro_sql: str = ""  # restringe a conferência (ex.: só as partições recarregadas)
 
 
 def validar_raw(
@@ -112,15 +118,17 @@ def validar_raw(
             CONSULTA_VALIDACAO.format(
                 chaves=", ".join(conjunto.colunas_chave),
                 valor=conjunto.coluna_valor,
-                tabela=config.tabela(DATASET_RAW, conjunto.tabela),
+                tabela=config.tabela(conjunto.dataset, conjunto.tabela),
+                filtro=f"\nWHERE {conjunto.filtro_sql}" if conjunto.filtro_sql else "",
             ),
         )
-        no_raw = {tuple(r[c] for c in conjunto.colunas_chave): r for r in resultado.linhas}
+        # str(): uma chave DATE (ex.: `_mes_referencia`) chega como `date` e é comparada como texto
+        no_raw = {tuple(str(r[c]) for c in conjunto.colunas_chave): r for r in resultado.linhas}
         for chave, (linhas, vazios) in esperado.items():
             nome = " | ".join(chave)
             r = no_raw.get(chave)
             if r is None:
-                problemas.append(f"{nome}: ausente em raw.{conjunto.tabela}")
+                problemas.append(f"{nome}: ausente em {conjunto.dataset}.{conjunto.tabela}")
                 continue
             if r["linhas"] != linhas:
                 problemas.append(f"{nome}: {r['linhas']} linhas no raw, {linhas} no CSV")
@@ -132,10 +140,12 @@ def validar_raw(
         extras = sorted(set(no_raw) - set(esperado))
         if extras:
             problemas.append(
-                f"raw.{conjunto.tabela}: registros que não vieram desta carga: {extras[:5]}"
+                f"{conjunto.dataset}.{conjunto.tabela}: "
+                f"registros que não vieram desta carga: {extras[:5]}"
             )
         log.info(
-            "validação raw.%s: %d grupos, %d NULL, %d strings vazias",
+            "validação %s.%s: %d grupos, %d NULL, %d strings vazias",
+            conjunto.dataset,
             conjunto.tabela,
             len(no_raw),
             sum(r["nulos"] for r in no_raw.values()),
@@ -181,6 +191,15 @@ def imprimir_resumo(
         f"({rotulo_origem} {medicoes.t_origem:.1f} s, GCS {medicoes.t_gcs:.1f} s, "
         f"BigQuery {medicoes.t_bigquery:.1f} s)"
     )
+    if medicoes.jobs_bigquery:
+        print(f"load jobs no BigQuery: {medicoes.jobs_bigquery}")
+    if medicoes.particoes_carregadas:
+        print(
+            f"partições recarregadas: {len(medicoes.particoes_carregadas)} "
+            f"({medicoes.particoes_carregadas[0]} a {medicoes.particoes_carregadas[-1]})"
+        )
+    if medicoes.anos_recarregados:
+        print(f"anos recarregados por inteiro (ETag/guarda): {medicoes.anos_recarregados}")
     if medicoes.gcs_gravados + medicoes.gcs_pulados:
         print(
             f"GCS (bronze): {medicoes.gcs_gravados} arquivos gravados "

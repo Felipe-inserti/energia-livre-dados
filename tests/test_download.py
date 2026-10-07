@@ -84,3 +84,36 @@ def test_esgota_as_tentativas():
     with pytest.raises(ErroDownload, match="3 tentativas"):
         baixar(roteiro, tentativas=3)
     assert roteiro.chamadas == 3
+
+
+# ---- HEAD/ETag (Sprint 4) ----
+from ingestion.common.download import buscar_etag  # noqa: E402
+
+
+class RespostaHead:
+    def __init__(self, status, etag=None):
+        self.status_code = status
+        self.headers = {"ETag": etag} if etag else {}
+
+
+def head(*eventos, **kwargs):
+    roteiro = Roteiro(*eventos)
+    return buscar_etag(
+        "http://x/y.csv", requisitar=roteiro, dormir=lambda s: None, **kwargs
+    ), roteiro
+
+
+def test_etag_sem_as_aspas_e_uma_chamada_so():
+    etag, roteiro = head(RespostaHead(200, '"abc123"'))
+    assert etag == "abc123" and roteiro.chamadas == 1
+
+
+def test_sem_etag_devolve_none():
+    assert head(RespostaHead(200))[0] is None
+
+
+def test_head_repete_em_5xx_e_nao_repete_404():
+    etag, roteiro = head(RespostaHead(503), RespostaHead(200, '"x"'))
+    assert etag == "x" and roteiro.chamadas == 2
+    with pytest.raises(ArquivoNaoEncontrado):
+        head(RespostaHead(404))

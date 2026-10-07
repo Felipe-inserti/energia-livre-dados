@@ -68,3 +68,33 @@ def test_resumir_nao_quebra_nos_dois_casos():
     assert "idêntico" in revisoes.resumir(revisoes.comparar_csv_ons(BASE, BASE, 2026))
     depois = BASE.replace(b"100.0", b"101.0")
     assert "1 linhas alteradas" in revisoes.resumir(revisoes.comparar_csv_ons(BASE, depois, 2026))
+
+
+def test_ruido_de_ponto_flutuante_abaixo_da_tolerancia_nao_conta_como_revisao():
+    """Medido em 06/10/2026: 5 valores de agosto 'mudaram' em 7e-12 MWmed. Isso não é revisão."""
+    depois = BASE.replace(b"100.0", b"100.000000000007").replace(b"200.0", b"200.0000000000036")
+    r = revisoes.comparar_csv_ons(BASE, depois, 2026)
+    assert r["identico"] is False  # os bytes são diferentes...
+    assert r["valor_alterado"] == 0 and r["linhas_alteradas"] == 0  # ...mas nada foi revisado
+    assert r["valor_ruido_float"] == 2 and r["por_mes"] == {} and r["meses_afetados"] == []
+    assert r["tolerancia_abs_mwmed"] == revisoes.TOLERANCIA_ABS_MWMED == 1e-6
+
+
+def test_diferenca_logo_acima_da_tolerancia_ja_e_revisao():
+    depois = BASE.replace(b"100.0", b"100.000002")  # 2e-6 MWmed
+    r = revisoes.comparar_csv_ons(BASE, depois, 2026)
+    assert r["valor_alterado"] == 1 and r["valor_ruido_float"] == 0
+    assert r["meses_afetados"] == ["2026-01"]
+
+
+def test_meses_afetados_inclui_linhas_adicionadas_e_removidas_alem_das_alteradas():
+    depois = csv(
+        "SE;SUDESTE;2026-01-01 00:00:00;100.0",
+        "SE;SUDESTE;2026-01-01 01:00:00;200.0",
+        # a linha de 2026-02 do S some; do N também é igual; entra uma linha nova em 2026-03
+        "N;NORTE;2026-02-01 00:00:00;",
+        "SE;SUDESTE;2026-03-01 00:00:00;5.0",
+    )
+    r = revisoes.comparar_csv_ons(BASE, depois, 2026)
+    assert r["linhas_alteradas"] == 0 and (r["adicionadas"], r["removidas"]) == (1, 1)
+    assert r["meses_afetados"] == ["2026-02", "2026-03"]

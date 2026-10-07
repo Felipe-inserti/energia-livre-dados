@@ -20,6 +20,14 @@ CHAVE = ["id_subsistema", "din_instante"]
 COLUNA_VALOR = "val_cargaenergiahomwmed"
 ARQUIVO_LOG = Path("data/logs/revisoes_ons.jsonl")
 
+# Tolerância ABSOLUTA (MWmed) para dizer que um valor "mudou". Existe por causa do ruído de ponto
+# flutuante medido em 06/10/2026: 5 valores de agosto aparecem "revisados" entre duas versões do
+# arquivo, mas com diferença de no máximo 7,3e-12 MWmed (o ONS não revisou nada, só a última casa
+# da representação decimal mudou). Sem tolerância, essa comparação exata (`!=`) conta ruído como
+# revisão e sugere, por engano, que o ONS revisa meses antigos. 1e-6 MWmed (1 W) fica 5 ordens de
+# grandeza acima do ruído e muito abaixo da menor revisão real medida (0,002 MWmed).
+TOLERANCIA_ABS_MWMED = 1e-6
+
 
 def _ler(conteudo: bytes) -> pd.DataFrame:
     df = pd.read_csv(io.BytesIO(conteudo), sep=";", dtype=str)
@@ -45,16 +53,26 @@ def comparar_csv_ons(antes: bytes, depois: bytes, ano: int) -> dict:
     a, d = _ler(antes), _ler(depois)
     ambas = a.join(d, how="inner", lsuffix="_antes", rsuffix="_depois")
     va, vd = ambas["valor_antes"], ambas["valor_depois"]
-    mudou = ~((va == vd) | (va.isna() & vd.isna()))
     nulo_para_valor = va.isna() & vd.notna()
     valor_para_nulo = va.notna() & vd.isna()
-    valor_para_valor = mudou & va.notna() & vd.notna()
+    diferenca = (vd - va).abs()
+    valor_para_valor = va.notna() & vd.notna() & (diferenca > TOLERANCIA_ABS_MWMED)
+    ruido_float = va.notna() & vd.notna() & (diferenca > 0) & (diferenca <= TOLERANCIA_ABS_MWMED)
+    mudou = nulo_para_valor | valor_para_nulo | valor_para_valor
     dif = (vd - va)[valor_para_valor]
     pct = (dif.abs() / va[valor_para_valor].abs()).replace([float("inf")], float("nan"))
     nome_alterado = ambas["nom_subsistema_antes"] != ambas["nom_subsistema_depois"]
 
     alteradas = mudou | nome_alterado
     meses = ambas.index.get_level_values("din_instante").str.slice(0, 7)
+    # meses de QUALQUER linha afetada: alterada (acima da tolerância), adicionada ou removida
+    meses_adicionadas = d.index.difference(a.index).get_level_values("din_instante").str.slice(0, 7)
+    meses_removidas = a.index.difference(d.index).get_level_values("din_instante").str.slice(0, 7)
+    meses_afetados = sorted(
+        {k for k, v in alteradas.groupby(meses).sum().items() if v}
+        | set(meses_adicionadas)
+        | set(meses_removidas)
+    )
     registro.update(
         {
             "linhas_antes": len(a),
@@ -65,6 +83,9 @@ def comparar_csv_ons(antes: bytes, depois: bytes, ano: int) -> dict:
             "nulo_para_valor": int(nulo_para_valor.sum()),
             "valor_para_nulo": int(valor_para_nulo.sum()),
             "nome_alterado": int(nome_alterado.sum()),
+            "valor_ruido_float": int(ruido_float.sum()),
+            "tolerancia_abs_mwmed": TOLERANCIA_ABS_MWMED,
+            "meses_afetados": meses_afetados,
             "linhas_alteradas": int(alteradas.sum()),
             "dif_abs_media_mwmed": float(dif.abs().mean()) if len(dif) else 0.0,
             "dif_abs_max_mwmed": float(dif.abs().max()) if len(dif) else 0.0,

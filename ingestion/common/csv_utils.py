@@ -9,7 +9,7 @@ import csv
 import io
 import re
 import unicodedata
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 
 
@@ -74,8 +74,12 @@ def transformar_csv(
     separador: str = ";",
     pular_linhas: int = 0,
     descartar_coluna_vazia_final: bool = False,
+    derivadas: Mapping[str, Callable[[dict[str, str]], str]] | None = None,
 ) -> CsvTransformado:
     """Padroniza o cabeçalho e acrescenta as colunas `extras` (nome -> valor) a cada linha.
+
+    - `derivadas`: colunas calculadas POR LINHA (nome -> função da linha como dicionário de colunas
+      padronizadas). Entram depois dos `extras`. Ex.: `_mes_referencia` a partir de `din_instante`.
 
     - `pular_linhas`: linhas de metadados antes do cabeçalho (INMET: 8). Elas não vão para o
       CSV, mas voltam em `metadados` (`'CODIGO (WMO):;A701'` -> `{'CODIGO (WMO)': 'A701'}`).
@@ -94,13 +98,14 @@ def transformar_csv(
     if descartar:
         cabecalho = cabecalho[:-1]
     colunas = padronizar_colunas(cabecalho)
-    colidem = sorted(set(colunas) & set(extras))
+    derivadas = derivadas or {}
+    colidem = sorted(set(colunas) & (set(extras) | set(derivadas)))
     if colidem:
         raise ValueError(f"Colunas extras colidem com colunas da fonte: {colidem}")
 
     saida = io.StringIO()
     escritor = csv.writer(saida, lineterminator="\n")
-    escritor.writerow([*colunas, *extras])
+    escritor.writerow([*colunas, *extras, *derivadas])
     vazios = dict.fromkeys(colunas, 0)
     linhas = 0
     valores_extras = list(extras.values())
@@ -114,6 +119,11 @@ def transformar_csv(
         for coluna, valor in zip(colunas, linha, strict=True):
             if valor == "":
                 vazios[coluna] += 1
-        escritor.writerow([*linha, *valores_extras])
+        if derivadas:
+            registro = dict(zip(colunas, linha, strict=True))
+            calculadas = [funcao(registro) for funcao in derivadas.values()]
+        else:
+            calculadas = []
+        escritor.writerow([*linha, *valores_extras, *calculadas])
         linhas += 1
     return CsvTransformado(saida.getvalue().encode("utf-8"), colunas, linhas, vazios, metadados)
