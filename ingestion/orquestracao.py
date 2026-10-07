@@ -15,7 +15,9 @@ as dependências do projeto; o dbt e a ingestão rodam no venv `/opt/projeto-ven
 
 import json
 import os
+import re
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 
 import requests
@@ -26,7 +28,125 @@ FONTES_MANUAIS = {
     "ccee": (RAIZ / "data" / "manual" / "ccee", "*.csv"),
     "inmet": (RAIZ / "data" / "manual" / "inmet", "*.zip"),
 }
+
+# Seleção do dbt por fonte (Sprint 4, 4b). `fonte+` seleciona a fonte e TUDO que descende dela:
+# modelos e testes, inclusive os que cruzam fontes (ex.: fct_submercado_horario e o teste que o
+# confere descendem das três). Logo, quando QUALQUER fonte envolvida muda, o teste roda.
+SELECAO_ONS = ["source:raw.ons_curva_carga+"]
+SELECAO_INMET = ["source:raw.inmet_estacoes_horario+"]
+SELECAO_CCEE = [
+    "source:raw.ccee_pld_horario+",
+    "source:raw.ccee_pld_semanal+",
+    "source:raw.ccee_consumo_ramo_atividade+",
+]
+# O teste do alerta (3.7) não descende de fonte nenhuma, mas a DAG precisa dele sempre.
+TESTE_ALERTA = "teste_alerta_falha_proposital"
 LIMITE_DISCORD = 1900  # o Discord recusa mensagens com mais de 2000 caracteres
+
+
+PADRAO_MES = re.compile(r"^\d{4}-(0[1-9]|1[0-2])$")
+VERDADEIROS = {"true", "1", "sim", "yes"}
+
+
+def data_referencia(
+    data_interval_end: datetime | None = None,
+    logical_date: datetime | None = None,
+    run_after: datetime | None = None,
+) -> str:
+    """Data (UTC, AAAA-MM-DD) que ancora a janela da execução (nunca o relógio da task).
+
+    Na execução agendada vale o fim do intervalo de dados (`data_interval_end`); em execução manual
+    o Airflow 3 pode não ter intervalo nem `logical_date`, e vale o `run_after` (o instante em que a
+    execução foi criada, gravado na própria execução). Reexecutar (clear) a mesma execução dá, por
+    isso, a mesma janela.
+    """
+    for candidato in (data_interval_end, logical_date, run_after):
+        if candidato is not None:
+            return candidato.astimezone(UTC).date().isoformat()
+    raise ValueError("sem data_interval_end, logical_date nem run_after: não há data de referência")
+
+
+def _verdadeiro(valor) -> bool:
+    if isinstance(valor, str):
+        return valor.strip().lower() in VERDADEIROS
+    return bool(valor)
+
+
+def _texto_ou_none(valor) -> str | None:
+    texto = None if valor is None else str(valor).strip()
+    return texto or None
+
+
+def parametros_da_execucao(
+    *,
+    data_interval_end: datetime | None,
+    logical_date: datetime | None,
+    run_after: datetime | None,
+    params: dict,
+    conf: dict,
+    run_id: str,
+) -> dict:
+    """Decide o modo da execução (janela diária ou backfill) a partir da data e da configuração.
+
+    `conf` (o JSON do `airflow dags trigger -c`) vale mais que `params` (os padrões da DAG). O
+    backfill é `desde`/`ate` (AAAA-MM, inclusive, os dois juntos). Tudo é VALIDADO aqui porque vira
+    texto de linha de comando (a conf vem de quem dispara a execução). Devolve só texto e booleanos,
+    para ir por XCom.
+    """
+    desde = _texto_ou_none(conf.get("desde", params.get("desde")))
+    ate = _texto_ou_none(conf.get("ate", params.get("ate")))
+    if bool(desde) != bool(ate):
+        raise ValueError("backfill: informe 'desde' e 'ate' juntos (AAAA-MM)")
+    if desde and not (PADRAO_MES.match(desde) and PADRAO_MES.match(ate)):
+        raise ValueError(f"backfill: use AAAA-MM, recebi desde={desde!r} ate={ate!r}")
+    if desde and ate < desde:
+        raise ValueError(f"backfill: 'ate' ({ate}) anterior a 'desde' ({desde})")
+    referencia = data_referencia(data_interval_end, logical_date, run_after)
+    seguro = re.sub(r"[^A-Za-z0-9_.-]", "_", run_id)
+    return {
+        "modo": "backfill" if desde else "janela",
+        "referencia": referencia,
+        "desde": desde or "",
+        "ate": ate or "",
+        "argumentos_ons": f"--desde {desde} --ate {ate}"
+        if desde
+        else f"--data-referencia {referencia}",
+        # um arquivo de vars POR execução: limpar só o dbt_run de uma execução antiga não lê as vars
+        # de outra
+        "arquivo_vars": f"data/estado/ons_vars_{seguro}.json",
+        "completa": _verdadeiro(
+            conf.get("execucao_completa", params.get("execucao_completa", False))
+        ),
+    }
+
+
+def checar_arquivo_novo(pasta: Path, padrao: str, estado: Path, ti) -> bool:
+    """`ha_arquivo_novo` que também GRAVA o resultado no XCom (chave `novo`) para a seleção do dbt.
+
+    O XCom explícito evita depender de o ShortCircuitOperator guardar o booleano no `return_value`.
+    """
+    novo = ha_arquivo_novo(pasta, padrao, estado)
+    ti.xcom_push(key="novo", value=bool(novo))
+    return novo
+
+
+def selecao_da_execucao(
+    ccee_novo: bool = False, inmet_novo: bool = False, completa: bool = False
+) -> dict:
+    """Argumentos `--select ...` do `dbt run` e do `dbt test` da execução.
+
+    Normal: o ONS sempre (mais o INMET e a CCEE quando houve arquivo novo) e, nos testes, o teste
+    do alerta. `completa=True` (conf `execucao_completa`): sem seleção, o dbt roda tudo, inclusive
+    os 47 testes de calendário, seeds e dimensões estáticas que nenhuma fonte seleciona.
+    """
+    if completa:
+        return {"run": "", "test": "", "fontes": "todas (execução completa)"}
+    fontes = ["ons", *(["inmet"] if inmet_novo else []), *(["ccee"] if ccee_novo else [])]
+    return {
+        "run": "--select " + " ".join(selecao_dbt(ccee_novo, inmet_novo)),
+        "test": "--select " + " ".join(selecao_dbt_teste(ccee_novo, inmet_novo)),
+        "fontes": "+".join(fontes),
+    }
 
 
 def impressao_digital(pasta: Path, padrao: str) -> dict[str, list[int]]:
@@ -65,6 +185,21 @@ def registrar_estado(pasta: Path, padrao: str, estado: Path) -> dict[str, list[i
     temporario.write_text(json.dumps(atual, indent=2, sort_keys=True))
     temporario.replace(estado)
     return atual
+
+
+def selecao_dbt(ccee_novo: bool = False, inmet_novo: bool = False) -> list[str]:
+    """Seletores do `dbt run`/`build`: o ONS sempre (automático e diário); o INMET e a CCEE só
+    quando houve arquivo novo (são manuais), para não reconstruir ~800 MB sem dado novo."""
+    return [
+        *SELECAO_ONS,
+        *(SELECAO_INMET if inmet_novo else []),
+        *(SELECAO_CCEE if ccee_novo else []),
+    ]
+
+
+def selecao_dbt_teste(ccee_novo: bool = False, inmet_novo: bool = False) -> list[str]:
+    """Mesma seleção para o `dbt test`, mais o teste do alerta, que a DAG roda sempre."""
+    return [*selecao_dbt(ccee_novo, inmet_novo), TESTE_ALERTA]
 
 
 def montar_mensagem_falha(
@@ -144,11 +279,18 @@ def main(argv: list[str]) -> int:
             atual = registrar_estado(pasta, padrao, PASTA_ESTADO / f"{fonte}.json")
             print(f"{fonte}: estado registrado com {len(atual)} arquivos")
         return 0
+    if comando in ("selecao-dbt", "selecao-dbt-teste") and set(args) <= {"ccee", "inmet"}:
+        funcao = selecao_dbt if comando == "selecao-dbt" else selecao_dbt_teste
+        print(" ".join(funcao(ccee_novo="ccee" in args, inmet_novo="inmet" in args)))
+        return 0
     if comando == "testar-alerta":
         ok = alertar_falha({"exception": "teste do alerta (nenhuma falha de verdade)"})
         print("mensagem enviada" if ok else "mensagem NÃO enviada")
         return 0 if ok else 1
-    print("uso: registrar-estado ccee|inmet [...] | testar-alerta")
+    print(
+        "uso: registrar-estado ccee|inmet [...] | selecao-dbt[-teste] [ccee] [inmet] "
+        "| testar-alerta"
+    )
     return 2
 
 
