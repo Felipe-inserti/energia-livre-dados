@@ -1,10 +1,10 @@
 {
-  "gerado_em_utc": "2026-10-07T22:48:30Z",
-  "commit": "77bda03d3127a280533ab5f73bf2de8178d4070f",
-  "arvore_com_mudancas": false,
-  "periodo": "desenvolvimento",
-  "alvo_inicio": "2012-01-01",
-  "alvo_fim": "2019-12-01",
+  "gerado_em_utc": "2026-10-07T22:19:47Z",
+  "commit": "4bc1a177b06ded13d1e03aba8ede73eba7030213",
+  "arvore_com_mudancas": true,
+  "periodo": "teste_final",
+  "alvo_inicio": "2021-01-01",
+  "alvo_fim": "2025-12-01",
   "submercado": "SE",
   "horizontes": [
     1,
@@ -16,21 +16,23 @@
   ],
   "series": {
     "original": {
-      "meses_utilizaveis": 240,
+      "meses_utilizaveis": 312,
       "primeiro": "2000-01-01",
-      "ultimo": "2019-12-01"
+      "ultimo": "2025-12-01"
     },
     "ajustada": {
-      "meses_utilizaveis": 24,
+      "meses_utilizaveis": 96,
       "primeiro": "2018-01-01",
-      "ultimo": "2019-12-01"
+      "ultimo": "2025-12-01"
     }
   },
   "pares_avaliados": {
-    "original/sazonal_ingenuo": 1152,
-    "original/sazonal_crescimento": 1152,
-    "ajustada/sazonal_ingenuo": 144,
-    "original_nos_pares_da_ajustada/sazonal_ingenuo": 144
+    "original/sazonal_ingenuo": 720,
+    "original/sazonal_crescimento": 720,
+    "ajustada/sazonal_ingenuo": 720,
+    "ajustada/sazonal_crescimento": 720,
+    "original_nos_pares_da_ajustada/sazonal_ingenuo": 720,
+    "original_nos_pares_da_ajustada/sazonal_crescimento": 720
   },
   "definicoes": {
     "erro": "previsto - real (positivo = previu acima do real)",
