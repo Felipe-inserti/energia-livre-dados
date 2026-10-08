@@ -418,6 +418,9 @@ models:
       III) e em 01/05/2023 (MMGD); o ajuste usa a API de Carga Verificada (seed
       `ajuste_definicao_carga`) e a série original fica sempre ao lado. O mês corrente vem marcado
       como incompleto e não deve ser usado como alvo nem como treino. Detalhes no cabeçalho do SQL.
+      As colunas de carga e de ajuste saem arredondadas a 3 casas decimais (1 kW, var
+      `casas_decimais_carga`) porque o AVG paralelo do BigQuery não é reproduzível bit a bit: o arredondamento
+      na origem deixa a série idêntica entre execuções do `dbt run`.
     data_tests:
       - dbt_utils.unique_combination_of_columns:
           arguments:
@@ -517,3 +520,21 @@ models:
         description: >
           Sensibilidade da série ajustada: igual à `carga_ajustada_mwmed`, mas com a MMGD da API
           inteira (r = 1) em vez de `r` x MMGD. Mostra quanto o resultado depende da calibração de `r`.
+
+      - name: ajuste_tipo3_reconstruido_status
+        description: >
+          Como o tipo III foi obtido para a série longa: `reconstruido_carga_mensal` (2015-01 a 2017-12:
+          Carga Mensal do ONS menos a curva), ou o mesmo `ajuste_tipo3_status` nos demais meses
+          (`nao_disponivel` antes de 2015).
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [reconstruido_carga_mensal, medido, medido_transicao, incorporado_na_curva, nao_disponivel]
+      - name: ajuste_tipo3_reconstruido_mwmed
+        description: "Tipo III em MWmed: reconstruído em 2015-2017, igual a `ajuste_tipo3_mwmed` nos demais meses; nulo antes de 2015."
+      - name: carga_ajustada_reconstruida_mwmed
+        description: >
+          Carga bruta consistente desde 2015: original + tipo III (reconstruído ou medido) + MMGD. Igual a
+          `carga_ajustada_mwmed` de 2018 em diante; nula antes de 2015. É a série de treino da previsão com
+          janela de 72 meses (a partir de dez/2020).

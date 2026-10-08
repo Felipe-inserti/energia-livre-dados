@@ -146,3 +146,58 @@ def test_a_sequencia_de_n_meses_e_gerada_pelo_jinja_para_qualquer_n():
     for n in (1, 2, 3):
         saida = jinja2.Template(trecho).render(var=lambda nome, _n=n: _n)
         assert saida.count("lead(dentro") == n - 1, n
+
+
+# ------------------------------------------------ reconstrução do tipo III (Sprint 5)
+
+SEED_CM = RAIZ / "dbt" / "seeds" / "carga_mensal_ons.csv"
+
+
+def test_o_seed_da_carga_mensal_cobre_4_submercados_x_48_meses_positivos():
+    from scripts import baixar_carga_mensal_ons as gerador
+
+    with SEED_CM.open(encoding="utf-8") as f:
+        linhas = list(csv.DictReader(f))
+    assert tuple(linhas[0]) == gerador.COLUNAS and len(linhas) == 4 * 48
+    for sm in ("SE", "S", "NE", "N"):
+        meses = [r["mes"][:7] for r in linhas if r["codigo_submercado"] == sm]
+        assert meses[0] == "2015-01" and meses[-1] == "2018-12" and meses == sorted(set(meses))
+    assert all(float(r["carga_mensal_ons_mwmed"]) > 0 for r in linhas)  # nada dos zeros de 2026
+
+
+def test_o_gerador_recorta_a_janela_e_recusa_zero():
+    from scripts import baixar_carga_mensal_ons as gerador
+
+    texto = (
+        "id_subsistema;nom_subsistema;din_instante;val_cargaenergiamwmed\n"
+        "SE;Sudeste;2015-01-31;41386.7386\nN ;Norte;2015-01-31;5126.1369\n"
+        "SE;Sudeste;2014-12-31;36000.0\nSE;Sudeste;2026-09-30;0\n"
+    )
+    linhas = gerador.montar_linhas(texto, "2015-01", "2018-12", "2026-10-08")
+    assert [(r["mes"], r["codigo_submercado"]) for r in linhas] == [
+        ("2015-01-01", "N"),
+        ("2015-01-01", "SE"),
+    ]  # o espaço do "N " sai, 2014 e 2026 ficam fora da janela
+    with pytest.raises(ValueError):
+        gerador.montar_linhas(texto, "2015-01", "2026-12", "2026-10-08")  # zero dentro da janela
+
+
+def test_o_mart_so_reconstrui_na_janela_e_nao_cita_submercado():
+    assert VARS["inicio_reconstrucao_tipo3"] == "2015-01-01"
+    assert "reconstruido_carga_mensal" in SQL_MART and "ref('carga_mensal_ons')" in SQL_MART
+    assert not re.search(r"'(SE|S|NE|N)'", SQL_MART)
+
+
+def test_o_mart_arredonda_a_carga_na_origem_para_a_serie_ser_estavel():
+    assert VARS["casas_decimais_carga"] == 3
+    assert "round(avg(carga_mwmed)" in SQL_MART  # a origem do ruído do AVG paralelo
+    for coluna in (
+        "carga_ajustada_mwmed",
+        "carga_ajustada_r1_mwmed",
+        "carga_ajustada_reconstruida_mwmed",
+        "ajuste_tipo3_reconstruido_mwmed",
+    ):
+        i = SQL_MART.index(f"as {coluna}") if f"as {coluna}" in SQL_MART else SQL_MART.index(coluna)
+        assert "round(" in SQL_MART[max(0, i - 400) : i + 40], coluna
+    teste = (RAIZ / "dbt" / "tests" / "fct_carga_mensal_reconcilia_com_horaria.sql").read_text()
+    assert "casas_decimais_carga" in teste and "1e-6" not in teste.split("--")[-1]

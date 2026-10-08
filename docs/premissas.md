@@ -126,9 +126,11 @@ SE/CO, 12 meses à frente, e não a horária.
   de 2018 vale a série original (pendência 16).
 - **Baseline:** mesmo mês do ano anterior (**sazonal ingênuo**), mais o sazonal multiplicado pelo
   crescimento dos últimos 12 meses. Medidos na Sprint 4 (`docs/metricas.md`, `docs/resultados/`).
-- **Modelo:** começa por uma **regressão linear regularizada** com tendência, calendário (dias
-  úteis, feriados, dias do mês) e defasagens de pelo menos 12 meses. **LightGBM entra como
-  desafiante**, com a mesma validação. A escolha final fica para a Sprint 5, pelo erro medido.
+- **Modelo (Sprint 5, fechado):** a **média simples de ETS, SARIMA e regressão ridge** (tendência local,
+  mês, dias úteis efetivos e dias do mês) sobre a série reconstruída, com **janela móvel de 72 meses** e os
+  meses de abr e mai/2020 imputados. Escolhido pelo critério congelado no desenvolvimento (2,66% contra
+  2,92% do ingênuo, vitória de 0,255 pp, menor que 1 erro-padrão); o LightGBM perdeu. A Sprint 6 usa esta
+  média **independentemente do resultado do teste final**, que só reporta desempenho (`decisoes.md`).
 - **Validação:** backtest mensal em **rolling origin** com janela crescente, horizontes de 1 a
   12 meses, sempre só com informação anterior à origem (a previsão só recebe a série até a
   origem). Alvos: desenvolvimento 2012–2019 (escolha de modelos), 2020 à parte (estresse) e
@@ -138,6 +140,14 @@ SE/CO, 12 meses à frente, e não a horária.
 - **O erro desse backtest gera os cenários de consumo** da otimização. O erro é medido na
   mesma escala da decisão (mensal), porque o erro horário subestimaria a incerteza do consumo
   anual.
+- **Regra dos intervalos e dos cenários (Parte B, `decisoes.md`):** em **produção** (previsões além dos
+  dados) os quantis e a reamostragem usam os erros do desenvolvimento e do teste final **juntos**. No
+  **backtest da Sprint 6** a calibração é **crescente no tempo**: na origem `t` só entram os erros cujo
+  mês-alvo é `<= t` (um vetor de 12 erros só quando o último mês-alvo dele é `<= t`). Usar erros de
+  2023–2024 nos cenários da origem dez/2022 seria vazamento e deixaria a economia em R$ otimista.
+  Implementada e testada em `ml/intervalos.py`. Os intervalos do desenvolvimento cobriram 70% (nominal
+  80%) e 88% (nominal 95%) no teste final: o clima (σ ~1,5–1,8% do mês, não previsível a 12 meses) é o
+  piso da incerteza.
 - **Outliers:** os períodos de 2001–2002 (racionamento) e 2020 (pandemia) afetam o treino e a
   distribuição do erro. Na validação, 2020 é reportado à parte (estresse) e não entra na escolha
   de modelos. **[pendente, Sprint 5]** decidir o tratamento no treino (excluir, variável
@@ -320,8 +330,9 @@ regime de preço de cada ano.
    e a MMGD medidos pela API de Carga Verificada, com a original preservada, e as quebras do
    dado são 01/03/2021 e 01/05/2023, e não 29/04; ver `decisoes.md` e `metricas.md`). Resta
    verificar com o ONS se há uma segunda fase da MMGD depois de mai/2023 (`fontes.md`).
-7. Tratamento dos outliers 2001–2002 e 2020 no treino da previsão mensal (seção 3, Sprint 5).
-   Na validação da Sprint 4, 2020 já é reportado à parte.
+7. ~~Tratamento dos outliers 2001–2002 e 2020 no treino da previsão mensal~~ (resolvido na Sprint 5,
+   Parte A: janela móvel de 72 meses deixa 2001–2002 fora; 2020 tem os meses sinalizados pela regra
+   de 2σ imputados, abr e mai/2020; o indicador abr–dez foi descartado; `decisoes.md`).
 8. Lastro: fórmula da penalidade, janela, tolerância e VR 2021–2025. Só necessários se a
    penalidade for modelada (extra); o limite inferior de `V` já está decidido (seção 4).
 9. Fuso do ONS (dicionário de dados; `fontes.md`).
@@ -334,9 +345,11 @@ regime de preço de cada ano.
 15. Estações do INMET que degradaram em 2026 (10 das 37 abaixo de 95% de horas válidas, 5 abaixo
     de 90%, em especial Silvânia-GO e Três Lagoas-MS): decidir na Sprint 2/3 como tratar nas
     análises que usarem 2026 e se vale um teste de completude mensal por estação (`fontes.md`).
-16. Tipo III antes de 2018: a API do ONS não tem dado e o ajuste não foi inventado, então a
-    série ajustada começa em 2018-01. A Carga Mensal sugere um vão estável em nível (~6% da
-    curva) e sazonal desde jan/2015. Decidir na Sprint 5, quando os modelos usarem o histórico
-    longo, se e como reconstruir 2000–2017 (`fontes.md`, `decisoes.md`).
+16. ~~Tipo III antes de 2018~~ (resolvido na Sprint 5, Parte A: reconstruído em 2015–2017 com o vão
+    Carga Mensal − curva, status `reconstruido_carga_mensal`, erro absoluto médio de 0,14% da curva em
+    2018 no SE/CO; antes de 2015 não se reconstrói e a janela de 72 meses nunca passa de 2015-01;
+    `decisoes.md`).
 17. Out/2021 no SE/CO: a carga líquida da API fica ~972 MWmed (2,4%) acima da curva no mês
     inteiro, sem causa conhecida. Verificar com o ONS antes de usar o mês como alvo (`fontes.md`).
+    Sprint 5: o modelo erra o mês em +8,3% (ingênuo +9,4%) e esse mês sozinho leva o MAPE de 2021 de
+    0,95% para 1,89%; a anomalia de 2,4% explica só parte. Segue pendente (`metricas.md`).

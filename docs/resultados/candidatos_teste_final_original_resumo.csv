@@ -1,0 +1,3 @@
+candidato,n,mape_pct,mae_mwmed,vies_mwmed,vies_pct,mape_h1_pct,mape_h12_pct,erro_anual_dez_abs_pct,mape_pior_ano_pct,complexidade,diferenca_mape_vs_ingenuo_pp,ep_diferenca_pp,anos_melhores_que_ingenuo,anos,segundos_de_modelo
+comb_ets_sarima_regressao,720,4.0757,1722.8134,-650.9935,-1.488,2.7186,5.0298,2.5724,6.0629,5,1.5379,0.7461,4,5,55.8679
+sazonal_ingenuo,720,5.6136,2381.0606,-1591.4573,-3.7094,5.6136,5.6136,4.0189,7.9941,0,0.0,0.0,0,5,0.0

@@ -437,6 +437,37 @@ O teste final (2021–2025) já foi usado: **não rode** `--periodo teste_final 
 
 ---
 
+## Previsão mensal de carga (Sprint 5)
+
+O modelo é mensal: a DAG só gera a previsão quando fecha um mês novo. Duas tasks depois do `dbt_test`: `previsao_ha_mes_novo` (ShortCircuit, ~5 s) e `previsao_mensal`. Nos dias sem mês novo a primeira termina `success` e a segunda `skipped`, e o `pipeline_ok` fecha do mesmo jeito.
+
+**Rodar pela DAG.** Nada a fazer: ela roda sozinha no primeiro dia em que o último mês tem 100% das horas no mart. Para forçar numa execução manual, `bash scripts/operar_dag.sh normal`; se a origem do mês já estiver gravada, `previsao_mensal` fica `skipped` (isso é o esperado, não um erro). Para regravar a mesma origem, rode `gerar --forcar` à mão (abaixo).
+
+**Rodar à mão (da raiz do repositório; precisa do ADC e do `.env`):**
+
+```bash
+uv run --env-file .env python -m ml.previsao verificar        # exit 0: mês novo; 10: nada novo
+uv run --env-file .env python -m ml.previsao gerar --dry-run  # lê e mostra a previsão; não grava
+uv run --env-file .env python -m ml.previsao gerar            # grava (MERGE idempotente)
+uv run --env-file .env python -m ml.previsao gerar --forcar   # regrava a origem já gravada
+uv run --env-file .env python -m scripts.conferir_previsao    # 15 checagens de SQL nas tabelas
+```
+
+**Validação completa na nuvem** (grava; log em `data/logs/sprint5c_*.log`): `bash scripts/passo_sprint5_c.sh local` (testes, verificar, dry-run, gerar, conferência, idempotência), depois `bash scripts/passo_sprint5_c.sh dag`: rebuild, import no container, `gerar --forcar` dentro da imagem e DUAS execuções da DAG com os estados conferidos por task:
+- **normal, sem mês novo:** DAG `success`; `previsao_ha_mes_novo` `success` (o ShortCircuit que devolve False termina em success e é ele quem pula a seguinte); `previsao_mensal` `skipped`; `pipeline_ok` `success`.
+- **`{"falha_proposital": true}`:** DAG `failed`; `dbt_test` `failed` (sem retentativa); `previsao_ha_mes_novo`, `previsao_mensal` e `pipeline_ok` `upstream_failed`; `freshness_manuais` `success`; o callback grava `alerta no Discord enviado` no log da task (uma vez, só do `dbt_test`: task barrada não alerta). Confira também no Discord.
+O ramo "fechou um mês novo" dentro da DAG é opcional e grava: `bash scripts/passo_sprint5_c.sh dag-gerar --confirmo` apaga as 12 linhas da última origem de produção (`scripts/apagar_ultima_previsao.py`) e a DAG tem de regerá-las, com `previsao_ha_mes_novo` e `previsao_mensal` em `success`.
+
+**Ordem para validar depois da mudança do arredondamento (a série ganhou 3 casas decimais):**
+1. `bash scripts/passo_sprint5_estabilidade.sh` (já rodado em 08/10): rebuild do mart 3 vezes, fotos bit a bit, testes do mart.
+2. `uv run --env-file .env python -m ml.previsao gerar --forcar`: regrava a origem atual com a série arredondada, acrescenta as colunas da impressão digital da entrada (`ALTER TABLE`) e atualiza os erros do desenvolvimento.
+3. `bash scripts/passo_sprint5_c.sh dag-gerar --confirmo`: apaga a previsão, a DAG regera e o comparador exige previsão IDÊNTICA (mesma impressão da entrada).
+A previsão gravada é um retrato da origem: não é regerada quando o ONS revisa o dado (só com `--forcar`); a impressão digital explica qualquer diferença entre duas gerações.
+
+**Rebuild da imagem.** O grupo `ml` (statsmodels e scikit-learn) entrou no `uv.lock`, então a imagem precisa ser reconstruída uma vez: `docker compose build` (o código de `ml/` chega pelo volume; o `lightgbm` NÃO entra na imagem). Se o import falhar no container, confira o venv: `docker compose exec airflow-scheduler /opt/projeto-venv/bin/python -c "import statsmodels, sklearn"`.
+
+**Se a task falhar.** `previsao_mensal` repete 2 vezes com 5 minutos; falha de verdade chega ao Discord. A geração é idempotente (reexecutar é seguro) e as tabelas temporárias `staging.tmp_fct_*` são apagadas no `finally`; se sobrar alguma, é seguro apagá-la. Mês com cobertura menor que 100% (ONS atrasado) não é origem: o `verificar` espera o mês completar.
+
 ## Operação do dia a dia
 
 ### Abrir a UI

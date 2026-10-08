@@ -15,6 +15,8 @@ freshness_ons|success|1|11.0
 dbt_run|success|1|35.0
 dbt_test|success|1|60.0
 freshness_manuais|success|1|8.0
+previsao_ha_mes_novo|success|1|5.0
+previsao_mensal|skipped|0|0.0
 pipeline_ok|success|1|0.1
 """
 
@@ -34,7 +36,7 @@ def test_ler_bytes_sem_linha_dbt_devolve_so_o_que_existe():
 
 def test_ler_tarefas_ignora_linhas_estranhas():
     t = r.ler_tarefas(TAREFAS + "\\nlixo sem separador\\n")
-    assert len(t) == 10 and t[1].id == "ons_ingestao" and t[1].segundos == 40.5
+    assert len(t) == 12 and t[1].id == "ons_ingestao" and t[1].segundos == 40.5
     assert t[3].estado == "skipped"
 
 
@@ -55,8 +57,11 @@ def test_sucesso_sem_problemas_e_com_task_falha_vira_problema():
     assert any("dbt_run" in x for x in p) and any("terminou em 'failed'" in x for x in p)
 
 
-FALHA = TAREFAS.replace("dbt_test|success|1|60.0", "dbt_test|failed|1|55.0").replace(
-    "pipeline_ok|success", "pipeline_ok|upstream_failed"
+FALHA = (
+    TAREFAS.replace("dbt_test|success|1|60.0", "dbt_test|failed|1|55.0")
+    .replace("previsao_ha_mes_novo|success|1|5.0", "previsao_ha_mes_novo|upstream_failed|0|0.0")
+    .replace("previsao_mensal|skipped", "previsao_mensal|upstream_failed")
+    .replace("pipeline_ok|success", "pipeline_ok|upstream_failed")
 )
 
 
@@ -67,6 +72,15 @@ def test_falha_proposital_esperada_exige_dbt_test_falho_sem_retentativa_e_pipeli
     assert r.avaliar(
         "success", r.ler_tarefas(TAREFAS), "falha"
     )  # rodou limpo: o alerta não foi provado
+
+
+def test_falha_proposital_exige_a_previsao_barrada_e_nao_pulada():
+    """`skipped` na previsão seria o ShortCircuit, não a falha do dbt_test: não é barrada."""
+    pulada = FALHA.replace("previsao_mensal|upstream_failed", "previsao_mensal|skipped")
+    problemas = r.avaliar("failed", r.ler_tarefas(pulada), "falha")
+    assert any("previsao_mensal" in x for x in problemas)
+    rodou = FALHA.replace("pipeline_ok|upstream_failed", "pipeline_ok|success")
+    assert any("pipeline_ok" in x for x in r.avaliar("failed", r.ler_tarefas(rodou), "falha"))
 
 
 def test_main_imprime_e_devolve_o_codigo(tmp_path, capsys):

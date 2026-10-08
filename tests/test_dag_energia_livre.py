@@ -130,6 +130,8 @@ TASKS = {
     "dbt_run",
     "dbt_test",
     "freshness_manuais",
+    "previsao_ha_mes_novo",
+    "previsao_mensal",
     "pipeline_ok",
 }
 
@@ -153,7 +155,7 @@ def test_parametros_antes_da_ingestao_e_selecao_depois_de_toda_a_ingestao_e_ante
 def test_run_e_test_sao_tasks_separadas_em_sequencia_e_o_pipeline_so_fecha_depois_do_test(dag):
     t = dag.tasks
     assert t["dbt_test"].upstream == {"dbt_run"} and t["freshness_manuais"].upstream == {"dbt_run"}
-    assert t["pipeline_ok"].upstream == {"dbt_test"}
+    assert t["pipeline_ok"].upstream == {"dbt_test", "previsao_mensal"}
     assert "dbt_test" not in t["dbt_run"].kw.get("bash_command", "")
 
 
@@ -286,3 +288,55 @@ def test_o_teste_do_alerta_entra_na_selecao_do_dbt_test_sempre():
     for ccee in (False, True):
         for inmet in (False, True):
             assert "teste_alerta_falha_proposital" in orq.selecao_da_execucao(ccee, inmet)["test"]
+
+
+# ---------------------------------------------------------------- previsão mensal (Sprint 5)
+def test_a_previsao_vem_depois_do_dbt_test_e_pula_so_a_propria_task(dag):
+    t = dag.tasks
+    assert t["previsao_ha_mes_novo"].upstream == {"dbt_test"}
+    assert t["previsao_mensal"].upstream == {"previsao_ha_mes_novo"}
+    curto = t["previsao_ha_mes_novo"]
+    assert curto.kw["python_callable"].__name__ == "checar_mes_novo"
+    assert curto.kw["ignore_downstream_trigger_rules"] is False
+    # `skipped` na previsão não pode travar o fechamento do pipeline; falha de verdade, sim
+    assert t["pipeline_ok"].kw["trigger_rule"] is RegraFalsa.NONE_FAILED
+
+
+def test_comando_da_previsao_e_retentativas(dag):
+    t = dag.tasks
+    assert (
+        t["previsao_mensal"].kw["bash_command"]
+        == "/opt/projeto-venv/bin/python -m ml.previsao gerar"
+    )
+    assert t["previsao_mensal"].kw["cwd"] == "/opt/projeto"
+    for nome in ("previsao_ha_mes_novo", "previsao_mensal"):  # rede e BigQuery: falha transitória
+        assert t[nome].kw["retries"] == 2 and t[nome].kw["retry_delay"] == timedelta(minutes=5)
+
+
+# ---------------------------------------------------------------- checar_mes_novo (sem Airflow)
+def test_checar_mes_novo_traduz_o_codigo_de_saida(capsys):
+    from ingestion import orquestracao as orq
+
+    def falso(codigo, saida="", erro=""):
+        return lambda *a, **k: SimpleNamespace(returncode=codigo, stdout=saida, stderr=erro)
+
+    assert orq.checar_mes_novo(executar=falso(0, "mês novo")) is True
+    assert orq.checar_mes_novo(executar=falso(10, "sem mês novo")) is False
+    with pytest.raises(RuntimeError, match="código 1"):
+        orq.checar_mes_novo(executar=falso(1, erro="Traceback ..."))
+    assert "mês novo" in capsys.readouterr().out
+
+
+def test_checar_mes_novo_chama_o_python_do_venv_com_o_modulo_certo():
+    from ingestion import orquestracao as orq
+
+    chamadas = []
+
+    def espiao(cmd, **kw):
+        chamadas.append((cmd, kw))
+        return SimpleNamespace(returncode=10, stdout="", stderr="")
+
+    orq.checar_mes_novo(executar=espiao)
+    cmd, kw = chamadas[0]
+    assert cmd == ["/opt/projeto-venv/bin/python", "-m", "ml.previsao", "verificar"]
+    assert str(kw["cwd"]) == "/opt/projeto"

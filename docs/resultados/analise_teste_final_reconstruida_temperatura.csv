@@ -1,0 +1,7 @@
+candidato,horizonte,meses,correlacao,inclinacao_pct_por_c,erro_pct_em_anomalia_zero,r2
+comb_ets_sarima_regressao,todos,60,-0.7559,-3.68,-0.6772,0.5713
+comb_ets_sarima_regressao,1,60,-0.6715,-2.7548,-0.3447,0.4509
+comb_ets_sarima_regressao,12,49,-0.7839,-4.4747,-1.1959,0.6145
+sazonal_ingenuo_mesmos_pares,todos,60,-0.6322,-3.9929,-2.4279,0.3997
+sazonal_ingenuo_mesmos_pares,1,60,-0.6322,-3.9929,-2.4279,0.3997
+sazonal_ingenuo_mesmos_pares,12,49,-0.7805,-4.6435,-1.8765,0.6091

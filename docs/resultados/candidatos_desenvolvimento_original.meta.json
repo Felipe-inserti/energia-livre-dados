@@ -1,0 +1,60 @@
+{
+  "gerado_em_utc": "2026-10-08T03:51:10Z",
+  "commit": "8d1eaf68703ec411f6c689c74b0aad96c18841b3",
+  "arvore_com_mudancas": true,
+  "periodo": "desenvolvimento",
+  "serie": "original",
+  "passo_das_origens": 1,
+  "candidatos": [
+    "regressao",
+    "ets",
+    "sarima",
+    "lgbm",
+    "comb_ets_sarima",
+    "comb_ets_sarima_regressao"
+  ],
+  "escolha": {
+    "vencedor": "comb_ets_sarima_regressao",
+    "elegiveis": [
+      "comb_ets_sarima_regressao"
+    ],
+    "empate": [
+      "comb_ets_sarima_regressao"
+    ],
+    "motivo": "menor MAPE"
+  },
+  "criterio": {
+    "limiar_pp": 0.25,
+    "min_anos_melhores": 5
+  },
+  "pares": {
+    "sazonal_ingenuo": 1152,
+    "regressao": 1152,
+    "ets": 1152,
+    "sarima": 1152,
+    "lgbm": 1152,
+    "comb_ets_sarima": 1152,
+    "comb_ets_sarima_regressao": 1152
+  },
+  "hashes_de_conteudo": {
+    "ml/validacao.py": "ec38c732b3dd",
+    "ml/metricas.py": "a5d2ed764286",
+    "ml/baselines.py": "2254ee62ea10",
+    "ml/features.py": "f88f4968880b",
+    "ml/preparo.py": "eb9ff81b527f",
+    "ml/modelos.py": "42dc1b9a18c9",
+    "ml/registro.py": "eb84ef2ab863",
+    "ml/escolha.py": "38d9f23af843",
+    "ml/avaliar_candidatos.py": "957d58e58514",
+    "dbt/models/marts/fct_carga_mensal.sql": "829ff45d9e05",
+    "dbt/seeds/carga_mensal_ons.csv": "8baefb0d55bb",
+    "dbt/seeds/ajuste_definicao_carga.csv": "00162a808a94"
+  },
+  "semente_bootstrap": 0,
+  "replicas_bootstrap": 2000,
+  "horizontes": [
+    1,
+    12
+  ],
+  "tempo_total_s": 61.6
+}

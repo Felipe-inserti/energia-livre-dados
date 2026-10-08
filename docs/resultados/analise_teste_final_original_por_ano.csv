@@ -1,0 +1,11 @@
+candidato,ano,n,mape_pct,vies_pct
+comb_ets_sarima_regressao,2021,144,4.3735,-3.5748
+comb_ets_sarima_regressao,2022,144,2.5726,-0.0822
+comb_ets_sarima_regressao,2023,144,6.0629,-3.8989
+comb_ets_sarima_regressao,2024,144,3.5395,-2.2564
+comb_ets_sarima_regressao,2025,144,3.83,2.3721
+sazonal_ingenuo,2021,144,7.9941,-7.3944
+sazonal_ingenuo,2022,144,2.9131,-1.1591
+sazonal_ingenuo,2023,144,6.5329,-4.9263
+sazonal_ingenuo,2024,144,7.1113,-5.7496
+sazonal_ingenuo,2025,144,3.5165,0.6821

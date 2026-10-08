@@ -141,9 +141,12 @@ def avaliar(estado_dag: str, tarefas: list[Tarefa], esperado: str) -> list[str]:
             problemas.append("o dbt_test deveria ter falhado")
         elif teste.tentativa != 1:
             problemas.append(f"o dbt_test foi repetido (tentativa {teste.tentativa}): não deveria")
-        fim = por_id.get("pipeline_ok")
-        if fim is None or fim.estado != "upstream_failed":
-            problemas.append("o pipeline_ok deveria ficar 'upstream_failed'")
+        # nada que dependa do dbt_test pode rodar: a previsão e o fechamento ficam upstream_failed
+        # (o pipeline_ok é NONE_FAILED, que trata upstream_failed como falha, não como skipped)
+        for depois in ("previsao_ha_mes_novo", "previsao_mensal", "pipeline_ok"):
+            t = por_id.get(depois)
+            if t is None or t.estado != "upstream_failed":
+                problemas.append(f"{depois} deveria ficar 'upstream_failed'")
     return problemas
 
 
