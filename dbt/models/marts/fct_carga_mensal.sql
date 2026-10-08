@@ -49,6 +49,14 @@
   por submercado. É a fração da MMGD da API que a curva de fato traz; aplicá-la ao passado mantém a
   série contínua na quebra de 2023.
 
+  ARREDONDAMENTO NA ORIGEM (Sprint 5). Toda coluna de carga/ajuste em MWmed sai arredondada a
+  `casas_decimais_carga` (3, ou seja, 1 kW). Motivo: o AVG paralelo do BigQuery soma em ordem variável e
+  não é reproduzível bit a bit (medido: 3 a 5 de 322 meses mudam no último dígito a cada execução, até
+  7e-12 MWmed); a série de treino da previsão mudava ~1e-10 a cada `dbt run`, e o SARIMA transformava
+  isso em 30 MWmed na soma de 12 meses (docs/decisoes.md). Com 1 kW de resolução (3 ordens de grandeza
+  acima do ruído e 4 abaixo do menor erro relevante) a série fica idêntica bit a bit entre execuções,
+  salvo um valor exatamente na fronteira do arredondamento (~1e-7 por mês).
+
   MÊS INCOMPLETO x COBERTURA (dois conceitos separados):
     - `mes_incompleto`: o mês AINDA NÃO TERMINOU, ou seja, é o mês corrente (data de São Paulo no
       momento do `dbt run`). Definido pela data e não pela contagem de horas. Esse mês nunca é alvo
@@ -84,7 +92,10 @@ mensal as (
         date_trunc(date(instante_utc, 'America/Sao_Paulo'), month) as mes,
         count(*) as horas_com_linha,
         count(carga_mwmed) as horas_validas,
-        avg(carga_mwmed) as carga_original_mwmed
+        -- ARREDONDADO NA ORIGEM a {{ var('casas_decimais_carga') }} casas (1 kW): o AVG paralelo do BigQuery não é
+        -- reproduzível bit a bit (3 a 5 de 322 meses mudam no último dígito a cada execução, até
+        -- 7e-12 MWmed) e o SARIMA amplifica isso (docs/decisoes.md). Todo consumidor do mart herda a conta estável.
+        round(avg(carga_mwmed), {{ var('casas_decimais_carga') }}) as carga_original_mwmed
     from {{ ref('fct_carga_horaria') }}
     group by codigo_submercado, mes
 
@@ -243,19 +254,21 @@ ajustado as (
     select
         *,
         case ajuste_tipo3_status
-            when 'medido' then api_liquida_mwmed - carga_original_mwmed
-            when 'medido_transicao' then api_liquida_mwmed - carga_original_mwmed
+            when 'medido' then round(api_liquida_mwmed - carga_original_mwmed, {{ var('casas_decimais_carga') }})
+            when 'medido_transicao'
+                then round(api_liquida_mwmed - carga_original_mwmed, {{ var('casas_decimais_carga') }})
             when 'incorporado_na_curva' then 0.0
         end as ajuste_tipo3_mwmed,
         case ajuste_mmgd_status
-            when 'medido' then ajuste_mmgd_fator_r * api_mmgd_mwmed
-            when 'medido_parcial' then ajuste_mmgd_fator_r * api_mmgd_mwmed
+            when 'medido' then round(ajuste_mmgd_fator_r * api_mmgd_mwmed, {{ var('casas_decimais_carga') }})
+            when 'medido_parcial'
+                then round(ajuste_mmgd_fator_r * api_mmgd_mwmed, {{ var('casas_decimais_carga') }})
             else 0.0
         end as ajuste_mmgd_mwmed,
         -- sensibilidade: a MMGD da API inteira (r = 1), sem a calibração pela curva
         case ajuste_mmgd_status
-            when 'medido' then api_mmgd_mwmed
-            when 'medido_parcial' then api_mmgd_mwmed
+            when 'medido' then round(api_mmgd_mwmed, {{ var('casas_decimais_carga') }})
+            when 'medido_parcial' then round(api_mmgd_mwmed, {{ var('casas_decimais_carga') }})
             else 0.0
         end as ajuste_mmgd_r1_mwmed,
         -- reconstrução do tipo III antes da API: Carga Mensal - curva, de `inicio_reconstrucao_tipo3` até o
@@ -288,17 +301,21 @@ select
     ajuste_mmgd_mwmed,
     ajuste_mmgd_status,
     ajuste_mmgd_fator_r,
-    carga_original_mwmed + ajuste_tipo3_mwmed + ajuste_mmgd_mwmed as carga_ajustada_mwmed,
-    carga_original_mwmed + ajuste_tipo3_mwmed + ajuste_mmgd_r1_mwmed as carga_ajustada_r1_mwmed,
+    round(carga_original_mwmed + ajuste_tipo3_mwmed + ajuste_mmgd_mwmed, {{ var('casas_decimais_carga') }})
+        as carga_ajustada_mwmed,
+    round(carga_original_mwmed + ajuste_tipo3_mwmed + ajuste_mmgd_r1_mwmed, {{ var('casas_decimais_carga') }})
+        as carga_ajustada_r1_mwmed,
     ajuste_tipo3_reconstruido_status,
     case ajuste_tipo3_reconstruido_status
-        when 'reconstruido_carga_mensal' then carga_mensal_ons_mwmed - carga_original_mwmed
+        when 'reconstruido_carga_mensal'
+            then round(carga_mensal_ons_mwmed - carga_original_mwmed, {{ var('casas_decimais_carga') }})
         else ajuste_tipo3_mwmed
     end as ajuste_tipo3_reconstruido_mwmed,
     -- série para treinar com janela de 6 anos: original + tipo III (medido ou reconstruído) + MMGD.
     -- Nula antes de 2015 (nao_disponivel): ali o tipo III não foi medido e não se inventa.
     case ajuste_tipo3_reconstruido_status
-        when 'reconstruido_carga_mensal' then carga_mensal_ons_mwmed + ajuste_mmgd_mwmed
-        else carga_original_mwmed + ajuste_tipo3_mwmed + ajuste_mmgd_mwmed
+        when 'reconstruido_carga_mensal'
+            then round(carga_mensal_ons_mwmed + ajuste_mmgd_mwmed, {{ var('casas_decimais_carga') }})
+        else round(carga_original_mwmed + ajuste_tipo3_mwmed + ajuste_mmgd_mwmed, {{ var('casas_decimais_carga') }})
     end as carga_ajustada_reconstruida_mwmed
 from ajustado

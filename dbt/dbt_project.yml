@@ -38,6 +38,9 @@ vars:
   mes_quebra_mmgd: "2023-05-01" # a curva passa a incluir a MMGD estimada
   # Reconstrução do tipo III antes da API (Sprint 5): Carga Mensal - curva, de 2015-01 (a Carga Mensal passa
   # a incluir o tipo III) até o mês anterior a `inicio_api_carga`. Antes de 2015 não se reconstrói.
+  # Resolução da carga mensal (Sprint 5): 3 casas = 1 kW. O AVG paralelo do BigQuery não é reproduzível bit a
+  # bit (ruído de 1e-12); arredondar na origem estabiliza a série para todo consumidor do mart.
+  casas_decimais_carga: 3
   inicio_reconstrucao_tipo3: "2015-01-01"
   # Transição do tipo III depois de 2021-03: o ajuste continua enquanto |API líquida - curva| for maior
   # que k x desvio-padrão dessa diferença em `ano_ruido_tipo3` (ano em que a curva já traz o tipo III e

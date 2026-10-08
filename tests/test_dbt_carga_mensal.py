@@ -186,3 +186,18 @@ def test_o_mart_so_reconstrui_na_janela_e_nao_cita_submercado():
     assert VARS["inicio_reconstrucao_tipo3"] == "2015-01-01"
     assert "reconstruido_carga_mensal" in SQL_MART and "ref('carga_mensal_ons')" in SQL_MART
     assert not re.search(r"'(SE|S|NE|N)'", SQL_MART)
+
+
+def test_o_mart_arredonda_a_carga_na_origem_para_a_serie_ser_estavel():
+    assert VARS["casas_decimais_carga"] == 3
+    assert "round(avg(carga_mwmed)" in SQL_MART  # a origem do ruído do AVG paralelo
+    for coluna in (
+        "carga_ajustada_mwmed",
+        "carga_ajustada_r1_mwmed",
+        "carga_ajustada_reconstruida_mwmed",
+        "ajuste_tipo3_reconstruido_mwmed",
+    ):
+        i = SQL_MART.index(f"as {coluna}") if f"as {coluna}" in SQL_MART else SQL_MART.index(coluna)
+        assert "round(" in SQL_MART[max(0, i - 400) : i + 40], coluna
+    teste = (RAIZ / "dbt" / "tests" / "fct_carga_mensal_reconcilia_com_horaria.sql").read_text()
+    assert "casas_decimais_carga" in teste and "1e-6" not in teste.split("--")[-1]

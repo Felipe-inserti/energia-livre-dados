@@ -418,6 +418,9 @@ models:
       III) e em 01/05/2023 (MMGD); o ajuste usa a API de Carga Verificada (seed
       `ajuste_definicao_carga`) e a série original fica sempre ao lado. O mês corrente vem marcado
       como incompleto e não deve ser usado como alvo nem como treino. Detalhes no cabeçalho do SQL.
+      As colunas de carga e de ajuste saem arredondadas a 3 casas decimais (1 kW, var
+      `casas_decimais_carga`) porque o AVG paralelo do BigQuery não é reproduzível bit a bit: o arredondamento
+      na origem deixa a série idêntica entre execuções do `dbt run`.
     data_tests:
       - dbt_utils.unique_combination_of_columns:
           arguments:
