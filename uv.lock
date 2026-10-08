@@ -868,7 +868,7 @@ wheels = [
 name = "energia-livre-dados"
 version = "0.1.0"
 source = { virtual = "." }
-default-groups = ["dbt", "dev", "ml", "notebook"]
+default-groups = ["dbt", "dev", "ml", "ml-exploracao", "notebook"]
 dependencies = [
     { name = "google-cloud-bigquery" },
     { name = "google-cloud-storage" },
@@ -888,9 +888,11 @@ dev = [
     { name = "ruff" },
 ]
 ml = [
-    { name = "lightgbm" },
     { name = "scikit-learn" },
     { name = "statsmodels" },
+]
+ml-exploracao = [
+    { name = "lightgbm" },
 ]
 notebook = [
     { name = "ipykernel" },
@@ -918,10 +920,10 @@ dev = [
     { name = "ruff", specifier = ">=0.16.10" },
 ]
 ml = [
-    { name = "lightgbm", specifier = ">=4.7.0" },
     { name = "scikit-learn", specifier = ">=1.9.1" },
     { name = "statsmodels", specifier = ">=0.15.0" },
 ]
+ml-exploracao = [{ name = "lightgbm", specifier = ">=4.7.0" }]
 notebook = [
     { name = "ipykernel", specifier = ">=7.4.0" },
     { name = "matplotlib", specifier = ">=3.11.2" },

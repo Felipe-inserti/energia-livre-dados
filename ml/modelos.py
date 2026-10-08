@@ -22,7 +22,6 @@ import math
 import warnings
 from datetime import date
 
-import lightgbm as lgb
 import numpy as np
 import pandas as pd
 from sklearn.linear_model import Ridge
@@ -171,6 +170,8 @@ def _atributos_lgbm(y: Serie, origem: date, h: int) -> tuple[list[float], float]
 
 
 def lgbm(historico: Serie, origem: date, horizontes) -> dict[int, float]:
+    import lightgbm as lgb  # grupo `ml-exploracao`: fora da imagem do Airflow (import só aqui)
+
     y = preparar(historico, origem)
     meses = sorted(y)
     x, alvo_ = [], []

@@ -22,10 +22,14 @@ dev = [
     "pyyaml>=6.0.3",
     "ruff>=0.16.10",
 ]
+# Previsão mensal (Sprint 5): o que o modelo vencedor usa. É o único grupo de ML que a imagem do Airflow instala.
 ml = [
-    "lightgbm>=4.7.0",
     "scikit-learn>=1.9.1",
     "statsmodels>=0.15.0",
+]
+# Só para reproduzir a comparação do desenvolvimento (o LightGBM perdeu e não vai para a imagem).
+ml-exploracao = [
+    "lightgbm>=4.7.0",
 ]
 notebook = [
     "ipykernel>=7.4.0",
@@ -37,7 +41,7 @@ notebook = [
 
 [tool.uv]
 # Um ambiente só: `uv sync` instala também o dbt (ver docs/decisoes.md)
-default-groups = ["dev", "dbt", "notebook", "ml"]
+default-groups = ["dev", "dbt", "notebook", "ml", "ml-exploracao"]
 # Projeto de scripts, não uma biblioteca: não precisa ser construído/instalado.
 package = false
 

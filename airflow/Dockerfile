@@ -17,8 +17,9 @@ USER airflow
 RUN pip install --no-cache-dir uv
 
 COPY --chown=airflow:0 pyproject.toml uv.lock .python-version /tmp/projeto/
-# Só o grupo `dbt` mais as dependências de execução; sem pytest, ruff nem notebook
+# Só os grupos `dbt` e `ml` (statsmodels e scikit-learn, do modelo de previsão) mais as dependências de
+# execução; sem pytest, ruff, notebook nem `ml-exploracao` (LightGBM, que precisaria de libgomp)
 RUN cd /tmp/projeto \
-    && uv sync --frozen --no-default-groups --group dbt \
+    && uv sync --frozen --no-default-groups --group dbt --group ml \
     && rm -rf /tmp/projeto \
     && chmod -R g=u /opt/projeto-venv
