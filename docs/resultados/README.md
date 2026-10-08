@@ -27,3 +27,18 @@ final é usado uma vez. O `arvore_com_mudancas: true` desse arquivo é um artefa
 corrigido depois). Para conferir que o código é o mesmo, compare os hashes de conteúdo de `docs/metricas.md` (seção 6) com `git rev-parse 4bc1a17:<arquivo>`.
 
 **Desenvolvimento e estresse de 2020** foram regenerados depois, com a árvore limpa, no commit citado no `.meta.json` de cada um.
+
+## Candidatos da Sprint 5 (Parte A)
+
+`candidatos_<periodo>_<serie>_*`, gerados por `uv run --env-file .env python -m ml.avaliar_candidatos --periodo <periodo>`. Período `desenvolvimento`,
+série `original` (o teste final usará `reconstruida`, de `fct_carga_mensal.carga_ajustada_reconstruida_mwmed`):
+- `_resumo.csv`: uma linha por candidato (MAPE, MAE, viés, MAPE em h=1 e h=12, diferença contra o ingênuo e o erro-padrão dela, anos melhores, erro anual de dezembro, pior ano, tempo).
+- `_por_horizonte.csv`, `_erro_anual.csv`: como nos baselines, com a coluna `candidato`.
+- `_previsoes.csv`: cada previsão (origem, horizonte, alvo, previsto, real, erro). **É o insumo dos cenários de consumo e dos intervalos**: o erro por origem e horizonte, com todos os 12 horizontes de cada origem juntos (preserva a correlação entre meses).
+- `.meta.json`: data, commit, hashes de conteúdo do código e dos seeds, critério, escolha e parâmetros. `arvore_com_mudancas: true` enquanto o código não estiver commitado; os hashes valem como conferência.
+O teste final **não** foi rodado para os candidatos.
+
+### Teste final dos candidatos e análise de erros (Sprint 5, Checkpoint B)
+`candidatos_teste_final_{reconstruida,original}_*`: **rodado uma vez por série**, só a média ETS+SARIMA+regressão e o ingênuo. A regra pré-registrada (a Sprint 6 usa essa média independentemente do resultado) e a ressalva (vitória no desenvolvimento de 0,255 pp, menor que 1 EP) estão no `.meta.json`. Na série reconstruída o modelo tem 654 pares (janela de 72 meses desde dez/2020); `sazonal_ingenuo_mesmos_pares` é o ingênuo restrito a eles. **Não rodar de novo.**
+`analise_teste_final_*` (por mês-calendário, ano, horizonte, temperatura, out/2021, intervalos e cobertura), `quantis_erro_desenvolvimento_*` e `erros_por_origem_*` vêm de `python -m ml.analise_erros`, que só lê estes arquivos e a temperatura mensal.
+

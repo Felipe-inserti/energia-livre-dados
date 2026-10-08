@@ -30,6 +30,7 @@ PRODUCAO = {
     "int_clima_submercado_horario": "staging",
     "pld_limites": "staging",  # seed
     "ajuste_definicao_carga": "staging",  # seed (Sprint 4, Parte B)
+    "carga_mensal_ons": "staging",  # seed (Sprint 5)
     "dim_estacao": "marts",
     "dim_submercado": "marts",
     "dim_tempo": "marts",

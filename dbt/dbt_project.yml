@@ -36,6 +36,9 @@ vars:
   inicio_api_carga: "2018-01-01" # primeiro mês com carga global na API (antes, o tipo III não é medível)
   mes_quebra_tipo3: "2021-03-01" # a curva passa a incluir as usinas não despachadas (tipo III)
   mes_quebra_mmgd: "2023-05-01" # a curva passa a incluir a MMGD estimada
+  # Reconstrução do tipo III antes da API (Sprint 5): Carga Mensal - curva, de 2015-01 (a Carga Mensal passa
+  # a incluir o tipo III) até o mês anterior a `inicio_api_carga`. Antes de 2015 não se reconstrói.
+  inicio_reconstrucao_tipo3: "2015-01-01"
   # Transição do tipo III depois de 2021-03: o ajuste continua enquanto |API líquida - curva| for maior
   # que k x desvio-padrão dessa diferença em `ano_ruido_tipo3` (ano em que a curva já traz o tipo III e
   # ainda não traz a MMGD). k = 3: ver docs/decisoes.md.

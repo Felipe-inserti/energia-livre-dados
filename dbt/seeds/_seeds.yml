@@ -118,3 +118,39 @@ seeds:
       - name: consultado_em
         description: "Data (UTC) da consulta à API. O ONS revisa a série: esta é a idade da cópia."
         data_tests: [not_null]
+
+  # Carga Mensal do ONS, 2015 a 2018 (Sprint 5). Gerado por `scripts/baixar_carga_mensal_ons.py`; NÃO
+  # editar à mão. `Carga Mensal - curva` mede o tipo III em 2015-2017, onde a API de Carga Verificada
+  # não tem dado; 2018 é a sobreposição que valida o método (docs/decisoes.md).
+  - name: carga_mensal_ons
+    description: >
+      Carga mensal do ONS (dataset Carga de Energia Mensal) por submercado, 2015-01 a 2018-12. Inclui as
+      usinas não despachadas desde jan/2015, ao contrário da curva horária. Régua da reconstrução do
+      tipo III antes de 2018 (`fct_carga_mensal`, status `reconstruido_carga_mensal`).
+    config:
+      column_types:
+        mes: date
+        codigo_submercado: string
+        carga_mensal_ons_mwmed: float64
+        consultado_em: date
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [mes, codigo_submercado]
+    columns:
+      - name: mes
+        description: "Primeiro dia do mês."
+        data_tests: [not_null]
+      - name: codigo_submercado
+        description: "Código do ONS do submercado."
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [SE, S, NE, N]
+      - name: carga_mensal_ons_mwmed
+        description: "Carga média do mês em MWmed. Sempre positiva (o script recusa zero)."
+        data_tests: [not_null]
+      - name: consultado_em
+        description: "Data da consulta ao ONS (o ONS revisa o dataset)."
+        data_tests: [not_null]

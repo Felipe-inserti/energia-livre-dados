@@ -320,8 +320,9 @@ regime de preço de cada ano.
    e a MMGD medidos pela API de Carga Verificada, com a original preservada, e as quebras do
    dado são 01/03/2021 e 01/05/2023, e não 29/04; ver `decisoes.md` e `metricas.md`). Resta
    verificar com o ONS se há uma segunda fase da MMGD depois de mai/2023 (`fontes.md`).
-7. Tratamento dos outliers 2001–2002 e 2020 no treino da previsão mensal (seção 3, Sprint 5).
-   Na validação da Sprint 4, 2020 já é reportado à parte.
+7. ~~Tratamento dos outliers 2001–2002 e 2020 no treino da previsão mensal~~ (resolvido na Sprint 5,
+   Parte A: janela móvel de 72 meses deixa 2001–2002 fora; 2020 tem os meses sinalizados pela regra
+   de 2σ imputados, abr e mai/2020; o indicador abr–dez foi descartado; `decisoes.md`).
 8. Lastro: fórmula da penalidade, janela, tolerância e VR 2021–2025. Só necessários se a
    penalidade for modelada (extra); o limite inferior de `V` já está decidido (seção 4).
 9. Fuso do ONS (dicionário de dados; `fontes.md`).
@@ -334,9 +335,11 @@ regime de preço de cada ano.
 15. Estações do INMET que degradaram em 2026 (10 das 37 abaixo de 95% de horas válidas, 5 abaixo
     de 90%, em especial Silvânia-GO e Três Lagoas-MS): decidir na Sprint 2/3 como tratar nas
     análises que usarem 2026 e se vale um teste de completude mensal por estação (`fontes.md`).
-16. Tipo III antes de 2018: a API do ONS não tem dado e o ajuste não foi inventado, então a
-    série ajustada começa em 2018-01. A Carga Mensal sugere um vão estável em nível (~6% da
-    curva) e sazonal desde jan/2015. Decidir na Sprint 5, quando os modelos usarem o histórico
-    longo, se e como reconstruir 2000–2017 (`fontes.md`, `decisoes.md`).
+16. ~~Tipo III antes de 2018~~ (resolvido na Sprint 5, Parte A: reconstruído em 2015–2017 com o vão
+    Carga Mensal − curva, status `reconstruido_carga_mensal`, erro absoluto médio de 0,14% da curva em
+    2018 no SE/CO; antes de 2015 não se reconstrói e a janela de 72 meses nunca passa de 2015-01;
+    `decisoes.md`).
 17. Out/2021 no SE/CO: a carga líquida da API fica ~972 MWmed (2,4%) acima da curva no mês
     inteiro, sem causa conhecida. Verificar com o ONS antes de usar o mês como alvo (`fontes.md`).
+    Sprint 5: o modelo erra o mês em +8,3% (ingênuo +9,4%) e esse mês sozinho leva o MAPE de 2021 de
+    0,95% para 1,89%; a anomalia de 2,4% explica só parte. Segue pendente (`metricas.md`).

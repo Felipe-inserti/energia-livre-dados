@@ -1,0 +1,44 @@
+{
+  "gerado_em_utc": "2026-10-08T01:46:21Z",
+  "commit": "d293dce6e7cea60703491a18877a19ca5e19cf22",
+  "arvore_com_mudancas": true,
+  "periodo": "teste_final",
+  "serie": "reconstruida",
+  "passo_das_origens": 1,
+  "candidatos": [
+    "comb_ets_sarima_regressao"
+  ],
+  "escolha": null,
+  "regra_pre_registrada": "a Sprint 6 usa a média ETS+SARIMA+regressão na estratégia de previsão independentemente do resultado do teste final; o teste final serve para reportar o desempenho, não para nova seleção",
+  "ressalva_da_vitoria": "a vitória no desenvolvimento foi de 0,255 p.p. sobre o ingênuo (limiar 0,25 p.p.), menor que 1 erro-padrão (0,27 p.p.)",
+  "criterio": {
+    "limiar_pp": 0.25,
+    "min_anos_melhores": 5
+  },
+  "pares": {
+    "sazonal_ingenuo": 720,
+    "comb_ets_sarima_regressao": 654,
+    "sazonal_ingenuo_mesmos_pares": 654
+  },
+  "hashes_de_conteudo": {
+    "ml/validacao.py": "ec38c732b3dd",
+    "ml/metricas.py": "a5d2ed764286",
+    "ml/baselines.py": "2254ee62ea10",
+    "ml/features.py": "f88f4968880b",
+    "ml/preparo.py": "eb9ff81b527f",
+    "ml/modelos.py": "d5a45a194cb0",
+    "ml/registro.py": "bfb1db018725",
+    "ml/escolha.py": "38d9f23af843",
+    "ml/avaliar_candidatos.py": "09581812e8f0",
+    "dbt/models/marts/fct_carga_mensal.sql": "81eacb2a5e1c",
+    "dbt/seeds/carga_mensal_ons.csv": "8baefb0d55bb",
+    "dbt/seeds/ajuste_definicao_carga.csv": "00162a808a94"
+  },
+  "semente_bootstrap": 0,
+  "replicas_bootstrap": 2000,
+  "horizontes": [
+    1,
+    12
+  ],
+  "tempo_total_s": 34.8
+}

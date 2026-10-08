@@ -7,7 +7,7 @@ Nunca otimizar antes de medir a versão simples. Preencher "Antes" na versão in
 | Negócio | Custo anual de energia do consumidor-exemplo (backtest) | estratégia ingênua: R$ __ | estratégia otimizada: R$ __ | 6 |
 | Negócio | Economia | — | R$ __ / __% | 6 |
 | Negócio | Exposição ao PLD (MWh descobertos ou sobrando) | __ | __ | 6 |
-| Ciência | MAPE mensal da previsão de carga (12 meses à frente, rolling origin) | baseline: __% | modelo: __% | 5 |
+| Ciência | MAPE mensal da previsão de carga (12 meses à frente, rolling origin) | baseline (sazonal ingênuo): **2,92%** no desenvolvimento (2012–2019, original); 4,30% no teste final (2021–2025, ajustada) | desenvolvimento: **2,66%** (média ETS+SARIMA+regressão), vitória marginal sobre o ingênuo (+0,26 pp, EP 0,27 pp); teste final (ajustada): **3,11%** contra 4,17% do ingênuo nos mesmos pares (4,30% em todos os pares); origem de dezembro 2,53% contra 4,30% | 5 |
 | Engenharia | Dados lidos por consulta típica (**bytes processados**) | 0,037 GB (ONS, raw STRING sem partição: 37,3 MB processados; 37,7 MB faturados) | tipado sem partição: 0,018 GB (18,3 MB); **fato particionado por mês e clusterizado: 0,0007 GB (0,74 MB processados, −98,0% contra o raw)**. O faturado cai para 10,5 MB, o piso de 10 MiB do BigQuery, então a métrica de comparação são os bytes processados | 1 → 2 |
 | Engenharia | Tempo de carga diária | full: **9,3 min** (ONS 4,9 + CCEE 1,2 + INMET 3,1 + feriados 0,2; sem o tempo do download manual) | incremental (DAG diária, ONS): **1,6 min** (1 min 33 s; só a ingestão do ONS leva 20 s, contra 4,9 min da carga full do ONS). Seção "Sprint 4, Parte A" | 1 → 4 |
 | Engenharia | Tempo do backfill completo (2021–hoje) | — | **~125 s (2,1 min)**: ingestão 74 s + dbt 51 s, de 2021-01 a 2026-10 (70 partições). A carga full de 2000 a hoje leva 94 s | 4 |
@@ -989,3 +989,81 @@ Leitura, com o que os números permitem afirmar:
 
 O MAPE do modelo linear e do LightGBM contra estes números, no mesmo protocolo e só depois do desenvolvimento; a escolha do tratamento do histórico anterior a 2018; e o
 mesmo teste final com o modelo escolhido (uma vez).
+
+## Sprint 5, Parte A: candidatos no desenvolvimento (Checkpoint A)
+
+Medido em 08/10/2026. Alvos 2012-01 a 2019-12, série `original`, origem móvel com janela de 72 meses, h = 1..12, 1.152 pares por candidato (todas as 107 origens), as mesmas do baseline. Resultados completos em `docs/resultados/candidatos_desenvolvimento_original_*` (resumo, por horizonte, erro anual, previsões com o erro por origem e horizonte, e `.meta.json` com os hashes do código). O teste final **não** foi rodado.
+
+| Candidato | MAPE % | MAE MWmed | Viés % | MAPE h=1 | MAPE h=12 | Dif. vs ingênuo (pp) | EP da dif. (pp) | Anos melhores (de 8) | Erro anual dez. (abs, %) | MAPE do pior ano % | Tempo de modelo |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| comb. ETS+SARIMA+regressão | **2,66** | 961 | +0,45 | 2,22 | 2,77 | **+0,255** | 0,27 | 6 | 1,82 | 3,80 | 77 s |
+| ETS | 2,71 | 988 | −0,42 | 2,25 | 2,62 | +0,206 | 0,21 | 6 | **1,67** | 3,76 | 13 s |
+| comb. ETS+SARIMA | 2,80 | 1.015 | +0,01 | 2,26 | 2,86 | +0,116 | 0,19 | 6 | 2,12 | 3,81 | 77 s |
+| **sazonal ingênuo** (baseline) | 2,92 | 1.063 | −0,83 | 2,92 | 2,92 | — | — | — | 1,90 | 4,47 | — |
+| regressão | 3,04 | 1.085 | +1,32 | 2,70 | 3,40 | −0,122 | 0,44 | 4 | 1,89 | 4,85 | 0,3 s |
+| SARIMA | 3,04 | 1.097 | +0,45 | 2,34 | 3,34 | −0,124 | 0,21 | 3 | 2,75 | 4,03 | 64 s |
+| LightGBM | 3,45 | 1.246 | +0,29 | 3,36 | 3,37 | −0,528 | 0,21 | 2 | 2,99 | 4,55 | 2 s |
+
+Dif. = MAPE do ingênuo − MAPE do candidato nos mesmos pares (positivo = candidato melhor); EP por bootstrap em blocos de ano-alvo (semente 0, 2.000 réplicas). O ingênuo reproduz os números da Sprint 4B (2,92%, viés −0,83%, erro anual 1,90%), o que confere o protocolo.
+
+**Pela regra congelada, vence a média ETS+SARIMA+regressão, por 0,005 pp**: a diferença de 0,2553 pp passa o limiar de 0,25 pp e 6 de 8 anos passam o corte de 5. É uma vitória estatisticamente marginal (a diferença é menor que 1 EP). ETS sozinho (+0,206 pp) não chega ao limiar. Nenhum candidato elegível empatou com o vencedor (o ETS fica a 0,05 pp de MAPE, mas não é elegível). Leitura:
+- A média das três famílias tem **MAPE menor em 6 de 8 anos que o ingênuo** e **viés +0,45%** (o ingênuo tem −0,83%): o viés mudou de sinal e diminuiu em módulo, mas continua não nulo.
+- O MAPE da média das três sobe de 2,22% (h=1) para 2,77% (h=12) e fica abaixo dos 2,92% do ingênuo em todos os horizontes.
+- Na origem de dezembro (96 pares): ingênuo 2,92%, ETS 2,64%, média das três 2,81%, SARIMA 3,44%, LightGBM 4,01%.
+- LightGBM é o pior: com 72 meses sobram ~6 anos de informação independente, como previsto.
+- Tempo de toda a avaliação: 66 s com 4 processos (estimativa antes de rodar: 1,4 min sequencial). Reproduzível: ets, regressão e LightGBM recalculados do zero deram previsões idênticas.
+
+### Reconstrução do tipo III e fct_carga_mensal (dbt)
+`dbt seed` (192 linhas) + `dbt run fct_carga_mensal` (1,3 mil linhas, 21,6 MiB processados, 4,2 s) + 32 testes do modelo e do seed: **PASS=32** (dois testes novos: reconstrução só onde deve e conferência com a API em 2018). Pytest: 541 passaram.
+
+### O que medir depois
+Ver o Checkpoint B abaixo (já medido). Resta, no Checkpoint C, a tabela `fct_previsao_carga` e a task da DAG.
+
+## Sprint 5, Parte A: teste final do vencedor (Checkpoint B)
+
+Rodado **uma vez por série** em 08/10/2026 (01:46 UTC), só a média ETS+SARIMA+regressão e o ingênuo, com `--liberar-teste-final` (o CLI recusa qualquer outro candidato). Regra registrada antes de rodar, no `decisoes.md` e no `.meta.json`: *a Sprint 6 usa essa média independentemente do resultado; o teste final reporta desempenho, não seleciona*. Ressalva também registrada: a vitória no desenvolvimento foi de 0,255 pp, menor que 1 erro-padrão (0,27 pp). Alvos 2021-01 a 2025-12; treino com janela de 72 meses; código de referência `d293dce` com árvore sem commit (hashes de conteúdo no `.meta.json`).
+
+**Atenção ao número de pares.** A série ajustada reconstruída começa em 2015-01, então a janela de 72 meses só existe a partir da origem dez/2020: o modelo tem **654 dos 720 pares** (em 2021 só 78 dos 144, os de horizonte curto). O ingênuo é mostrado em todos os pares (720) e **nos mesmos 654**. A origem de dezembro tem os 12 horizontes em todos os anos. Na série original (que vem desde 2000) são 720 pares.
+
+| Série | Candidato | Pares | MAPE % | MAE MWmed | Viés MWmed | Viés % | Dif. vs ingênuo (pp, mesmos pares) | EP (pp) | Anos melhores (de 5) | Erro anual dez. (abs, %) | MAPE dez. % |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| **ajustada (principal)** | média ETS+SARIMA+regressão | 654 | **3,11** | 1.361 | −384 | −0,76 | **+1,06** | 0,45 | 4 | 1,33 | 2,53 |
+| ajustada | ingênuo, mesmos pares | 654 | 4,17 | 1.817 | −981 | −2,17 | — | — | — | 2,72 | 4,30 |
+| ajustada | ingênuo, todos | 720 | 4,30 | 1.858 | −1.077 | −2,43 | — | — | — | 2,72 | 4,30 |
+| original (comparação) | média ETS+SARIMA+regressão | 720 | 4,08 | 1.723 | −651 | −1,49 | +1,54 | 0,75 | 4 | 2,57 | 3,76 |
+| original | ingênuo | 720 | 5,61 | 2.381 | −1.591 | −3,71 | — | — | — | 4,02 | 5,61 |
+O ingênuo reproduz os números da Sprint 4B (4,30% / −2,43% na ajustada, 5,61% / −3,71% na original). O erro-padrão é por bootstrap em blocos de ano-alvo (semente 0): **só 5 anos**, então a precisão é pequena; a diferença é de 2,4 EP na ajustada e 2,1 na original, mas 4 de 5 anos não é prova de nada.
+
+MAPE % por horizonte (ajustada, todas as origens): média das três 2,33 (h=1), 2,62, 2,76, 2,79, 2,92, 3,12, 3,34, 3,39, 3,40, 3,61, 3,61, **3,83 (h=12)**; ingênuo nos mesmos pares 4,17 em média (4,0 a 4,3 em cada horizonte). Na série original: 2,72 (h=1) a 5,03 (h=12) contra 5,61. A vantagem encolhe com o horizonte (em h=12, 3,83 contra 4,12).
+
+Erro do ano inteiro na origem de dezembro (previsto menos real, % e MWmed), ajustada:
+| | 2021 | 2022 | 2023 | 2024 | 2025 |
+|---|---|---|---|---|---|
+| média ETS+SARIMA+regressão | +0,46% (+183) | −0,45% (−185) | **−3,80% (−1.613)** | +1,17% (+519) | +0,76% (+335) |
+| ingênuo | −3,03% (−1.214) | −1,40% (−569) | −4,18% (−1.776) | −4,55% (−2.023) | +0,44% (+197) |
+Na original: modelo −3,28%, −0,62%, −5,88%, +1,68%, +1,39% e ingênuo −7,34%, −1,26%, −5,25%, −5,80%, +0,44%. **Em 2023 o modelo não ajuda** (−3,8% na ajustada; na original é pior que o ingênuo, −5,88% contra −5,25%): é o ano em que a carga cresce 5,5% e a MMGD entra na curva.
+
+### Análise de erros (5.3)
+`python -m ml.analise_erros` (só lê os resultados; arquivos `analise_teste_final_*`). Série ajustada, erro = previsto − real.
+- **O viés do ingênuo foi corrigido só em parte.** Geral: −2,43% (−2,17% nos mesmos pares) → −0,76%. Por ano (todas as origens), média ETS+SARIMA+regressão contra ingênuo: 2021 +1,08% (−1,28%), 2022 −0,25% (−1,34%), 2023 **−3,23%** (−3,96%), 2024 **−2,51%** (−4,55%), 2025 +1,94% (+0,68%). O modelo ainda subestima 2023 e 2024 (os anos de crescimento forte) e passa a superestimar 2021 e 2025. O sinal do viés depende da origem: em 2024 é −2,5% com todas as origens e +1,2% na de dezembro.
+- **Por mês-calendário do alvo (viés %):** fevereiro −3,44 e março −3,50 são os piores (ingênuo −4,32 e −3,27); os demais meses ficam entre −1,4 e +0,9. MAPE maior em setembro (4,52) e outubro (4,05). Não investiguei a causa de fev/mar (os dias úteis efetivos já descontam o Carnaval); fica como observação, não como conclusão.
+- **Por horizonte:** o MAPE sobe de 2,33% (h=1) para 3,83% (h=12), como previsto, e o ingênuo é constante (~4,2%).
+- **Temperatura (INMET, 2021+, 60 meses-alvo; anomalia = temperatura do mês menos a média do mesmo mês-calendário em 2021–2025, portanto dentro da amostra):** o erro médio de cada mês-alvo cai **3,68 pontos percentuais por °C** de anomalia (correlação −0,76, R² 0,57); no ingênuo, −3,99 (R² 0,40); em h=12 (49 meses), −4,48 (R² 0,61). Mês mais quente que o normal → carga acima da previsão (erro mais negativo). O coeficiente é consistente com os 3,5%/°C medidos sobre a própria carga (`decisoes.md`) e mostra que **a anomalia de temperatura sozinha responde por R² de 0,57 do erro mensal**, e ela não se conhece 12 meses antes. Sem causalidade a provar: 60 meses, anomalia calculada na mesma amostra.
+- **Out/2021 (pendência 17):** erro de **+8,26%** no modelo e +9,37% no ingênuo, nos 10 horizontes que existem para esse alvo (8,0% a 8,8%). O MAPE de 2021 do modelo cai de 1,89% para 0,95% sem esse mês (ingênuo, mesmos pares: 4,14% → 3,36%). Na série original o erro do mês é +4,09% (modelo) e +3,60% (ingênuo). A anomalia da curva (~972 MWmed, 2,4% do mês) explica só uma parte de um erro de 8%; a causa continua em aberto e **a pendência 17 segue pendente** (verificar com o ONS).
+
+### Intervalos de previsão
+Quantis empíricos do erro em log, log(real/previsto), do **desenvolvimento** (96 pares por horizonte, 2012–2019), aplicados ao teste final (`quantis_erro_desenvolvimento_*`, `analise_teste_final_*_intervalos_*`). Intervalo de 95% por horizonte: de [−4,7%, +5,8%] em h=1 a [−7,0%, +5,8%] em h=12 sobre a previsão; largura média 13,5% (95%) e 8,1% (80%).
+| Série / variante | Cobertura de 80% (nominal) | Cobertura de 95% (nominal) | Fora do 95%: acima do teto / abaixo do piso |
+|---|---|---|---|
+| ajustada, quantis por horizonte | **70,2%** | **87,8%** | 56 / 24 (de 654) |
+| ajustada, todos os horizontes juntos | 70,8% | 90,5% | 42 / 20 |
+| original, por horizonte | 57,1% | 80,6% | 111 / 29 (de 720) |
+Por ano (ajustada, por horizonte), cobertura de 80%: 85,9% (2021), 89,6% (2022), **61,1%** (2023), **56,9%** (2024), 64,6% (2025); de 95%: 87,2%, 97,9%, 79,9%, 87,5%, 86,1%. Por horizonte a cobertura de 80% cai de 71,7% (h=1) para 61,2% (h=12).
+Leitura: **os intervalos calibrados no desenvolvimento são estreitos demais para 2021–2025** (80% nominal vira 70%; 95% vira 88%), quase sempre porque a carga real fica **acima** do intervalo em 2023–2024 (a MMGD e o crescimento). A ressalva de precisão: são 5 anos, os 12 horizontes de um mesmo mês-alvo compartilham o mesmo erro e a cobertura por ano varia de 57% a 90%; os 654 pares **não** são 654 observações independentes, então a diferença entre 70% e 80% não tem teste formal confiável. Para a Parte B isso pesa: usar só o erro do desenvolvimento subestima a incerteza; na produção convém calibrar com desenvolvimento e teste final juntos (13 anos de alvos) e olhar a cobertura por regime.
+
+### Erros por origem (insumo da Parte B)
+`erros_por_origem_{desenvolvimento_original,teste_final_reconstruida,teste_final_original}.csv`: uma linha por origem com o erro % dos horizontes 1 a 12 (`erro_pct_h01..h12`) e a marca `horizontes_completos`. Origens completas: 2012-01 a 2018-12 no desenvolvimento e dez/2020 a dez/2024 no teste final da ajustada. A unidade de reamostragem da Parte B é a origem inteira (preserva a correlação entre meses). Os mesmos erros, por par, estão em `candidatos_*_previsoes.csv`.
+
+### O que medir depois
+Checkpoint C: tempo da task mensal na DAG, bytes lidos e gravados, e o MAPE das previsões já gravadas em `fct_previsao_carga`.
+
