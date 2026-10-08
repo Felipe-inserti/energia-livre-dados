@@ -126,9 +126,11 @@ SE/CO, 12 meses à frente, e não a horária.
   de 2018 vale a série original (pendência 16).
 - **Baseline:** mesmo mês do ano anterior (**sazonal ingênuo**), mais o sazonal multiplicado pelo
   crescimento dos últimos 12 meses. Medidos na Sprint 4 (`docs/metricas.md`, `docs/resultados/`).
-- **Modelo:** começa por uma **regressão linear regularizada** com tendência, calendário (dias
-  úteis, feriados, dias do mês) e defasagens de pelo menos 12 meses. **LightGBM entra como
-  desafiante**, com a mesma validação. A escolha final fica para a Sprint 5, pelo erro medido.
+- **Modelo (Sprint 5, fechado):** a **média simples de ETS, SARIMA e regressão ridge** (tendência local,
+  mês, dias úteis efetivos e dias do mês) sobre a série reconstruída, com **janela móvel de 72 meses** e os
+  meses de abr e mai/2020 imputados. Escolhido pelo critério congelado no desenvolvimento (2,66% contra
+  2,92% do ingênuo, vitória de 0,255 pp, menor que 1 erro-padrão); o LightGBM perdeu. A Sprint 6 usa esta
+  média **independentemente do resultado do teste final**, que só reporta desempenho (`decisoes.md`).
 - **Validação:** backtest mensal em **rolling origin** com janela crescente, horizontes de 1 a
   12 meses, sempre só com informação anterior à origem (a previsão só recebe a série até a
   origem). Alvos: desenvolvimento 2012–2019 (escolha de modelos), 2020 à parte (estresse) e
@@ -138,6 +140,14 @@ SE/CO, 12 meses à frente, e não a horária.
 - **O erro desse backtest gera os cenários de consumo** da otimização. O erro é medido na
   mesma escala da decisão (mensal), porque o erro horário subestimaria a incerteza do consumo
   anual.
+- **Regra dos intervalos e dos cenários (Parte B, `decisoes.md`):** em **produção** (previsões além dos
+  dados) os quantis e a reamostragem usam os erros do desenvolvimento e do teste final **juntos**. No
+  **backtest da Sprint 6** a calibração é **crescente no tempo**: na origem `t` só entram os erros cujo
+  mês-alvo é `<= t` (um vetor de 12 erros só quando o último mês-alvo dele é `<= t`). Usar erros de
+  2023–2024 nos cenários da origem dez/2022 seria vazamento e deixaria a economia em R$ otimista.
+  Implementada e testada em `ml/intervalos.py`. Os intervalos do desenvolvimento cobriram 70% (nominal
+  80%) e 88% (nominal 95%) no teste final: o clima (σ ~1,5–1,8% do mês, não previsível a 12 meses) é o
+  piso da incerteza.
 - **Outliers:** os períodos de 2001–2002 (racionamento) e 2020 (pandemia) afetam o treino e a
   distribuição do erro. Na validação, 2020 é reportado à parte (estresse) e não entra na escolha
   de modelos. **[pendente, Sprint 5]** decidir o tratamento no treino (excluir, variável

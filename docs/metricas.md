@@ -1067,3 +1067,54 @@ Leitura: **os intervalos calibrados no desenvolvimento são estreitos demais par
 ### O que medir depois
 Checkpoint C: tempo da task mensal na DAG, bytes lidos e gravados, e o MAPE das previsões já gravadas em `fct_previsao_carga`.
 
+### RESSALVAS do teste final (leia junto com o resultado)
+Resultado: **3,11% contra 4,17% do ingênuo nos mesmos pares** (−1,06 pp, 2,4 EP), viés −0,76% contra −2,17%, erro anual de dezembro 1,33% contra 2,72%.
+1. **Parte da vantagem vem do ingênuo piorar em 2021–2025** (2,92% → 4,30%): a vantagem foi de 0,26 pp no desenvolvimento e de 1,06 pp aqui.
+2. **2023 continua com −3,8%** de erro anual em dezembro (e 2024 com −2,5% de viés com todas as origens).
+3. **O modelo perde em 2025** (3,72% contra 3,52%).
+4. **Os intervalos ficaram estreitos**: 70% de cobertura para 80% nominal e 88% para 95%.
+Mais: 5 anos de teste, 654 dos 720 pares, e vitória de 0,255 pp no desenvolvimento, menor que 1 EP (0,27).
+
+## Sprint 5, Parte A: previsão em produção (Checkpoint C)
+
+Medido em 08/10/2026. **O que foi medido sem gravar na nuvem** (a validação com gravação é `scripts/passo_sprint5_c.sh`, a rodar por você; os números dela entram aqui depois):
+- **Testes:** 578 no pytest (`tests/test_ml_candidatos.py`, `test_ml_intervalos.py`, `test_ml_previsao.py`, a DAG com as duas tasks novas e a imagem), ruff limpo.
+- **SQL no motor do BigQuery, sem criar nada persistente:** os dois `MERGE` e as 15 conferências de `scripts/conferir_previsao.py` foram executados duas vezes sobre **tabelas temporárias de sessão** (com as 12 previsões da origem 2026-09 e os 1.806 erros): 12 e 1.806 linhas depois da 2ª execução (idempotente), MAPE de 2,6624% (desenvolvimento) e 3,1148% (teste final), 15 PASS. O DDL (`CREATE TABLE IF NOT EXISTS ... OPTIONS`) foi validado por dry-run (0 bytes). O `MERGE` real contra as tabelas de produção e a task no Airflow ainda não rodaram.
+- **`ml.previsao verificar` e `gerar --dry-run` na nuvem (só leitura):** ~5 s, 2 consultas de ~10 MiB faturados; primeira previsão de produção (origem 2026-09, não gravada): 44.921 MWmed em 2026-10 [42.805; 48.298] e 44.836 em 2027-09 [41.816; 48.825].
+- **Custo esperado na DAG:** nos ~29 dias sem mês novo, `previsao_ha_mes_novo` custa 1 consulta (~10 MiB faturados, ~5 s); no dia do mês novo, `previsao_mensal` faz ~4 consultas + 2 load jobs (não cobrados), ~40 MiB faturados.
+- **Imagem:** `ldd` dos binários do grupo `ml` mostra só glibc, `libgcc_s`, `libstdc++` e `libz`; rebuild necessário. Sem `lightgbm` na imagem.
+- **Medido na DAG (veja a seção abaixo):** `previsao_mensal` 22 s e `previsao_ha_mes_novo` 6 s no `dag-gerar`. O tempo do rebuild da imagem não foi registrado.
+
+### O que medir depois
+Sprint 6: o backtest com a calibração crescente; a cobertura dos intervalos de 80% e 95% de produção conforme os erros realizados forem entrando em `fct_erro_previsao_carga`.
+
+## Sprint 5, Parte A: estabilidade da série de entrada (arredondamento na origem)
+
+Medido em 08/10/2026. Detalhe e causa em `docs/decisoes.md`.
+- **Antes:** o mesmo `AVG` sobre a carga horária, 4 rodadas sem cache: 3 a 5 de 322 meses diferentes bit a bit por rodada (até 7,3e-12 MWmed). Dois builds do mart diferiam em 64 dos 141 meses de treino (máx. 1,2e-10); o SARIMA transformava isso em 30 MWmed na soma de 12 meses (ETS 0,011; regressão 0), e a previsão combinada em +10 MWmed (0,002%).
+- **Depois (`casas_decimais_carga` = 3):** 3 `dbt run` seguidos: **0 de 9.016 valores diferem bit a bit**; 6 rodadas sem cache do `ROUND(AVG(...), 3)`: **0 de 1.288** séries mensais diferem; 26 testes do mart PASS (a reconciliação com a horária, na tolerância de meio passo do arredondamento).
+- **Desenvolvimento refeito com a série arredondada** (107 origens, 8.064 previsões): vencedor 2,6629% (antes 2,6624%), viés +0,449%, dif. contra o ingênuo 0,2548 pp (antes 0,2553; limiar 0,25), erro anual de dezembro 1,82%, 6 de 8 anos; maior deslocamento por horizonte 0,0044 pp de MAPE; cobertura no teste final 70,18% / 87,77% (iguais). SARIMA: 4,1% dos pares mudaram mais de 0,01% (máx. 0,32%), em 8 das 107 origens.
+- **Previsão da origem 2026-09 com a entrada arredondada:** soma dos 12 meses 539.214,16 MWmed, idêntica nas duas execuções de agora; impressão da entrada `57ef0990dace` (141 meses, soma 5.717.834,076, último 44.516,808).
+- **Testes:** 588 no pytest (comparador de impressões, impressão da entrada, ALTER, arredondamento).
+
+### A DAG com a previsão mensal, medida (`dag-gerar`, 08/10/2026, `data/logs/sprint5c_dag_gerar2.log`)
+
+Execução manual `manual__normal_20261008T035743` (03:57:47 a 03:59:41 UTC), no ramo em que fechou um mês novo (a previsão da origem 2026-09 foi apagada antes e a DAG a regerou): todas as tasks `success`, `previsao_ha_mes_novo` e `previsao_mensal` em `success`, `pipeline_ok` `success`, 0 falhas nas 15 conferências das tabelas.
+
+| Medida | Sprint 3 (06/10) | Depois | Variação |
+|---|---|---|---|
+| DAG, do início ao fim | 6 min 40 s | **1 min 54 s** | −71% |
+| task `ons_ingestao` | 4 min 22 s | **0 min 17 s** | −94% |
+| jobs do dbt | 194 | **63** | −68% |
+| dbt, MB processados | 1.557,9 | **326,4** | −79% |
+| dbt, MB faturados | 2.965,4 | **871,4** | −71% |
+| total faturado (dbt + validações) | 3.031,4 | **944,8** | −69% |
+
+Contra a Sprint 4, Parte A (1 min 33 s, `ons_ingestao` 20 s, 36 jobs do dbt, 284,8 MB processados, 504,4 MB faturados, 525,3 MB no total): **+21 s** na DAG, explicados pela `previsao_mensal` (22 s) e pelo mart mensal que entrou na seleção do ONS (63 jobs do dbt contra 36); `ons_ingestao` 3 s mais rápida. Contra a 4A: jobs **+75%** (36 → 63), faturado do dbt **+73%** (504,4 → 871,4 MB; +367,0 MB) e processado **~+15%** (284,8 → 326,4 MB; +41,6 MB), e +419,5 MB no total faturado. A alta do faturado vem quase toda do piso de 10 MiB do BigQuery por job: 27 jobs novos × 10 MiB ≈ 283 MB, cerca de 77% dos +367 MB. Não medi a atribuição fina entre o mart, os testes dele e a previsão.
+
+Tempo por task: `ons_ingestao` 17 s, `freshness_ons` 8 s, `dbt_run` 27 s, `dbt_test` 29 s, `freshness_manuais` 10 s (em paralelo ao `dbt_test`), `previsao_ha_mes_novo` 6 s, `previsao_mensal` 22 s; as fontes manuais ficaram `skipped`.
+
+**Idempotência e entrada igual:** antes e depois do apagar-e-regerar, a impressão da entrada é a mesma (`57ef0990dace`, 141 meses, último valor 44.516,808), a previsão soma 539.214,2 MWmed e os erros somam 1,06123773 nos dois lados (comparador: "mesma entrada e mesma saída"). É a prova de que, com a série arredondada a 1 kW, o resultado é reproduzível entre uma execução no host e outra dentro da DAG.
+
+**Custo mensal (estimativa):** 944,8 MB × 30 dias = **~28 GB por mês, cerca de 2,8% do 1 TB gratuito** (R$ 0). É um teto: o dbt (ingestão, `dbt run`, `dbt test` e freshness) roda **todo dia** e responde por quase todo esse custo; o que muda nos ~29 dias sem mês novo é só a `previsao_mensal`, que fica `skipped` (a `previsao_ha_mes_novo` roda e custa ~10 MiB faturados). O teto, portanto, quase não cai nesses dias; o custo da previsão em si é pequeno (~40 MiB no dia do mês novo). A frequência dos arquivos manuais do INMET e da CCEE continua sendo premissa minha, como na Sprint 4.
+

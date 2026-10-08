@@ -162,10 +162,10 @@ Ao abrir uma conversa com o Claude, diga a sprint e a tarefa (ex.: "Sprint 1, ta
 **Objetivo:** previsão melhor que o baseline e a base da otimização pronta.
 
 **Tarefas**
-- [ ] 5.1 Features mensais: tendência, calendário (dias úteis, feriados, dias do mês) e defasagens de pelo menos 12 meses. Tratar os outliers de 2001–2002 (racionamento) e 2020 (pandemia) e registrar a escolha.
-- [ ] 5.2 Treinar uma regressão linear regularizada (o "antes") e o LightGBM como desafiante, com a mesma validação em rolling origin.
-- [ ] 5.3 Análise de erros: onde o modelo erra mais (meses atípicos, ondas de calor com a temperatura do INMET).
-- [ ] 5.4 Gravar previsões mensais no BigQuery (`fct_previsao_carga`) com versão do modelo; adicionar a etapa na DAG.
+- [x] 5.1 Features mensais: tendência, calendário (dias úteis, feriados, dias do mês) e defasagens de pelo menos 12 meses. Tratar os outliers de 2001–2002 (racionamento) e 2020 (pandemia) e registrar a escolha. **Feito:** `ml/features.py` (dias úteis efetivos, descontando Carnaval e Corpus Christi), `ml/preparo.py` (janela móvel de 72 meses, que deixa 2001–2002 de fora, e imputação dos meses de choque da COVID por uma regra de 2σ), tipo III de 2015–2017 reconstruído no dbt. As defasagens de 12 meses entram só no LightGBM (a sazonalidade do ETS, do SARIMA e da regressão vem da própria estrutura).
+- [x] 5.2 Treinar uma regressão linear regularizada (o "antes") e o LightGBM como desafiante, com a mesma validação em rolling origin. **Feito:** além deles, ETS, SARIMA e duas médias, numa grade fechada e num critério definido antes de rodar. Desenvolvimento: média ETS+SARIMA+regressão 2,66% contra 2,92% do ingênuo (a regressão sozinha 3,04%, o LightGBM 3,45%); teste final (uma vez): 3,11% contra 4,17% na série ajustada, com as ressalvas de `docs/metricas.md`.
+- [x] 5.3 Análise de erros: onde o modelo erra mais (meses atípicos, ondas de calor com a temperatura do INMET). **Feito:** por mês-calendário, ano e horizonte; o erro cai 3,7 pp por °C de anomalia de temperatura (R² 0,57, 60 meses); out/2021 (+8,3%) ainda sem explicação; intervalos com cobertura de 70% e 88%.
+- [x] 5.4 Gravar previsões mensais no BigQuery (`fct_previsao_carga`) com versão do modelo; adicionar a etapa na DAG. **Feito no código e nos testes:** `ml/previsao.py`, as tabelas `fct_previsao_carga` e `fct_erro_previsao_carga` (MERGE idempotente, proveniência em toda linha) e a task mensal com ShortCircuit na DAG. **Validado na nuvem em 08/10/2026** com `scripts/passo_sprint5_c.sh` (`local`, `dag` e `dag-gerar`): 15 conferências das tabelas sem falha, DAG em 1 min 54 s com a `previsao_mensal` em 22 s, execução normal sem mês novo (`previsao_mensal` `skipped`) e com falha proposital (`upstream_failed` e um único alerta no Discord).
 - [ ] 5.5 Construir a curva de consumo do consumidor-exemplo: `k × carga média diária do SE/CO × perfil de loja` (conforme `docs/premissas.md`).
 - [ ] 5.6 Gerador de cenários de consumo (a partir da distribuição do erro mensal do rolling origin, sem usar dados futuros).
 - [ ] 5.7 Gerador de cenários de PLD (a partir do histórico, por reamostragem).
@@ -178,6 +178,11 @@ Ao abrir uma conversa com o Claude, diga a sprint e a tarefa (ex.: "Sprint 1, ta
 **Decisão a registrar:** tratamento dos outliers 2001–2002 e 2020; como os cenários de PLD são gerados e por quê.
 
 **Pronto quando:** o modelo supera o baseline no mesmo teste, as previsões mensais entram no pipeline e os cenários estão gerados.
+
+**Backlog (registrado ao concluir as tarefas 5.1 a 5.4, não implementado):**
+- Mart mensal só no fechamento do mês: o `fct_carga_mensal` e os ~26 testes dele rodam todo dia na seleção do ONS e respondem por boa parte do aumento de custo da Sprint 5 (27 jobs novos × 10 MiB ≈ 283 MB faturados por dia, ~8,5 GB por mês dos ~28 GB estimados). Reconstruí-lo só quando fecha um mês (ou toda semana) corta isso; o preço é o mês corrente ficar defasado e a revisão do ONS só aparecer no rebuild. Decidir junto com o dashboard (Sprint 6).
+- Sensibilidade do SARIMA: 1e-10 de ruído na entrada mudou mais de 0,01% em 4,1% das previsões do SARIMA no desenvolvimento (8 das 107 origens, máximo 0,32%); o otimizador (L-BFGS com gradiente numérico) para em pontos diferentes numa verossimilhança plana. O arredondamento a 1 kW garante a reprodutibilidade, mas não a robustez. Opções: apertar a tolerância ou aumentar as iterações, começar do ajuste anterior, ou fixar os parâmetros. Mudar isso muda o modelo avaliado: seria uma versão nova (`v2`) com o desenvolvimento refeito.
+- Alerta do Discord com os nomes dos testes: a mensagem traz a task e o erro, mas não quais testes do dbt falharam; incluir os nomes (do `run_results.json` do dbt) dentro do limite de 1.900 caracteres.
 
 **Estudar:** regressão regularizada e rolling origin para séries mensais, LightGBM como desafiante e noções de otimização sob incerteza (custo esperado, CVaR).
 
