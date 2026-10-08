@@ -128,7 +128,7 @@ def test_a_dag_so_importa_do_projeto_a_orquestracao_que_usa_so_a_biblioteca_padr
     externos = {
         (n.module or "").split(".")[0] for n in ast.walk(orq) if isinstance(n, ast.ImportFrom)
     } | {a.name.split(".")[0] for n in ast.walk(orq) if isinstance(n, ast.Import) for a in n.names}
-    permitidos = {"json", "os", "re", "sys", "datetime", "pathlib", "requests"}
+    permitidos = {"json", "os", "re", "subprocess", "sys", "datetime", "pathlib", "requests"}
     assert externos <= permitidos, externos - permitidos
 
 

@@ -51,6 +51,7 @@ from ml.registro import (  # noqa: E402
     LIMIAR_PP,
     REGRA_SPRINT_6,
     RESSALVA_VITORIA,
+    arredondar_serie,
 )
 from ml.validacao import (  # noqa: E402
     HORIZONTES,
@@ -120,7 +121,7 @@ def ler_serie(caminho: Path) -> Serie:
             }
             for r in csv.DictReader(f)
         ]
-    return serie_utilizavel(linhas, "valor")
+    return arredondar_serie(serie_utilizavel(linhas, "valor"))  # 1 kW: mesma entrada da produção
 
 
 # ------------------------------------------------ execução por modelo, com checkpoint

@@ -278,3 +278,15 @@ def test_checar_arquivo_novo_grava_o_resultado_no_xcom_e_devolve_o_mesmo_valor(t
     ti2 = TiFalso()
     assert orq.checar_arquivo_novo(pasta, "*.csv", estado, ti2) is False  # nada mudou
     assert ti2.enviados == {"novo": False}
+
+
+def test_enviar_discord_registra_o_sucesso_sem_a_url(monkeypatch, capsys):
+    class Resposta:
+        def raise_for_status(self):
+            pass
+
+    monkeypatch.setattr(requests, "post", lambda *a, **k: Resposta())
+    assert orq.enviar_discord("https://discord/webhook/SEGREDO", "oi") is True
+    saida = capsys.readouterr()
+    assert "alerta no Discord enviado" in saida.err
+    assert "SEGREDO" not in saida.out + saida.err

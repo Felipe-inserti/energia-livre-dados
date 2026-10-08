@@ -16,6 +16,7 @@ as dependências do projeto; o dbt e a ingestão rodam no venv `/opt/projeto-ven
 import json
 import os
 import re
+import subprocess
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
@@ -130,6 +131,33 @@ def checar_arquivo_novo(pasta: Path, padrao: str, estado: Path, ti) -> bool:
     return novo
 
 
+# Previsão mensal (Sprint 5). A DAG roda no Python do Airflow, que não tem pandas nem statsmodels:
+# a pergunta "fechou um mês novo?" vai ao venv do projeto (`python -m ml.previsao verificar`), que
+# responde pelo código de saída: 0 = há mês novo, 10 = não há, qualquer outro = erro de verdade.
+PYTHON_DO_PROJETO = "/opt/projeto-venv/bin/python"
+SAIDA_MES_NOVO = 0
+SAIDA_SEM_MES_NOVO = 10
+
+
+def checar_mes_novo(
+    python: str = PYTHON_DO_PROJETO, cwd: Path | str = "/opt/projeto", executar=subprocess.run, **_
+) -> bool:
+    """ShortCircuit da previsão: True só se o último mês completo é posterior à última origem."""
+    r = executar(
+        [python, "-m", "ml.previsao", "verificar"], cwd=cwd, capture_output=True, text=True
+    )
+    saida = (r.stdout or "").strip()
+    if saida:
+        print(saida)
+    if r.returncode == SAIDA_MES_NOVO:
+        return True
+    if r.returncode == SAIDA_SEM_MES_NOVO:
+        return False
+    raise RuntimeError(
+        f"ml.previsao verificar falhou (código {r.returncode}): {(r.stderr or '')[-800:]}"
+    )
+
+
 def selecao_da_execucao(
     ccee_novo: bool = False, inmet_novo: bool = False, completa: bool = False
 ) -> dict:
@@ -242,6 +270,7 @@ def enviar_discord(webhook: str, texto: str, *, timeout: float = 10.0) -> bool:
             timeout=timeout,
         )
         resposta.raise_for_status()
+        print("alerta no Discord enviado", file=sys.stderr)  # prova no log da task; sem a URL
         return True
     except requests.RequestException as erro:
         print(f"alerta no Discord não enviado: {type(erro).__name__}", file=sys.stderr)

@@ -1,11 +1,14 @@
-"""DAG diária do pipeline: ingestão incremental, freshness, dbt run e dbt test (Sprints 3 e 4).
+"""DAG diária: ingestão incremental, freshness, dbt run, dbt test e previsão mensal (Sprints 3 a 5).
 
     parametros_execucao -> ons_ingestao ------------------------------------.
     ccee_ha_arquivo_novo -> ccee_ingestao -> ccee_registrar_estado ---------|
     inmet_ha_arquivo_novo -> inmet_ingestao -> inmet_registrar_estado -------'
                                                                             v
-        selecao_dbt -> freshness_ons -> dbt_run -> dbt_test -> pipeline_ok
-                                                `-> freshness_manuais (só avisa)
+        selecao_dbt -> freshness_ons -> dbt_run -> dbt_test -> previsao_ha_mes_novo
+                                                |                       v
+                                                |                previsao_mensal
+                                                |-> freshness_manuais (só avisa)
+                                                `-> pipeline_ok  (também depois de previsao_mensal)
 
 O ONS é automático e roda todo dia, em modo JANELA: recarrega só o mês corrente e os dois
 anteriores (ingestion/janela.py), baixa só o arquivo do ano, confere por HEAD se algum ano fechado
@@ -17,6 +20,13 @@ retentativas (docs/decisoes.md). Tudo é idempotente: cada load job substitui a 
 o dbt sobrescreve as partições da janela, e o estado dos arquivos manuais só avança depois de a
 carga dar certo. Ingestão e dbt rodam no venv do projeto (/opt/projeto-venv), separado do Python do
 Airflow.
+
+PREVISÃO (Sprint 5): o modelo é mensal, então rodar todo dia não faz sentido.
+`previsao_ha_mes_novo` é um ShortCircuit que pergunta ao venv do projeto se o último mês COMPLETO
+(cobertura de 100%) é posterior à última origem gravada em `marts.fct_previsao_carga`; só então
+`previsao_mensal` gera a previsão de 12 meses (idempotente, `MERGE`). Nos outros ~29 dias do mês a
+task fica `skipped` e custa uma consulta de ~10 MiB faturados. Roda depois do `dbt_test`, com o mart
+já testado.
 
 Configuração da execução manual (`airflow dags trigger -c '<json>'` ou o formulário):
 - `{"desde": "2026-07", "ate": "2026-08"}`: BACKFILL dos meses (AAAA-MM, inclusive, os dois juntos);
@@ -101,7 +111,7 @@ with DAG(
         "desde": Param(None, type=["null", "string"]),
         "ate": Param(None, type=["null", "string"]),
     },
-    tags=["energia-livre", "sprint4"],
+    tags=["energia-livre", "sprint4", "sprint5"],
 ) as dag:
     parametros_execucao = PythonOperator(
         task_id="parametros_execucao",
@@ -197,8 +207,26 @@ with DAG(
         cwd=PROJETO,
         **SEM_RETENTATIVA,
     )
-    # Ponto de encontro do que vier depois do dbt (previsão e otimização, Sprint 5)
-    pipeline_ok = EmptyOperator(task_id="pipeline_ok")
+    # Previsão mensal: pula (skipped) quando não fechou um mês novo.
+    # ignore_downstream_trigger_rules=False pula só a task seguinte; o `pipeline_ok` (NONE_FAILED)
+    # fecha do mesmo jeito.
+    previsao_ha_mes_novo = ShortCircuitOperator(
+        task_id="previsao_ha_mes_novo",
+        python_callable=orq.checar_mes_novo,
+        ignore_downstream_trigger_rules=False,
+        execution_timeout=timedelta(minutes=5),
+        **RETENTATIVAS_INGESTAO,
+    )
+    previsao_mensal = BashOperator(
+        task_id="previsao_mensal",
+        bash_command=f"{PYTHON} -m ml.previsao gerar",
+        cwd=PROJETO,
+        execution_timeout=timedelta(minutes=15),
+        **RETENTATIVAS_INGESTAO,
+    )
+    # Ponto de encontro do que vier depois do dbt (previsão e, na Sprint 6, a otimização)
+    pipeline_ok = EmptyOperator(task_id="pipeline_ok", trigger_rule=TriggerRule.NONE_FAILED)
 
     pontas_da_ingestao >> selecao_dbt >> freshness_ons >> dbt_run >> [dbt_test, freshness_manuais]
+    dbt_test >> previsao_ha_mes_novo >> previsao_mensal >> pipeline_ok
     dbt_test >> pipeline_ok

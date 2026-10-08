@@ -51,3 +51,45 @@ RESSALVA_VITORIA = (
     "a vitória no desenvolvimento foi de 0,255 p.p. sobre o ingênuo (limiar 0,25 p.p.), menor que "
     "1 erro-padrão (0,27 p.p.)"
 )
+
+# Versão do modelo em produção (Sprint 5): a média ETS+SARIMA+regressão sobre a série reconstruída,
+# janela de 72 meses e choque da COVID imputado. Mudar QUALQUER parâmetro abaixo muda o hash e deve
+# subir a versão (o hash vai em cada linha de `fct_previsao_carga`).
+MODELO_VERSAO = "comb_ets_sarima_regressao_v1"
+SERIE_DE_PRODUCAO = "carga_ajustada_reconstruida_mwmed"
+
+
+def parametros_do_modelo() -> dict:
+    """Tudo o que define a previsão, para o hash de proveniência."""
+    from ml import modelos, preparo
+
+    return {
+        "componentes": list(COMBINACOES[CANDIDATO_DO_TESTE_FINAL].componentes),
+        "janela_meses": preparo.JANELA_MESES,
+        "evento_covid": [d.isoformat() for d in preparo.EVENTO_COVID],
+        "k_sigma": preparo.K_SIGMA,
+        "ref_meses": preparo.REF_MESES,
+        "ets_grade": list(modelos.ETS_GRADE),
+        "sarima_grade": [[list(o), list(s)] for o, s in modelos.SARIMA_GRADE],
+        "regressao_alpha": modelos.REGRESSAO_ALPHA,
+        "serie": SERIE_DE_PRODUCAO,
+    }
+
+
+def previsor_do_vencedor():
+    """A função de previsão do vencedor: média simples dos componentes registrados."""
+    from ml.modelos import media_de
+
+    return media_de(*(BASES[n].funcao for n in COMBINACOES[CANDIDATO_DO_TESTE_FINAL].componentes))
+
+
+# Resolução da série de carga que entra nos modelos: 3 casas = 1 kW. O mart (`fct_carga_mensal`) já
+# sai arredondado assim (var `casas_decimais_carga` do dbt); aqui o arredondamento é a DEFESA EM
+# PROFUNDIDADE: é idempotente sobre um valor já arredondado e protege a previsão de um mart
+# construído antes da mudança ou de outra fonte. O AVG paralelo do BigQuery não é reproduzível bit
+# a bit (ruído de 1e-12) e o SARIMA amplifica esse ruído (docs/decisoes.md).
+CASAS_DECIMAIS_CARGA = 3
+
+
+def arredondar_serie(serie: dict) -> dict:
+    return {mes: round(float(valor), CASAS_DECIMAIS_CARGA) for mes, valor in serie.items()}
