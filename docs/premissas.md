@@ -55,6 +55,15 @@ consumo_h (MWh) = k × L_d × p(h, tipo_de_dia)
 | Ruído | nenhum | A curva é determinística (carga real × perfil), o que a deixa reprodutível e com uma premissa a menos |
 | Temperatura | **não entra na curva** | Ver seção 3 |
 
+**O que é o `k` (e por que não é vazamento no backtest).** O `k` é uma **definição do tamanho do cliente**,
+calibrada no período 2020–2025 para que o consumo médio seja de 100 MWh/mês (~0,1369 MWm exatos: 7.200 MWh em
+52.608 h; o "~0,137" da seção 1 é essa conta arredondada). Ele multiplica a curva inteira por uma constante, então
+**escala o custo e a economia em R$ na mesma proporção** e não muda a economia em %, nem qual volume `V` é o ótimo
+em relação ao consumo previsto. Por isso calibrá-lo com dados de 2020–2025 não carrega informação do futuro para a
+decisão de nenhum ano do backtest: um cliente 2× maior daria o dobro de R$ e a mesma decisão em %. O valor está
+congelado em `dbt_project.yml` (`k_consumo = 3,2752385e-6`, 2.192 dias completos) e um teste do dbt falha se uma
+revisão do dado o afastar mais de 0,5% da calibração.
+
 **Por que `k` único e não por ano ou por mês:** calibrar por mês removeria a sazonalidade e o
 efeito de meses com 28 e 31 dias; calibrar por ano faria todos os anos terminarem com o mesmo
 consumo, e a estratégia ingênua (média do ano anterior) acertaria o nível por construção.
@@ -336,9 +345,9 @@ regime de preço de cada ano.
 8. Lastro: fórmula da penalidade, janela, tolerância e VR 2021–2025. Só necessários se a
    penalidade for modelada (extra); o limite inferior de `V` já está decidido (seção 4).
 9. Fuso do ONS (dicionário de dados; `fontes.md`).
-10. Piso e teto do PLD por ano, na ANEEL: **valores encontrados e em uso** (seed `pld_limites`, teto horário); **[pendente]** só a conferência no texto oficial das resoluções e despachos de 2021 a 2026 (`fontes.md`).
+10. Piso e teto do PLD por ano, na ANEEL: **valores encontrados e em uso** (seed `pld_limites`, teto horário); **[pendente]** só a conferência no texto oficial das resoluções e despachos de 2021 a 2026 (`fontes.md`). Em 08/10/2026: o teto horário não entra no modelo mensal (vale o estrutural); o piso de 2021–2026 foi confirmado nos dados pelo detector de repetição (`ml/piso_pld.py`), inclusive 2023.
 11. Unidade do consumo por ramo da CCEE (`fontes.md`).
-12. Número e método de geração dos cenários de PLD e de consumo (Sprint 5).
+12. Número e método de geração dos cenários de PLD e de consumo (Sprint 5). **Consumo (5.6): feito** (vetores completos por origem, calibração crescente, independência do PLD como premissa, `decisoes.md`); **PLD (5.7): feito no código** (bootstrap simples e em blocos de 12 meses, piso por detector, transformação `PLD − piso_orig + piso_alvo`); N = 2.000; as tabelas esperam a execução do usuário (`decisoes.md`).
 13. Definição final do CVaR ex-ante no relatório do backtest (Sprint 6).
 14. ~~Recalcular as estações do INMET com os anos 2021 a 2025~~ (resolvido: 37 estações; a
     lista caiu de 72 para 37; ver `fontes.md` e `decisoes.md`).
