@@ -15,6 +15,7 @@ DUAS REGRAS DE CALIBRAÇÃO (docs/decisoes.md, Parte B):
 Tudo aqui é função pura sobre listas de `Erro`; não lê nem grava nada.
 """
 
+import hashlib
 import math
 import random
 from collections.abc import Iterable
@@ -102,13 +103,32 @@ def intervalo(previsto: float, quantis: dict[str, float]) -> dict[str, float]:
     return {nome: previsto * math.exp(q) for nome, q in quantis.items()}
 
 
+def semente_da_origem(semente: int, origem: date) -> int:
+    """Semente derivada de (semente-base, origem), estável entre execuções.
+
+    Não usa `hash()`: o de `date` e o de `str` variam com `PYTHONHASHSEED`. Com ela, cada origem
+    tem a sua sequência de sorteios, independente das outras origens e da ordem de geração."""
+    resumo = hashlib.sha256(f"{semente}:{origem.isoformat()}".encode()).digest()
+    return int.from_bytes(resumo[:8], "big")
+
+
 def reamostrar_origens(
-    erros: Iterable[Erro], origem: date, n: int, semente: int = 0
+    erros: Iterable[Erro],
+    origem: date,
+    n: int,
+    semente: int = 0,
+    *,
+    semente_por_origem: bool = False,
 ) -> list[list[float]]:
     """`n` vetores de 12 erros sorteados (com reposição) entre os vetores completos CONHECIDOS em
-    `origem`. A unidade do sorteio é a origem inteira, o que preserva a correlação entre meses."""
+    `origem`. A unidade do sorteio é a origem inteira, o que preserva a correlação entre meses.
+
+    `semente_por_origem=False` (padrão): `random.Random(semente)`, o comportamento original.
+    `True`: a semente passa a depender também da origem (`semente_da_origem`), de modo que origens
+    diferentes não repetem a mesma sequência de índices. Os sorteios saem em sequência, então o
+    resultado com `n` é prefixo do resultado com um `n` maior (permite testar a convergência)."""
     vetores = list(vetores_completos_ate(erros, origem).values())
     if not vetores:
         raise ValueError(f"nenhum vetor completo conhecido em {origem}")
-    rng = random.Random(semente)
+    rng = random.Random(semente_da_origem(semente, origem) if semente_por_origem else semente)
     return [list(rng.choice(vetores)) for _ in range(n)]
