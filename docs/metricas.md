@@ -1118,3 +1118,224 @@ Tempo por task: `ons_ingestao` 17 s, `freshness_ons` 8 s, `dbt_run` 27 s, `dbt_t
 
 **Custo mensal (estimativa):** 944,8 MB × 30 dias = **~28 GB por mês, cerca de 2,8% do 1 TB gratuito** (R$ 0). É um teto: o dbt (ingestão, `dbt run`, `dbt test` e freshness) roda **todo dia** e responde por quase todo esse custo; o que muda nos ~29 dias sem mês novo é só a `previsao_mensal`, que fica `skipped` (a `previsao_ha_mes_novo` roda e custa ~10 MiB faturados). O teto, portanto, quase não cai nesses dias; o custo da previsão em si é pequeno (~40 MiB no dia do mês novo). A frequência dos arquivos manuais do INMET e da CCEE continua sendo premissa minha, como na Sprint 4.
 
+
+## Sprint 5, Parte B: curva de consumo (5.5) e medidas antes dos cenários (5.6 e 5.7)
+
+Medido em 08/10/2026. Curva: `marts.fct_consumo_horario` (59,3 mil linhas, 2020-01-01 em diante, só dias locais completos) e `marts.fct_pld_ponderado_mensal` (70 linhas, 2021-01 a 2026-10).
+
+### Reconciliação da curva
+| Conferência | Resultado |
+|---|---|
+| Consumo médio 2020-01 a 2025-12 (72 meses, 2.192 dias) | **100,000000 MWh/mês** (`k` = 3,2752385e-6, congelado) |
+| Em MWm | **0,136861** (7.200 MWh ÷ 52.608 h); o "~0,137" do premissas é essa conta arredondada |
+| Curva ÷ k contra `carga_ajustada_mwmed` do SE, 81 meses completos | diferença máxima **4,99996e-4 MWmed (0,5 kW)**, dentro da tolerância de 1 kW (o arredondamento do mart) |
+| Série reconstruída = ajustada de 2018 em diante | 105 meses fechados, 0 diferenças |
+| Testes do dbt (curva + PLD ponderado) | 25 de 25 passam; suíte pytest: 593 passam (588 + 5 novos) |
+
+### PLD ponderado pelo consumo contra o PLD médio simples (SE, meses completos)
+Razão ponderado/simples: média 1,0011, mínimo 0,931, máximo 1,088; desvio absoluto médio **1,6%**; 20 de 69 meses fora de ±2%. Média de 2021–2026 (ponderada pelo consumo): **R$ 159,59** contra **R$ 160,80** (−0,75%).
+| Ano | Razão média | Mín. | Máx. | PLDp médio | PLD simples médio |
+|---|---|---|---|---|---|
+| 2021 | 1,0156 | 1,0014 | 1,0496 | 282,97 | 279,61 |
+| 2022 | 1,0030 | 1,0000 | 1,0178 | 59,19 | 58,99 |
+| 2023 | 1,0127 | 1,0000 | 1,0591 | 73,19 | 72,17 |
+| 2024 | 1,0134 | 0,9993 | 1,0883 | 129,62 | 127,87 |
+| 2025 | 0,9796 | 0,9572 | 1,0048 | 217,96 | 223,46 |
+| 2026 (até set) | 0,9760 | 0,9308 | 1,0488 | 208,93 | 215,57 |
+Leitura: o perfil de consumo muda o preço em ~1,6% ao mês, em média, e pode inverter de sinal entre anos (2025–26 abaixo de 1; a causa não foi investigada). Não é desprezível para o `P_t` de um contrato com spread de R$ 20, mas é pequeno contra a variação do PLD entre anos.
+
+### Forma mensal contra o COMÉRCIO da CCEE (só indicador; unidade pendente)
+2025: correlação de **0,975** entre o consumo mensal da curva e o consumo do ramo COMÉRCIO (ACL), diferença máxima de 2,9% no índice mês/média do ano. A forma é plausível; não calibra nada.
+
+### Correlação entre o erro de previsão, a carga e o PLD do SE (antes de assumir independência)
+`log_razao` = ln(real/previsto) (confirmado no código e coberto por teste; `erro_mwmed` é previsto − real, sinal oposto). PLD mensal: média simples das horas (2021+) ou semanal por patamar ponderado por horas (até 2020).
+| Par | n | Pearson [IC 95%] | Spearman |
+|---|---|---|---|
+| `log_razao` h=1 × ln(PLD), 2021–2025 (PLD horário) | 60 | −0,25 [−0,48; 0,00] | −0,15 |
+| `log_razao` h=1 × ln(PLD), 2012–2025 | 156 | **−0,20** [−0,35; −0,05] | −0,21 |
+| `log_razao` h=12 × ln(PLD), 2012–2025 | 145 | −0,13 [−0,29; +0,03] | −0,11 |
+| `log_razao` médio (h=1..12) × ln(PLD), 2012–2025 | 156 | −0,20 [−0,35; −0,05] | −0,19 |
+| Carga mensal × PLD (nível), 2015–2025 | 141 | −0,17 [−0,32; 0,00] | −0,16 |
+| Δ12 ln(carga) × Δ12 ln(PLD), 2016–2025 | 129 | +0,09 [−0,09; +0,26] | +0,06 |
+| Resíduo de ln(carga) (tendência + mês) × ln(PLD), 2015–2025 | 141 | +0,09 [−0,07; +0,26] | +0,07 |
+Leitura: a dependência é **fraca** (|r| ≈ 0,1 a 0,25) e com sinal negativo no erro (mês com PLD alto tende a ter consumo abaixo do previsto). O IC é otimista: os erros de origens vizinhas se sobrepõem e o n efetivo é menor. Tirar a tendência e a sazonalidade da carga leva a correlação a ~0. Não prova independência, mas não a contradiz com força; fica como premissa nas limitações.
+
+### PLD mensal do SE em 2001–2020 contra o piso e o teto de 2021–2026 (insumo da decisão da 5.7; nada implementado)
+235 meses (jun/2001 a dez/2020), média dos 3 patamares ponderada por horas. Mediana nominal por ano (R$/MWh): 2001 579,6 · 2002 12,4 · 2003 12,3 · 2004 18,6 · 2005 29,2 · 2006 63,5 · 2007 78,9 · 2008 104,8 · 2009 34,9 · 2010 70,0 · 2011 25,9 · 2012 153,2 · 2013 264,9 · **2014 754,0** · 2015 308,0 · 2016 80,6 · 2017 326,8 · 2018 245,8 · 2019 224,3 · 2020 108,4.
+Meses abaixo do piso do ano-limite (de 235): 2021 → **86**, 2022 → 91, 2023 → 97, 2024 → 94, 2025 → 92, 2026 → 91. Acima do teto **horário**: 0 em todos. Acima do teto **estrutural**: 13, 11, 8, 7, 6 e 5 (2021 a 2026), quase todos em 2001 e 2014.
+Por ano histórico, meses abaixo do piso (limites de 2022): 2002–2005 e 2011, os 12 meses; 2009, 10; 2006, 4; 2007, 5; 2010, 5; 2016, 4; 2012, 2; 2008 e 2020, 1; 2001, 2013–2015 e 2017–2019, 0. A contagem varia pouco com o ano do piso (86 a 97). O cálculo foi feito com scripts avulsos de análise (não versionados) sobre `fct_pld_semanal`; se a decisão da 5.7 usar esses números, o script entra no repositório.
+
+### Cenários de consumo (5.6): cobertura e estabilidade do CVaR95
+Medido em 08/10/2026 com `scripts/avaliar_cenarios_consumo.py` (N = 2.000 cenários por origem; 60 origens do teste final, 654 pares). Cenários com calibração **crescente** (vetores com último mês-alvo `<= origem`) contra o método anterior (quantis fixos do desenvolvimento). A coluna "anterior" reproduz os 70,2% e 87,8% de `metricas.md` (Sprint 5, Parte A).
+| h | n | cenários 80% | cenários 95% | anterior 80% | anterior 95% |
+|---|---|---|---|---|---|
+| 1 | 60 | 73,3 | 91,7 | 71,7 | 88,3 |
+| 2 | 59 | 76,3 | 91,5 | 76,3 | 89,8 |
+| 3 | 58 | 81,0 | 93,1 | 82,8 | 89,7 |
+| 4 | 57 | 70,2 | 94,7 | 71,9 | 94,7 |
+| 5 | 56 | 75,0 | 91,1 | 76,8 | 91,1 |
+| 6 | 55 | 70,9 | 90,9 | 72,7 | 89,1 |
+| 7 | 54 | 66,7 | 87,0 | 66,7 | 88,9 |
+| 8 | 53 | 66,0 | 86,8 | 66,0 | 84,9 |
+| 9 | 52 | 63,5 | 88,5 | 63,5 | 88,5 |
+| 10 | 51 | 60,8 | 90,2 | 64,7 | 90,2 |
+| 11 | 50 | 62,0 | 84,0 | 64,0 | 80,0 |
+| 12 | 49 | 59,2 | 83,7 | 61,2 | 75,5 |
+| **todos** | **654** | **69,1** | **89,6** | **70,2** | **87,8** |
+Leitura: a calibração crescente **não melhora o intervalo de 80%** (69,1% contra 70,2%, nominal 80%) e melhora pouco o de 95% (89,6% contra 87,8%, nominal 95%). A melhora aparece nos horizontes longos de 95% (h=12: 83,7% contra 75,5%), mas o 80% de h=12 fica em 59,2%. O ganho de ser "sem vazamento" é de honestidade, não de cobertura: os erros de 2021–2025 são maiores que os de 2012–2019 e os cenários das primeiras origens só conhecem os de 2012–2019. Com 49 a 60 pares por horizonte, a precisão de cada célula é de ±6 a ±7 pp.
+
+**Estabilidade do CVaR95 do consumo anual** (cauda alta: média dos 5% maiores consumos de 12 meses, em MWh do caso base; **proxy**: o CVaR95 do custo precisa do modelo de custo, 6.1/6.2). 30 sementes por N; desvio-padrão e viés relativos ao CVaR95 **exato** do conjunto de vetores conhecidos (o limite da reamostragem).
+| Origem | Vetores | CVaR95 exato (MWh) | dp% N=1.000 | dp% N=2.000 | dp% N=5.000 | viés% N=1.000 / 2.000 / 5.000 |
+|---|---|---|---|---|---|---|
+| 2020-12 | 85 | 1.186,18 | 0,06 | 0,04 | 0,03 | −0,01 / 0,00 / 0,00 |
+| 2021-12 | 86 | 1.192,02 | 0,05 | 0,04 | 0,02 | −0,01 / −0,01 / −0,01 |
+| 2022-12 | 98 | 1.201,88 | 0,06 | 0,03 | 0,02 | −0,01 / 0,00 / 0,00 |
+| 2023-12 | 110 | 1.331,57 | 0,12 | 0,07 | 0,04 | −0,02 / −0,01 / 0,00 |
+| 2024-12 | 122 | 1.371,63 | 0,15 | 0,11 | 0,06 | −0,02 / −0,04 / −0,02 |
+| **Média** | | | **0,09** | **0,06** | **0,04** | −0,02 / −0,01 / 0,00 |
+Leitura: o erro de amostragem da reamostragem é desprezível já com N=1.000 (0,09%). **Isso não mede a incerteza real:** o conjunto exato tem só 85 a 122 vetores, sobrepostos (origens mensais), ou cerca de 8 a 11 anos independentes; o CVaR "exato" carrega esse erro de estimação, que N não reduz. Os vetores por origem são menos que os estimados antes (96 a 133), porque os erros do desenvolvimento só têm alvos a partir de 2012-01. O N será decidido com o PLD, que é a fonte de ruído de amostragem maior.
+
+### PIT do consumo anual realizado nos cenários (5.6, N = 2.000, 5 origens de decisão)
+Consumo anual do caso base (100 MWh/mês), em MWh. PIT = fração dos cenários com consumo anual `<=` o realizado; um modelo calibrado dá valores espalhados em torno de 0,5. A origem é dezembro do ano anterior à decisão (2022-12 decide 2023). Medido com `scripts/avaliar_cenarios_consumo.py`.
+| Origem (ano decidido) | Previsto | p10 | p50 | p90 | Realizado | Realizado/p50 − 1 | PIT |
+|---|---|---|---|---|---|---|---|
+| 2020-12 (2021) | 1.155,28 | 1.117,89 | 1.153,70 | 1.178,86 | 1.149,91 | −0,33% | 0,480 |
+| 2021-12 (2022) | 1.161,02 | 1.125,20 | 1.159,55 | 1.185,89 | 1.166,38 | +0,59% | 0,599 |
+| 2022-12 (2023) | 1.171,05 | 1.135,11 | 1.169,84 | 1.194,83 | 1.217,32 | **+4,06%** | **1,000** |
+| 2023-12 (2024) | 1.293,94 | 1.254,29 | 1.294,05 | 1.320,30 | 1.278,96 | −1,17% | 0,288 |
+| 2024-12 (2025) | 1.279,21 | 1.247,47 | 1.282,21 | 1.318,29 | 1.268,89 | −1,04% | 0,304 |
+Leitura: quatro anos caem dentro da faixa de 80% (PIT de 0,29 a 0,60) e **2023 fica acima de todos os 2.000 cenários** (PIT 1,000), o ano da quebra da MMGD em que o modelo errou o ano em −3,8% (`decisoes.md`, ressalva 2 do teste final). Com 5 pontos não se testa uniformidade; o que o PIT mostra é a mesma coisa que a cobertura por horizonte: a cauda alta é subestimada num ano de quebra, e o intervalo de 80% é estreito. 2023 e 2024 (PIT de 0,29 e 0,30) têm previsão um pouco acima do realizado.
+
+### Detector de piso do PLD por ano (5.7; só leitura, nada implementado além do detector)
+Critério (`ml/piso_pld.py`, `scripts/detectar_piso_pld.py`): o menor valor do ano é o piso se aparecer em pelo menos **3 blocos distintos** (semanas no PLD semanal 2002–2020, dias locais no PLD horário 2021–2026), tolerância de R$ 0,005. A semana é atribuída ao ano do seu dia do meio. Entre parênteses, o mínimo observado quando o piso não foi detectado. "Conhecido" = o que há no repositório ou foi achado em busca em 08/10/2026 (2012 e 2017–2018 ainda não informados).
+
+| Ano | Fonte | Piso detectado | Repetições | Blocos | Observações | Status | Menor valor repetido | Conhecido | Fonte do conhecido | Diferença |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 2002 | semanal | 4.00 | 13 | 5 | 165 | detectado | 4.00 | - | - | - |
+| 2003 | semanal | 4.00 | 33 | 11 | 162 | detectado | 4.00 | - | - | - |
+| 2004 | semanal | (17.58) | 3 | 1 | 156 | repetido_acima | 18.59 | - | - | - |
+| 2005 | semanal | 18.33 | 57 | 19 | 156 | detectado | 18.33 | - | - | - |
+| 2006 | semanal | 16.92 | 18 | 6 | 156 | detectado | 16.92 | - | - | - |
+| 2007 | semanal | 17.59 | 36 | 12 | 156 | detectado | 17.59 | - | - | - |
+| 2008 | semanal | (15.47) | 4 | 2 | 159 | minimo_unico | - | - | - | - |
+| 2009 | semanal | 16.31 | 70 | 24 | 156 | detectado | 16.31 | - | - | - |
+| 2010 | semanal | 12.80 | 30 | 12 | 156 | detectado | 12.80 | - | - | - |
+| 2011 | semanal | 12.08 | 23 | 9 | 156 | detectado | 12.08 | - | - | - |
+| 2012 | semanal | 12.20 | 7 | 3 | 156 | detectado | 12.20 | - | - | - |
+| 2013 | semanal | (94.30) | 1 | 1 | 159 | minimo_unico | - | - | - | - |
+| 2014 | semanal | (237.76) | 1 | 1 | 156 | repetido_acima | 822.83 | - | - | - |
+| 2015 | semanal | (48.15) | 1 | 1 | 159 | repetido_acima | 388.48 | - | - | - |
+| 2016 | semanal | 30.25 | 23 | 9 | 162 | detectado | 30.25 | - | - | - |
+| 2017 | semanal | 33.68 | 3 | 3 | 156 | detectado | 33.68 | - | - | - |
+| 2018 | semanal | (40.16) | 3 | 1 | 156 | repetido_acima | 505.18 | - | - | - |
+| 2019 | semanal | (42.35) | 6 | 2 | 159 | minimo_unico | - | 42.35 | busca: CanalEnergia (PLD_min 2019) | - |
+| 2020 | semanal | 39.68 | 17 | 7 | 156 | detectado | 39.68 | 39.68 | busca: Abraceel/CanalEnergia (PLD mínimo 2020) | +0.00 |
+| 2021 | horário | 49.77 | 226 | 26 | 8760 | detectado | 49.77 | 49.77 | seed pld_limites (não confirmada) | +0.00 |
+| 2022 | horário | 55.70 | 6917 | 298 | 8760 | detectado | 55.70 | 55.7 | seed pld_limites (não confirmada) | +0.00 |
+| 2023 | horário | 69.04 | 8611 | 365 | 8760 | detectado | 69.04 | 69.04 | seed pld_limites (não confirmada) | +0.00 |
+| 2024 | horário | 61.07 | 5588 | 251 | 8784 | detectado | 61.07 | 61.07 | seed pld_limites (não confirmada) | +0.00 |
+| 2025 | horário | 58.60 | 2028 | 216 | 8760 | detectado | 58.60 | 58.6 | seed pld_limites (não confirmada) | +0.00 |
+| 2026 | horário | 57.31 | 1578 | 211 | 6600 | detectado | 57.31 | 57.31 | seed pld_limites (não confirmada) | +0.00 |
+
+Sensibilidade ao número mínimo de blocos (anos com piso detectado):
+- mínimo de 2 blocos: 20 de 25 anos
+- mínimo de 3 blocos: 18 de 25 anos
+- mínimo de 5 blocos: 16 de 25 anos
+
+Casos não detectados (7 de 25 anos): **2004** (17,58 em uma semana, depois 18,59 em 47 semanas: o piso mudou perto do início do ano), **2008** (15,47 em 2 semanas), **2013, 2014 e 2015** (o mercado ficou acima do piso o ano todo: mínimos de 94,30, 237,76 e 48,15), **2018** (40,16 em 1 semana) e **2019** (42,35, igual ao conhecido, em 2 semanas seguidas). Com mínimo de 2 blocos entram 2008 e 2019. A semana que começa em 2005-12-31 vale o piso de 2006 (16,92): atribuir a semana pelo início erraria 2005 e 2006.
+
+## Sprint 5, Parte B: cenários de PLD (5.7), histórico transformado e bootstrap
+Medido em 08/10/2026 com `scripts/avaliar_cenarios_pld.py` (saída completa em `data/logs/avaliar_cenarios_pld.md`). PLD mensal do SE: média dos 3 patamares do semanal ponderada pelas horas até 2020; PLD ponderado pelo consumo de 2021 em diante. Transformação aprovada: `PLD_alvo = PLD_orig − piso_orig + piso_alvo`, limitada a `[piso_alvo, teto_estrutural_alvo]`. Pisos: detectado (mínimo de 3 blocos), exceção da seed `pld_piso_excecoes` (2004 e 2019) ou interpolação linear (2008, 2013, 2014, 2015, 2018).
+
+### Histórico transformado contra o realizado (antes do bootstrap)
+Piso por ano usado na transformação (2002-2020):
+2002: 4.00 (detectado), 2003: 4.00 (detectado), 2004: 18.59 (excecao), 2005: 18.33 (detectado), 2006: 16.92 (detectado), 2007: 17.59 (detectado), 2008: 16.95 (interpolado), 2009: 16.31 (detectado), 2010: 12.80 (detectado), 2011: 12.08 (detectado), 2012: 12.20 (detectado), 2013: 16.71 (interpolado), 2014: 21.23 (interpolado), 2015: 25.74 (interpolado), 2016: 30.25 (detectado), 2017: 33.68 (detectado), 2018: 38.02 (interpolado), 2019: 42.35 (excecao), 2020: 39.68 (detectado)
+
+"No piso" = valor mensal a até R$ 0,005 do piso do ano-alvo; "no teto" = a partir do teto estrutural menos R$ 0,005 (no realizado inclui o PLD ponderado que passa um pouco do estrutural, como em 2021).
+| Conjunto | Meses | No piso | ≤ 1,05×piso | No teto | Média | Desvio | p10 | p50 | p90 |
+|---|---|---|---|---|---|---|---|---|---|
+| histórico 2002-2020 → faixa 2021 | 228 | 10.1% | 15.4% | 4.4% | 181.5 | 154.3 | 49.8 | 125.1 | 433.3 |
+| realizado 2021 | 12 | 0.0% | 0.0% | 16.7% | 283.0 | 197.6 | 90.9 | 237.1 | 584.1 |
+| histórico 2002-2021 → faixa 2022 | 240 | 9.6% | 14.6% | 3.3% | 194.7 | 163.8 | 55.8 | 132.5 | 453.4 |
+| realizado 2022 | 12 | 58.3% | 75.0% | 0.0% | 59.2 | 7.0 | 55.7 | 55.7 | 66.3 |
+| histórico 2002-2022 → faixa 2023 | 252 | 11.9% | 17.9% | 3.2% | 202.4 | 164.7 | 69.0 | 138.8 | 459.8 |
+| realizado 2023 | 12 | 66.7% | 66.7% | 0.0% | 73.2 | 7.0 | 69.0 | 69.0 | 83.4 |
+| histórico 2002-2023 → faixa 2024 | 264 | 14.4% | 19.7% | 3.0% | 189.8 | 166.9 | 61.1 | 118.2 | 436.1 |
+| realizado 2024 | 12 | 25.0% | 41.7% | 0.0% | 129.6 | 132.5 | 61.1 | 66.4 | 289.2 |
+| histórico 2002-2024 → faixa 2025 | 276 | 14.9% | 20.7% | 2.5% | 185.7 | 169.3 | 58.6 | 111.0 | 430.3 |
+| realizado 2025 | 12 | 0.0% | 8.3% | 0.0% | 218.0 | 74.2 | 104.9 | 234.2 | 274.7 |
+| **realizado 2021-2025** | 60 | 30.0% | 38.3% | 3.3% | 152.6 | 138.1 | 55.7 | 77.5 | 308.9 |
+
+Contraste, histórico 2002-2020 SEM transformar (nominal): média 161.1, desvio 184.3, p10/p50/p90 16.6/92.2/413.8; no piso do seu próprio ano: 10.1%.
+
+Leitura: o histórico transformado é **mais caro e mais disperso** que o realizado de 2021–2025 (média 182 a 202 contra 152,6; p50 111 a 139 contra 77,5) e tem **menos massa no piso** (10% a 15% dos meses contra 30%; 58% a 67% em 2022 e 2023). Os anos de 2002–2020 têm poucos meses no regime de piso prolongado de 2022–2024. É a diferença de regime que a transformação não corrige: ela só leva o piso e o prêmio nominal ao ano-alvo.
+
+### Bootstrap simples contra blocos de 12 meses (N = 2.000)
+PIT = fração dos cenários com PLD médio anual `<=` o realizado (PLD ponderado pelo consumo, média dos 12 meses ponderada pelas horas). Var. histórica = variância (n−1) do PLD anual dos anos-calendário completos do histórico, transformados na faixa do ano-alvo.
+| Origem (ano) | Método | Realizado | p10 | p50 | p90 | PIT | Var. cenários | Var. histórica | Razão | Meses no piso (cenários) | no piso (hist. transf.) | no piso (realizado) |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 2020-12 (2021) | simples | 283.9 | 126.1 | 178.6 | 242.4 | 0.981 | 2051 | 17537 | 0.12 | 10.0% | 10.1% | 0.0% |
+| 2020-12 (2021) | blocos | 283.9 | 59.1 | 129.8 | 314.8 | 0.746 | 16707 | 17537 | 0.95 | 10.5% | 10.1% | 0.0% |
+| 2021-12 (2022) | simples | 59.3 | 136.9 | 194.3 | 256.9 | 0.000 | 2202 | 18992 | 0.12 | 9.4% | 9.6% | 58.3% |
+| 2021-12 (2022) | blocos | 59.3 | 65.0 | 174.4 | 317.8 | 0.051 | 17512 | 18992 | 0.92 | 9.9% | 9.6% | 58.3% |
+| 2022-12 (2023) | simples | 73.2 | 143.7 | 197.6 | 264.7 | 0.000 | 2302 | 19621 | 0.12 | 11.8% | 11.9% | 66.7% |
+| 2022-12 (2023) | blocos | 73.2 | 78.4 | 149.0 | 360.4 | 0.093 | 20663 | 19621 | 1.05 | 11.8% | 11.9% | 66.7% |
+| 2023-12 (2024) | simples | 129.9 | 131.7 | 186.4 | 254.4 | 0.095 | 2264 | 20596 | 0.11 | 14.1% | 14.4% | 25.0% |
+| 2023-12 (2024) | blocos | 129.9 | 65.2 | 140.9 | 323.5 | 0.499 | 19556 | 20596 | 0.95 | 14.7% | 14.4% | 25.0% |
+| 2024-12 (2025) | simples | 218.8 | 125.3 | 181.9 | 251.7 | 0.760 | 2391 | 20886 | 0.11 | 15.1% | 14.9% | 0.0% |
+| 2024-12 (2025) | blocos | 218.8 | 62.7 | 127.6 | 320.7 | 0.707 | 19347 | 20886 | 0.93 | 15.1% | 14.9% | 0.0% |
+
+Leitura: (1) **o simples subestima a variância do PLD anual em ~9×** (razão de 0,11 a 0,12, o esperado para 12 meses sorteados de forma independente), e os blocos a reproduzem (0,92 a 1,05); (2) o realizado de 2022 e 2023 (R$ 59 e 73) fica **abaixo de todos** os cenários do simples (PIT 0,000) e na cauda baixa dos blocos (PIT 0,051 e 0,093); 2021 fica acima de 98% do simples (PIT 0,981) e dentro dos blocos (0,746); (3) a fração de meses no piso dos cenários (9% a 15%) reproduz a do histórico, mas o realizado teve 58% a 67% em 2022–2023: **os cenários subestimam o regime de piso prolongado**, o que afeta mais a sobra vendida barata (contrato demais). Com 5 pontos não se testa uniformidade.
+
+### Sensibilidade do piso nas lacunas (2008, 2013, 2014, 2015, 2018)
+| Ano | Interpolado | Vizinho baixo | Vizinho alto |
+|---|---|---|---|
+| 2008 | 16.95 | 16.31 | 17.59 |
+| 2013 | 16.71 | 12.20 | 30.25 |
+| 2014 | 21.23 | 12.20 | 30.25 |
+| 2015 | 25.74 | 12.20 | 30.25 |
+| 2018 | 38.02 | 33.68 | 42.35 |
+
+| Origem (ano) | Método | Média base | Média baixo (Δ%) | Média alto (Δ%) | p95 base | p95 baixo (Δ%) | p95 alto (Δ%) |
+|---|---|---|---|---|---|---|---|
+| 2020-12 (2021) | simples | 182.26 | 183.55 (+0.71%) | 180.98 (-0.70%) | 263.39 | 265.16 (+0.67%) | 261.63 (-0.67%) |
+| 2020-12 (2021) | blocos | 179.14 | 180.45 (+0.73%) | 177.88 (-0.70%) | 557.67 | 559.18 (+0.27%) | 556.16 (-0.27%) |
+| 2021-12 (2022) | simples | 196.30 | 197.62 (+0.68%) | 194.97 (-0.68%) | 281.65 | 283.65 (+0.71%) | 280.04 (-0.57%) |
+| 2021-12 (2022) | blocos | 195.28 | 196.72 (+0.74%) | 193.94 (-0.69%) | 347.04 | 347.04 (+0.00%) | 347.04 (+0.00%) |
+| 2022-12 (2023) | simples | 202.43 | 203.65 (+0.60%) | 201.19 (-0.61%) | 290.51 | 292.68 (+0.75%) | 288.18 (-0.80%) |
+| 2022-12 (2023) | blocos | 208.03 | 209.27 (+0.60%) | 206.80 (-0.59%) | 638.29 | 641.33 (+0.48%) | 635.24 (-0.48%) |
+| 2023-12 (2024) | simples | 190.21 | 191.38 (+0.61%) | 189.02 (-0.63%) | 275.10 | 276.14 (+0.38%) | 273.77 (-0.48%) |
+| 2023-12 (2024) | blocos | 190.76 | 191.96 (+0.63%) | 189.51 (-0.65%) | 351.88 | 351.88 (+0.00%) | 351.88 (+0.00%) |
+| 2024-12 (2025) | simples | 185.71 | 186.84 (+0.61%) | 184.52 (-0.64%) | 274.17 | 276.13 (+0.72%) | 272.49 (-0.61%) |
+| 2024-12 (2025) | blocos | 182.55 | 183.70 (+0.63%) | 181.42 (-0.62%) | 349.94 | 349.94 (+0.00%) | 349.94 (+0.00%) |
+
+Leitura: trocar a interpolação pelo vizinho mais baixo ou mais alto muda a **média** do PLD anual em +0,6% a +0,75% (baixo) e −0,6% a −0,7% (alto), e o **p95** em até ±0,8%. O p95 dos blocos fica **exatamente igual** em algumas origens porque, com 20 a 23 blocos, o p95 é o valor de um ano histórico específico, que pode não ser um ano de lacuna. A escolha da interpolação é segura para o resultado.
+
+### Gravação dos cenários (5.6 e 5.7): tempo, bytes faturados, memória e idempotência
+Executado pelo usuário em 08/10/2026 (`python -m ml.cenarios gerar --n 2000`, logs em `data/logs/cenarios_gerar.log`, `cenarios_gerar_2.log` e `cenarios_contagem.log`). `execucao_id` **51cf99b073fe** nas duas execuções.
+| Medida | 1ª execução | 2ª execução (mesmos insumos) |
+|---|---|---|
+| Tempo total (impresso pelo script) | **58,8 s** (relógio 1:00,63) | 54,8 s |
+| CPU | 7,0 s de usuário + 1,3 s de sistema (13% de uso de CPU): **o resto é espera do BigQuery** | n/d |
+| Pico de memória (RSS máximo) | **604.456 kB (~590 MiB)** | n/d |
+| Leitura dos insumos (erros, PLD, limites) | 12,0 s | 7,3 s |
+| Bytes faturados, `fct_cenario_consumo` | 20.971.520 (20 MiB) | 20.971.520 (20 MiB) |
+| Bytes faturados, `fct_cenario_pld` | 20.971.520 (20 MiB) | **40.894.464 (39 MiB)** |
+| Bytes faturados, `fct_cenario_execucao` | 20.971.520 (20 MiB) | 20.971.520 (20 MiB) |
+| **Total faturado** | **62.914.560 (60,0 MiB)** | **82.837.504 (79,0 MiB)** |
+Por tabela, 1ª execução (carga da temporária / MERGE, em s): consumo 12,0 / 4,5; PLD 11,8 / 6,0; execução 5,4 / 2,1. 2ª execução: consumo 13,7 / 4,3; PLD 12,0 / 5,0; execução 5,1 / 2,6. Cada tabela gasta ~1,7 s no DDL e na checagem de colunas (2 jobs por tabela, sem custo: `bytes_faturados = 0`).
+
+**Causa da diferença de bytes (confirmada em `INFORMATION_SCHEMA.JOBS_BY_PROJECT`, sem supor):** os 3 jobs de MERGE de cada execução e os bytes que o BigQuery diz ter processado:
+| Tabela | Job MERGE, 1ª execução (processados / faturados) | Job MERGE, 2ª execução (processados / faturados) | `numBytes` da tabela-destino |
+|---|---|---|---|
+| `fct_cenario_consumo` | 10.080.000 / 20.971.520 | 20.160.000 / 20.971.520 | 10.080.000 |
+| `fct_cenario_pld` | 20.304.000 / 20.971.520 | **40.608.000 / 40.894.464** | 20.304.000 |
+| `fct_cenario_execucao` | 1.308 / 20.971.520 | 2.616 / 20.971.520 | 1.308 |
+- **O MERGE lê a tabela temporária e a tabela-destino inteira.** Na 1ª execução o destino está vazio e processa-se só a temporária (10,08 MB; 20,30 MB; 1.308 B); na 2ª o processado **dobra exatamente** (20,16; 40,61; 2.616), e esse acréscimo é igual ao `numBytes` do destino.
+- **O faturamento tem piso de 10 MiB por tabela referenciada**: com o MERGE lendo duas tabelas, o piso é 20 MiB (20.971.520), o que esconde a duplicação em `fct_cenario_consumo` (19,2 MiB processados) e em `fct_cenario_execucao`. Só a de PLD passa do piso (38,7 MiB processados, faturados 39 MiB, arredondados para cima em MiB). A 1ª execução também fatura 20 MiB nas três (o piso, com a tabela vazia).
+- **Backlog (não implementado):** particionar/clusterizar os fatos de cenário por `origem` e filtrar a `origem` no `ON` do MERGE, para ele ler só as partições das origens da execução. Ver o backlog da Sprint 5 em `docs/planejamento/`.
+- **Projeção (não medida):** como cada `execucao_id` novo (N, semente, `k`, erros, PLD ou pisos diferentes) **acrescenta** ~30 MB e o MERGE lê o destino inteiro, o custo de cada nova execução cresce com o histórico gravado; com regeração só no fechamento do mês, o custo continua pequeno (79 MiB é 0,0075% de 1 TiB, a cota gratuita mensal), mas cresce até o filtro por origem existir.
+
+**Idempotência:** a 2ª execução teve o mesmo `execucao_id` e a contagem das tabelas, conferida em `cenarios_contagem.log`, ficou em **144.000 linhas de consumo, 288.000 de PLD e 6 de execução** (as mesmas da 1ª): nenhuma duplicata, o MERGE só atualizou as linhas existentes.
+
+**Regra de regeração:** os cenários dependem dos erros de previsão, do PLD e dos pisos, que só mudam quando fecha um mês. Eles **só são regerados quando um mês fecha**. Se entrarem na DAG, ficam **atrás da `previsao_ha_mes_novo`** (o ShortCircuit mensal da 5.4), nunca na execução diária: as outras 29 execuções do mês gerariam o mesmo `execucao_id` e pagariam ~79 MiB à toa.

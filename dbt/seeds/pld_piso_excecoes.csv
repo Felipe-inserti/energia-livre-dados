@@ -1,0 +1,3 @@
+ano,piso,justificativa
+2004,18.59,"Piso mudou no início do ano: 17,58 em uma única semana (início de janeiro, piso antigo) e 18,59 em 47 semanas idênticas até dezembro. O detector (mínimo de 3 blocos) não detecta o piso porque o mínimo é o valor antigo. Exceção só deste ano; a regra não se generaliza (decisão do usuário, 08/10/2026)."
+2019,42.35,"O mínimo de 2019 (42,35) aparece em 2 semanas seguidas (2019-06-01 e 2019-06-08), abaixo do mínimo de 3 blocos. Aceito porque bate com o piso publicado em fonte externa registrada (CanalEnergia: PLD_min 2019 = R$ 42,35/MWh; fonte secundária, texto oficial não lido). Regra: 2 blocos só com valor igual ao de uma fonte externa registrada (decisão do usuário, 08/10/2026)."

@@ -13,6 +13,7 @@ from ml.intervalos import (
     intervalo,
     quantis_por_horizonte,
     reamostrar_origens,
+    semente_da_origem,
     ultimo_alvo_do_vetor,
     vetores_completos_ate,
 )
@@ -110,3 +111,75 @@ def test_calibrar_recusa_modo_invalido_e_crescente_sem_origem():
         calibrar(erros, modo="outro")
     with pytest.raises(ValueError):
         calibrar(erros, modo="crescente")
+
+
+# ------------------------------------------------- definição do log_razao e semente por origem
+
+
+def test_log_razao_e_ln_real_sobre_previsto():
+    """log_razao = ln(real / previsto): positivo quando o real passa do previsto."""
+    e = erro_de(date(2020, 12, 1), 3, previsto=100.0, real=110.0)
+    assert e.log_razao == pytest.approx(math.log(1.1))
+    assert e.log_razao > 0
+    assert erro_de(date(2020, 12, 1), 3, 110.0, 100.0).log_razao == pytest.approx(-math.log(1.1))
+
+
+def test_vetor_da_propria_origem_reproduz_o_real():
+    """Aplicar o vetor de erros da origem ao previsto dela (previsto × exp(e)) dá o real."""
+    origem = date(2022, 12, 1)
+    previstos = {h: 40_000.0 + 137.0 * h for h in HORIZONTES}
+    reais = {h: previstos[h] * (1 + 0.004 * ((-1) ** h) * h) for h in HORIZONTES}
+    erros = [erro_de(origem, h, previstos[h], reais[h]) for h in HORIZONTES]
+    vetor = vetores_completos_ate(erros, ultimo_alvo_do_vetor(origem))[origem]
+    assert len(vetor) == len(HORIZONTES)
+    for h, e in zip(HORIZONTES, vetor, strict=True):
+        assert previstos[h] * math.exp(e) == pytest.approx(reais[h], rel=1e-12)
+
+
+def test_linha_gravada_do_erro_reproduz_o_real_e_tem_sinal_oposto_ao_erro_em_mw():
+    """`linha_de_erro`: previsto × exp(log_razao) = real; erro_mwmed = previsto − real."""
+    from ml.previsao import linha_de_erro
+
+    prov = {
+        "modelo_versao": "v",
+        "parametros_hash": "p",
+        "codigo_hash": "c",
+        "commit": "x",
+        "gerado_em": "2026-10-08T00:00:00+00:00",
+    }
+    linha = linha_de_erro(
+        "teste_final", date(2021, 12, 1), 5, 45_000.0, 46_350.0, "reconstruida", prov
+    )
+    assert linha["previsto_mwmed"] * math.exp(linha["log_razao"]) == pytest.approx(
+        linha["real_mwmed"]
+    )
+    assert linha["erro_mwmed"] == pytest.approx(linha["previsto_mwmed"] - linha["real_mwmed"])
+    assert (
+        linha["erro_mwmed"] < 0 < linha["log_razao"]
+    )  # previu baixo: erro em MW negativo, log_razao positivo
+
+
+def test_semente_por_origem_nao_muda_o_padrao():
+    """Sem o parâmetro novo, o resultado é o do `random.Random(semente)` de antes."""
+    import random
+
+    erros = historico_de_erros()
+    t = date(2019, 12, 1)
+    vetores = list(vetores_completos_ate(erros, t).values())
+    rng = random.Random(7)
+    esperado = [list(rng.choice(vetores)) for _ in range(25)]
+    assert reamostrar_origens(erros, t, 25, semente=7) == esperado
+    assert reamostrar_origens(erros, t, 25, semente=7, semente_por_origem=False) == esperado
+
+
+def test_semente_por_origem_difere_entre_origens_e_e_reprodutivel():
+    erros = historico_de_erros()
+    t1, t2 = date(2018, 12, 1), date(2019, 12, 1)
+    assert semente_da_origem(0, t1) == semente_da_origem(0, t1)
+    assert semente_da_origem(0, t1) != semente_da_origem(0, t2)
+    assert semente_da_origem(0, t1) != semente_da_origem(1, t1)
+    a = reamostrar_origens(erros, t2, 40, semente=3, semente_por_origem=True)
+    assert a == reamostrar_origens(erros, t2, 40, semente=3, semente_por_origem=True)
+    assert a != reamostrar_origens(erros, t2, 40, semente=3)  # não é a sequência do modo padrão
+    # prefixo: n=20 é o começo de n=40 (permite comparar N=1.000 com N=2.000 sem redesenhar)
+    assert reamostrar_origens(erros, t2, 20, semente=3, semente_por_origem=True) == a[:20]

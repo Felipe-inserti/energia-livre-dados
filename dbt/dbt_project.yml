@@ -57,6 +57,19 @@ vars:
   # `fct_carga_mensal_lacunas_so_as_conhecidas` avisa se aparecer lacuna fora desta lista.
   meses_com_lacuna_conhecida: ["2013-12-01", "2014-02-01", "2015-04-01"]
 
+# Curva de consumo do supermercado (Sprint 5, tarefa 5.5; docs/premissas.md, seção 2).
+  consumo_inicio: "2020-01-01" # primeira data local da curva (e do período de calibração de k)
+  consumo_calibracao_fim: "2025-12-31" # última data local da calibração de k
+  consumo_medio_mwh_mes: 100 # tamanho do cliente: consumo médio de 2020-2025 (definição, não estimativa)
+  # k = consumo_medio_mwh_mes × 72 meses / Σ(24 × L_d), com L_d na definição bruta, 2.192 dias de 2020-2025.
+  # Congelado: recalcular a cada rodada deixaria uma revisão do ONS mexer na curva em silêncio.
+  k_consumo: 3.2752385040384116e-6
+  consumo_refrigeracao: 0.4 # parcela constante nas 24 h (premissa, fonte pendente)
+  consumo_hora_abre_util: 7 # seg a sáb: aberta das 7h às 22h (horas 7 a 21)
+  consumo_hora_fecha_util: 22
+  consumo_hora_abre_domingo: 8 # domingo e feriado nacional: das 8h às 20h (horas 8 a 19)
+  consumo_hora_fecha_domingo: 20
+
 # Seeds: tabelas de referência versionadas (limites do PLD), no dataset `staging`.
 seeds:
   energia_livre:

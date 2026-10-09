@@ -31,6 +31,7 @@ PRODUCAO = {
     "pld_limites": "staging",  # seed
     "ajuste_definicao_carga": "staging",  # seed (Sprint 4, Parte B)
     "carga_mensal_ons": "staging",  # seed (Sprint 5)
+    "pld_piso_excecoes": "staging",  # seed (Sprint 5, tarefa 5.7)
     "dim_estacao": "marts",
     "dim_submercado": "marts",
     "dim_tempo": "marts",
@@ -40,6 +41,8 @@ PRODUCAO = {
     "fct_pld_semanal": "marts",
     "fct_submercado_horario": "marts",
     "fct_carga_mensal": "marts",
+    "fct_consumo_horario": "marts",  # Sprint 5, tarefa 5.5
+    "fct_pld_ponderado_mensal": "marts",  # Sprint 5, tarefa 5.5
 }
 
 

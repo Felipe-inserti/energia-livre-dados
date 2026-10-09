@@ -154,3 +154,27 @@ seeds:
       - name: consultado_em
         description: "Data da consulta ao ONS (o ONS revisa o dataset)."
         data_tests: [not_null]
+
+  - name: pld_piso_excecoes
+    description: >
+      Exceções ao detector de piso do PLD (`ml/piso_pld.py`, mínimo de 3 blocos de repetição). Cada linha
+      é um ano em que o detector não acha o piso e há motivo documentado: 2004 (o piso mudou no início do
+      ano) e 2019 (2 semanas, mas o valor bate com uma fonte externa registrada). Não é uma regra geral:
+      só estes anos. Quem lê é o código de `ml/` (CSV versionado); a seed existe para ficar no warehouse.
+    config:
+      column_types:
+        ano: int64
+        piso: numeric
+    columns:
+      - name: ano
+        description: "Ano civil (horário local) ao qual o piso se aplica."
+        data_tests:
+          - unique
+          - not_null
+      - name: piso
+        description: "Piso do PLD do ano, em R$/MWh."
+        data_tests: [not_null]
+      - name: justificativa
+        description: "Por que o detector não acha o piso e de onde vem o valor."
+        data_tests: [not_null]
+

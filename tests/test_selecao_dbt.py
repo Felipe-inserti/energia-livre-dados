@@ -68,7 +68,7 @@ SEM_DBT = pytest.mark.skipif(
     reason="precisa do dbt instalado e de `dbt deps`",
 )
 ESTATICOS = re.compile(
-    r"dim_tempo|stg_feriados|dim_submercado|pld_limites|ajuste_definicao_carga|carga_mensal_ons|teste_alerta_falha"
+    r"dim_tempo|stg_feriados|dim_submercado|pld_limites|pld_piso_excecoes|ajuste_definicao_carga|carga_mensal_ons|teste_alerta_falha"
 )
 
 
