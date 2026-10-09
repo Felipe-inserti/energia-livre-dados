@@ -19,6 +19,13 @@ FATOS = {
     "fct_pld_semanal",
     "fct_submercado_horario",
     "fct_carga_mensal",
+    "fct_consumo_horario",
+    "fct_pld_ponderado_mensal",
+}
+# fatos derivados (Sprint 5, 5.5) e os testes singulares que fazem o papel do `equal_rowcount`
+DERIVADOS_DA_5_5 = {
+    "fct_consumo_horario": {"reconcilia_com_a_carga_mensal", "calibracao_do_k", "horas_contiguas"},
+    "fct_pld_ponderado_mensal": {"meses_contiguos", "entre_o_minimo_e_o_maximo"},
 }
 INTERMEDIARIOS = {"int_clima_estado_horario", "int_clima_submercado_horario"}
 PARTICIONADOS = {
@@ -124,6 +131,13 @@ def test_todo_fato_tem_chave_unica_contagem_contra_o_staging_e_relationships():
             assert "fct_carga_mensal_reconcilia_com_horaria" in {
                 p.stem for p in TESTES.glob("*.sql")
             }
+            continue
+        if nome in DERIVADOS_DA_5_5:
+            # derivados de outros fatos (curva de consumo e PLD ponderado): não há staging com a
+            # mesma contagem; a conferência são os testes singulares de reconciliação e calibração
+            assert {f"{nome}_{t}" for t in DERIVADOS_DA_5_5[nome]} <= {
+                p.stem for p in TESTES.glob("*.sql")
+            }, nome
             continue
         if nome != "fct_submercado_horario":  # junção completa: tem mais linhas que cada fonte
             assert "dbt_utils.equal_rowcount" in testes, nome

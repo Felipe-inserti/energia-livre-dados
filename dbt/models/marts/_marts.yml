@@ -538,3 +538,81 @@ models:
           Carga bruta consistente desde 2015: original + tipo III (reconstruído ou medido) + MMGD. Igual a
           `carga_ajustada_mwmed` de 2018 em diante; nula antes de 2015. É a série de treino da previsão com
           janela de 72 meses (a partir de dez/2020).
+
+  - name: fct_consumo_horario
+    description: >
+      Curva horária de consumo do supermercado-exemplo (SE/CO), `k × L_d × p(h, tipo_dia)`, em MWh por hora UTC,
+      de 2020-01-01 em diante, só dias locais completos. Grão: hora UTC. `k` é a definição do tamanho do cliente
+      (100 MWh/mês em 2020-2025) e escala custo e economia proporcionalmente. A média mensal da curva reproduz
+      a carga ajustada do mês (teste de reconciliação, 1 kW). Detalhes no cabeçalho do SQL e em premissas.md.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [instante_utc]
+    columns:
+      - name: instante_utc
+        description: "Início da hora, em UTC."
+        data_tests: [not_null]
+      - name: data_local
+        description: "Data local (America/Sao_Paulo) da hora."
+        data_tests: [not_null]
+      - name: hora_local
+        description: "Hora local (0 a 23)."
+        data_tests: [not_null]
+      - name: tipo_dia
+        description: "dia_util, sabado ou domingo_feriado (da dim_tempo; feriado nacional opera como domingo)."
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [dia_util, sabado, domingo_feriado]
+      - name: carga_dia_mwmed
+        description: "L_d: carga média do dia local do SE na definição bruta (original + ajuste mensal do ONS), em MWmed."
+        data_tests: [not_null]
+      - name: loja_aberta
+        description: "A loja está aberta nessa hora local (seg a sáb 7h-22h; domingo e feriado 8h-20h)."
+        data_tests: [not_null]
+      - name: perfil
+        description: "p(h, tipo_dia): 0,4 fora do horário; 0,4 + 0,6 × 24 / N dentro (N horas abertas). Média 1 por dia."
+        data_tests:
+          - not_null
+      - name: consumo_mwh
+        description: "Consumo da hora em MWh: k × L_d × p."
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                inclusive: false
+
+  - name: fct_pld_ponderado_mensal
+    description: >
+      PLD mensal do SUDESTE ponderado pelo consumo do supermercado (`Σ consumo × PLD / Σ consumo`) ao lado do PLD
+      médio simples do mês. Grão: mês local, de 2021-01 em diante (o PLD horário começa em 2021). É o histórico
+      que a tarefa 5.7 reamostra. `mes_completo = false` no mês corrente.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [mes]
+    columns:
+      - name: mes
+        description: "Primeiro dia do mês, na data local."
+        data_tests: [not_null]
+      - name: horas
+        description: "Horas do mês com consumo e PLD."
+      - name: horas_esperadas
+        description: "Horas que o mês tem no relógio local."
+      - name: mes_completo
+        description: "Todas as horas do mês estão na conta."
+        data_tests: [not_null]
+      - name: consumo_mwh
+        description: "Consumo do mês na curva, em MWh."
+      - name: pld_medio_simples_rs_mwh
+        description: "Média simples das horas do PLD do SUDESTE no mês, em R$/MWh."
+        data_tests: [not_null]
+      - name: pld_ponderado_rs_mwh
+        description: "PLD do mês ponderado pelo consumo, em R$/MWh."
+        data_tests: [not_null]
+      - name: razao
+        description: "pld_ponderado / pld_medio_simples."
+        data_tests: [not_null]
