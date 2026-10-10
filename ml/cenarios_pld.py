@@ -33,6 +33,7 @@ from ml.validacao import HORIZONTES, somar_meses
 INICIO_HISTORICO = date(2002, 1, 1)
 DESLOCAMENTO_DA_SEMENTE = {"simples": 0, "blocos": 1}
 METODOS = tuple(DESLOCAMENTO_DA_SEMENTE)
+TRANSFORMACOES = ("deslocamento", "clip")  # caso base; sensibilidade `clip` da 6.4
 FUSO = ZoneInfo("America/Sao_Paulo")
 
 
@@ -89,10 +90,15 @@ def transformar(
     mes_alvo: date,
     pisos: Mapping[int, float],
     limites: Mapping[int, tuple[float, float]],
+    transformacao: str = "deslocamento",
 ) -> float:
-    """PLD_orig − piso(ano orig) + piso(ano alvo), em [piso(alvo), teto estrutural(alvo)]."""
+    """Caso base (`deslocamento`): PLD_orig − piso(ano orig) + piso(ano alvo), em
+    [piso(alvo), teto estrutural(alvo)]. Sensibilidade `clip`: o PLD nominal cortado em
+    [piso(alvo), teto estrutural(alvo)], sem deslocar o piso."""
+    if transformacao not in TRANSFORMACOES:
+        raise ValueError(f"transformação desconhecida: {transformacao!r}")
     piso_alvo, teto_alvo, _ = limites_do_ano(limites, mes_alvo.year)
-    novo = valor - pisos[mes_origem.year] + piso_alvo
+    novo = valor if transformacao == "clip" else valor - pisos[mes_origem.year] + piso_alvo
     return min(max(novo, piso_alvo), teto_alvo)
 
 
@@ -127,6 +133,7 @@ def bootstrap(
     semente: int,
     pisos: Mapping[int, float],
     limites: Mapping[int, tuple[float, float]],
+    transformacao: str = "deslocamento",
 ) -> list[list[tuple[date, float]]]:
     """`n` cenários; cada um é uma lista de 12 pares (mês histórico sorteado, PLD no ano-alvo).
 
@@ -150,7 +157,7 @@ def bootstrap(
         sorteios = [list(rng.choice(janelas)) for _ in range(n)]
     return [
         [
-            (m, transformar(historico[m], m, alvo, pisos, limites))
+            (m, transformar(historico[m], m, alvo, pisos, limites, transformacao))
             for m, alvo in zip(sorteio, alvos, strict=True)
         ]
         for sorteio in sorteios

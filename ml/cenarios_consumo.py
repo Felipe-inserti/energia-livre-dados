@@ -63,18 +63,46 @@ def horas_do_mes(mes: date) -> int:
     return calendar.monthrange(mes.year, mes.month)[1] * 24
 
 
+def esticar_erros(vetores: Sequence[Sequence[float]], dispersao: float) -> list[list[float]]:
+    """`e' = m_h + k·(e − m_h)`, com `m_h` a média do horizonte `h` entre os vetores conhecidos.
+
+    Estica só o desvio em torno da média de cada horizonte: o viés (`m_h`) não muda e o mesmo `k`
+    vale para os 12 horizontes de um vetor (a correlação entre meses é preservada). Com `k = 1`
+    devolve os vetores sem tocar nos valores (bit a bit)."""
+    if dispersao <= 0:
+        raise ValueError("a dispersão deve ser positiva")
+    if dispersao == 1.0:
+        return [list(v) for v in vetores]
+    medias = [sum(v[h] for v in vetores) / len(vetores) for h in range(len(HORIZONTES))]
+    return [[m + dispersao * (e - m) for m, e in zip(medias, v, strict=True)] for v in vetores]
+
+
 def sortear(
-    erros: Iterable[Erro], origem: date, n: int, semente: int = SEMENTE_BASE
+    erros: Iterable[Erro],
+    origem: date,
+    n: int,
+    semente: int = SEMENTE_BASE,
+    dispersao: float = 1.0,
 ) -> list[tuple[date, list[float]]]:
     """`n` pares (origem do vetor sorteado, vetor de 12 erros) com vetores conhecidos em `origem`.
 
     Usa a mesma sequência de `reamostrar_origens(..., semente_por_origem=True)` (teste confere), mas
-    devolve também de qual origem veio cada vetor, para a auditoria."""
-    vetores = list(vetores_completos_ate(erros, origem).items())
+    devolve também de qual origem veio cada vetor, para a auditoria. `dispersao` (sensibilidade da
+    6.4) estica os erros em torno da média de cada horizonte (`esticar_erros`); os índices sorteados
+    são os mesmos para qualquer `dispersao`."""
+    conhecidos = vetores_completos_ate(erros, origem)
+    vetores = list(conhecidos.items())
     if not vetores:
         raise ValueError(f"nenhum vetor completo conhecido em {origem}")
+    esticados = dict(
+        zip(
+            conhecidos,
+            esticar_erros([conhecidos[o] for o in conhecidos], dispersao),
+            strict=True,
+        )
+    )
     rng = random.Random(semente_da_origem(semente, origem))
-    return [(o, list(v)) for o, v in (rng.choice(vetores) for _ in range(n))]
+    return [(o, list(esticados[o])) for o, _ in (rng.choice(vetores) for _ in range(n))]
 
 
 def carga_do_cenario(previstos: Sequence[float], vetor: Sequence[float]) -> list[float]:

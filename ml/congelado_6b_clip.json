@@ -1,0 +1,80 @@
+{
+  "execucao_id": "940fe0ee07da",
+  "k_consumo": 3.2752385040384116e-06,
+  "modelo_versao": "comb_ets_sarima_regressao_v1",
+  "n_cenarios": 2000,
+  "origens": {
+    "2020-12-01": {
+      "codigo_hash": "f101bff09480",
+      "erros_hash": "1934c9246435",
+      "impressao_consumo": "47bfdd219532260f",
+      "impressao_pld": {
+        "blocos": "0cb7c2654c6e5e1f",
+        "simples": "d0c6288b66e555f8"
+      },
+      "n_blocos_pld": 19,
+      "n_meses_pld": 228,
+      "n_vetores_consumo": 85,
+      "pisos_hash": "5ec87e6f604a",
+      "pld_hash": "09b8246f58a5"
+    },
+    "2021-12-01": {
+      "codigo_hash": "f101bff09480",
+      "erros_hash": "c13d045e3993",
+      "impressao_consumo": "e805befa5e212774",
+      "impressao_pld": {
+        "blocos": "58a40589aee8107e",
+        "simples": "fb0e6f788995e86d"
+      },
+      "n_blocos_pld": 20,
+      "n_meses_pld": 240,
+      "n_vetores_consumo": 86,
+      "pisos_hash": "5ec87e6f604a",
+      "pld_hash": "17daa2df4cff"
+    },
+    "2022-12-01": {
+      "codigo_hash": "f101bff09480",
+      "erros_hash": "8b17ff408e55",
+      "impressao_consumo": "5d5656f160c69217",
+      "impressao_pld": {
+        "blocos": "adf40eedcc2f6299",
+        "simples": "20114c74fc3958a1"
+      },
+      "n_blocos_pld": 21,
+      "n_meses_pld": 252,
+      "n_vetores_consumo": 98,
+      "pisos_hash": "5ec87e6f604a",
+      "pld_hash": "1f2ba83888c7"
+    },
+    "2023-12-01": {
+      "codigo_hash": "f101bff09480",
+      "erros_hash": "05dc162ad5a3",
+      "impressao_consumo": "273ade437b1747c4",
+      "impressao_pld": {
+        "blocos": "4a6e3e95d39aeee2",
+        "simples": "a81e53ca96c28676"
+      },
+      "n_blocos_pld": 22,
+      "n_meses_pld": 264,
+      "n_vetores_consumo": 110,
+      "pisos_hash": "5ec87e6f604a",
+      "pld_hash": "d8c89c3962ea"
+    },
+    "2024-12-01": {
+      "codigo_hash": "f101bff09480",
+      "erros_hash": "1703f11ffa71",
+      "impressao_consumo": "fa514dc15f71b839",
+      "impressao_pld": {
+        "blocos": "ac22f1e893f47ca5",
+        "simples": "4fb7954bcba1c283"
+      },
+      "n_blocos_pld": 23,
+      "n_meses_pld": 276,
+      "n_vetores_consumo": 122,
+      "pisos_hash": "5ec87e6f604a",
+      "pld_hash": "63bc95aebd80"
+    }
+  },
+  "semente_base": 0,
+  "sens_id": "clip"
+}
