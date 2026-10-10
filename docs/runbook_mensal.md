@@ -34,6 +34,8 @@ uv run --env-file .env python -m ml.recomendacao producao 2>&1 | tee data/logs/r
 - Custo esperado (cache frio): ~108 MiB, dos quais 88 MiB de leitura (medido) e 20 MiB do MERGE.
 
 ## 4. Snapshot do dashboard (Parte C2)
+**Antes de tudo, confira se o Airflow já está no ar: `docker compose ps`.** A DAG ativa dispara às **21:00 UTC (18:00 em Brasília)** e roda o `dbt run` e o `dbt test` com seleção: se ela rodar entre o `dbt test` completo e o snapshot, **sobrescreve o `run_results.json`** (a página de saúde passaria a mostrar só o teste selecionado) e consome bytes. Faça o snapshot **antes das 21:00 UTC** (`date -u`), ou suba só o banco (`docker compose up -d postgres`, que basta para ler as durações). Atenção: `bash scripts/operar_dag.sh subir` **reativa a DAG** (`dags unpause`); se for usá-lo, termine antes das 21:00 UTC. Depois do snapshot, `docker compose stop` se não quiser deixar o Airflow no ar.
+
 Antes: (a) o **Airflow no ar** (`docker compose up -d`; sem ele a saúde das execuções sai "indisponível"); (b) o `dbt test` da **suíte inteira**, no host, para a página de saúde mostrar a suíte e não um teste solto: `uv run --env-file .env dbt test --project-dir dbt --profiles-dir dbt 2>&1 | tee data/logs/dbt_test_completo.log` (~80 s, ~3,1 GB faturados, `metricas.md`). **Não rode outro comando do dbt depois dele e antes do snapshot** (sobrescreve o `run_results.json`).
 ```bash
 uv run --env-file .env python -m dashboard.snapshot gerar --dry-run 2>&1 | tee data/logs/snapshot_dry_run.log

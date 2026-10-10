@@ -1540,7 +1540,7 @@ Gravada por `python -m ml.recomendacao gravar` (logs `data/logs/recomendacao_gra
 | Leitura do BigQuery (previsão de produção e consumo dos 12 meses) | **0 faturados**: as 2 consultas vieram do cache (`cache_hit`) | **0 faturados**: cache |
 Fonte dos bytes: `INFORMATION_SCHEMA.JOBS_BY_PROJECT` (`total_bytes_processed`, `total_bytes_billed`, `cache_hit`), não o cálculo do script. Leitura do `--dry-run` (que executou as 2 consultas, sem cache): 949.632 processados (768 em `fct_previsao_carga`, 948.864 em `fct_consumo_horario`) e **20.971.520 faturados** (2 jobs × 10.485.760). A idempotência vale pelo mesmo motivo do MERGE dos cenários (chave natural `sens_id, origem, estrategia`).
 
-**Prévia da origem de produção 2026-09** (`tipo = previa`, caso base, f = 10%, λ = 0,5, α = 0,95, `execucao_id` `51cf99b073fe`, janela **out/2026 a set/2027**, `ano_contrato` nulo, `limites_assumidos = true`: os limites de 2027 repetem os de 2026). `P` = PLD médio simples dos 12 meses fechados até a origem + R$ 20 = **R$ 246,89/MWh** (acima do PLD médio dos cenários, R$ 188,53).
+**Prévia da origem de produção 2026-09** (`tipo = previa`, caso base, f = 10%, λ = 0,5, α = 0,95, `execucao_id` `51cf99b073fe`, janela **out/2026 a set/2027**, `ano_contrato` nulo, `limites_assumidos = true`: os limites de 2027 repetem os de 2026). `P` = PLD médio simples dos 12 meses fechados até a origem + R$ 20 = **R$ 246,89/MWh** (acima do PLD esperado dos cenários, **R$ 188,58**/MWh, média dos 2.000 cenários em blocos **ponderada pelas horas do mês**, como o `P`; os R$ 188,53 que constavam antes eram a **média simples**, sem ponderar as horas, e foram corrigidos; fonte: `pld_esperado_cenarios.csv` do snapshot).
 | Estratégia | V (MWm) | r (contra a pontual) | E[custo] ex-ante (R$) | CVaR95 ex-ante (R$) |
 |---|---|---|---|---|
 | ingênua | 0,144833 | 0,9847 | 318.358,69 | 339.145,80 |
@@ -1614,3 +1614,28 @@ Logs `data/logs/snapshot_dry_run.log` e `snapshot_gerar.log` (fora do git); saí
 **Custo do ciclo dry-run + gerar = 60,0 MiB** (o dry-run paga, o gerar sai do cache); o cache dura enquanto as tabelas não mudam (em geral, até ~24 h). Estado gravado no manifesto: origem de produção e da prévia 2026-09, último mês fechado 2026-09, sem aviso de defasagem; `meses_incompletos`: 2026-10 na carga e no consumo; saúde: 11 execuções da DAG (a última em 10/10 às 16:38Z) e **250 testes do dbt** (`dbt test` completo, sem seleção, 80,2 s, gerado em 10/10 às 16:40Z); cobertura exibida 70,2% e 87,8%.
 
 O mês corrente (outubro de 2026) está nos dois arquivos mensais **e marcado**: `carga_mensal_se.csv` o traz com `mes_utilizavel = False` (cobertura de 26%) e `consumo_exemplo_mensal.csv` (82 linhas, jan/2020 a out/2026) ganhou a coluna `mes_completo` (horas da curva iguais às esperadas do mês): outubro tem 192 horas e fica `False`. O manifesto lista esses meses em `meses_incompletos`, e o "último dado" do consumo é o último mês **completo**. A página usa só os meses completos.
+
+### Snapshot regerado com o PLD esperado dos cenários e a página "Decisão de contrato" (10/10/2026)
+- **Snapshot** (logs `data/logs/snapshot_dry_run_2.log` e `snapshot_gerar_2.log`): ganhou `pld_esperado_cenarios.csv` (**12 linhas**: 6 origens, as 5 de backtest e a prévia, × 2 métodos), de **uma consulta a mais** em `marts.fct_cenario_pld` (agregada no SQL, média **ponderada pelas horas do mês**, como o `P_t`); 8 consultas no total. **Bytes faturados pelo job: 15 MiB no `--dry-run` e 0 no `gerar`** (cache). O `dry_run` do BigQuery tinha estimado 15.696.000 bytes processados. O PLD esperado da prévia de 2026-09 é **R$ 188,58/MWh** (ponderado pelas horas); a média simples, R$ 188,53, é a que constava antes. Os valores de 2020-12 a 2024-12 (179,14; 195,28; 208,03; 190,76; 182,55) batem com `docs/decisoes.md`.
+- **Página de Decisão** (`dashboard/paginas/decisao.py`, testada com `AppTest.from_function`): 0 exceções; 3 métricas, 4 gráficos, 7 tabelas, 5 avisos e 5 caixas de informação na tela. **Tempo de carga no `AppTest` (local, não é tempo no navegador nem no Community Cloud):** **0,9 s** na primeira execução (cache frio, com os imports) e **mediana de 0,31 s** com o cache quente (4 execuções seguintes). **0 bytes do BigQuery** (a página lê só `dashboard/dados/`).
+- **Suíte:** 991 testes passam.
+
+## Sprint 6, Parte C2: redesenho da página de Decisão (10/10/2026)
+
+Medido com `AppTest` sobre o snapshot de 10/10/2026 (prosa visível = título, subtítulos, legendas, Markdown, caixas e métricas, **sem** tabelas, tooltips e o que está dentro de expanders; mesmo método do "antes").
+
+| Medida | Antes | Depois |
+|---|---|---|
+| Palavras visíveis | 1.747 | **543** (−69%; a estimativa do relatório era ~505) |
+| Caixas coloridas | 10 (5 `warning`, 5 `info`) | 3 (1 âmbar: a prévia; 2 neutras) |
+| Subtítulos | 7 | 6 |
+| Tabelas à vista | 7 (553 células) | 0 (as 7, 431 células, em expanders fechados) |
+| Gráficos à vista | 4 | 4 (+1 no expander "detalhe da banda") |
+| Controles | 2 (toggle e rádio) | 0 |
+| Tempo de execução da página (AppTest, mediana, cache quente) | 0,5 s | 0,52 s (1ª execução 0,83 s) |
+
+- Limitações sempre visíveis: 5 itens, 114 palavras (estimativa: ~80; o orçamento do teste é 120).
+- A medição vale para o `AppTest`, não para o navegador: o tempo no Community Cloud (hibernação, 1ª carga) segue **não medido**.
+- Verificado no navegador (Chromium headless, 1280 px e 390 px): `R\$` aparece como "R$" literal; eixos com ponto de milhar; cartões empilhados no celular.
+
+**Sobre o teste dos 30 segundos.** O "antes" se perdeu: a versão antiga da página nunca foi commitada. O teste será feito **só na versão nova**, como medida **absoluta** (não há comparação). O antes/depois **quantitativo** deste redesenho é o de **palavras visíveis, caixas coloridas e tabelas à vista** (tabela acima).
