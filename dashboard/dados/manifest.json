@@ -216,6 +216,17 @@
       "sha256": "73e9e2de9e9892c2ac7d11d7999a063ca77cbe6a1d50b2f419b3d63ea444a5c3",
       "tipo": "copia"
     },
+    "pld_esperado_cenarios.csv": {
+      "bytes": 718,
+      "fontes": [
+        {
+          "tabela": "marts.fct_cenario_pld"
+        }
+      ],
+      "linhas": 12,
+      "sha256": "6851448b0cd27bcd86d6236d2e7c0d8755b82ab785813999c26864088403e730",
+      "tipo": "bigquery"
+    },
     "pld_mensal_se.csv": {
       "bytes": 13258,
       "fontes": [
@@ -370,7 +381,7 @@
     "nominal_95_pct": 95,
     "referencia": "docs/metricas.md, Sprint 5 (intervalos) e 5.6 (coluna anterior)"
   },
-  "commit": "d44e665682b221f16749ae765b06eb521dd6fb40",
+  "commit": "8239181446770122ee917ec44ff1654a130560b6",
   "consultas": [
     {
       "cache_hit": true,
@@ -420,6 +431,13 @@
       "nome": "recomendacao",
       "processados": 0,
       "tabela": "marts.fct_recomendacao_contrato"
+    },
+    {
+      "cache_hit": true,
+      "faturados": 0,
+      "nome": "pld_esperado_cenarios",
+      "processados": 0,
+      "tabela": "marts.fct_cenario_pld"
     }
   ],
   "limite_bytes": 5242880,
@@ -453,8 +471,8 @@
       "tempo_s": 80.2
     }
   },
-  "snapshot_gerado_em": "2026-10-10T16:47:55Z",
-  "tamanho_total_bytes": 337513,
+  "snapshot_gerado_em": "2026-10-10T21:53:01Z",
+  "tamanho_total_bytes": 338231,
   "ultimo_dado_por_fonte": {
     "backtest_ate": "2025-12-01",
     "carga_mensal": "2026-09-01",

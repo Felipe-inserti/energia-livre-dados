@@ -150,6 +150,19 @@ SQL_RECOMENDACAO = (
     + ", ".join(f"`{c}`" for c in rc.COLUNAS)
     + " FROM `marts.fct_recomendacao_contrato` ORDER BY sens_id, origem, estrategia"
 )
+# PLD esperado pelos cenários, por (execução, origem, método): média ponderada pelas HORAS do mês
+# (a mesma ponderação do `P_t`, que é o PLD médio simples das horas do ano) e depois entre os
+# cenários; cada cenário tem os mesmos 12 meses, então a média ponderada de todas as linhas é a
+# média dos cenários. Uma consulta só: serve às origens de backtest e à prévia.
+SQL_PLD_ESPERADO = (
+    "SELECT execucao_id, origem, metodo, "
+    "SAFE_DIVIDE(SUM(pld_rs_mwh * horas), SUM(horas)) AS pld_esperado_rs_mwh, "
+    "COUNT(DISTINCT cenario) AS n_cenarios FROM ("
+    "SELECT execucao_id, origem, metodo, cenario, pld_rs_mwh, "
+    "24 * EXTRACT(DAY FROM LAST_DAY(mes_alvo)) AS horas FROM `marts.fct_cenario_pld`) "
+    "GROUP BY execucao_id, origem, metodo ORDER BY origem, execucao_id, metodo"
+)
+COLUNAS_PLD_ESPERADO = ["execucao_id", "origem", "metodo", "pld_esperado_rs_mwh", "n_cenarios"]
 COLUNAS_CARGA = [
     "mes",
     "carga_original_mwmed",
@@ -723,6 +736,28 @@ class Snapshot:
         ).encode()
 
 
+def conferir_pld_esperado_da_previa(recomendacao: pd.DataFrame, esperado: pd.DataFrame) -> None:
+    """A página diz "PLD esperado X contra contrato de Y": toda prévia e todo backtest do caso base
+    precisam ter o PLD esperado (método `blocos`) da execução e da origem que os decidiram."""
+    chaves = {
+        (e, _valor(o))
+        for e, o, m in zip(
+            esperado["execucao_id"], esperado["origem"], esperado["metodo"], strict=True
+        )
+        if m == "blocos"
+    }
+    sel = recomendacao[recomendacao["sens_id"] == "caso_base"]
+    faltam = sorted(
+        {
+            (e, _valor(o))
+            for e, o in zip(sel["execucao_id"], sel["origem"], strict=True)
+            if (e, _valor(o)) not in chaves
+        }
+    )
+    if faltam:
+        raise ErroDeSnapshot(f"sem PLD esperado dos cenários para (execução, origem): {faltam}")
+
+
 def montar_snapshot(
     gcp,
     cliente,
@@ -754,6 +789,11 @@ def montar_snapshot(
     recomendacao = _quadro(
         q.executar("recomendacao", "marts.fct_recomendacao_contrato", SQL_RECOMENDACAO), rc.COLUNAS
     )
+    pld_esperado = _quadro(
+        q.executar("pld_esperado_cenarios", "marts.fct_cenario_pld", SQL_PLD_ESPERADO),
+        COLUNAS_PLD_ESPERADO,
+    )
+    conferir_pld_esperado_da_previa(recomendacao, pld_esperado)
     versionados, hashes_pre, cobertura = arquivos_versionados(resultados)
     execucoes, status_exec = ler_execucoes(executar_psql)
     base_dbt = RAIZ / "dbt" / "target"
@@ -800,6 +840,12 @@ def montar_snapshot(
             para_csv(recomendacao),
             "bigquery",
             ({"tabela": tabelas + "fct_recomendacao_contrato"},),
+        ),
+        Arquivo(
+            "pld_esperado_cenarios.csv",
+            para_csv(pld_esperado),
+            "bigquery",
+            ({"tabela": tabelas + "fct_cenario_pld"},),
         ),
         *versionados,
         Arquivo(

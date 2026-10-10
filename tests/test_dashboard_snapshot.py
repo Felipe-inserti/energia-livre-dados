@@ -87,6 +87,7 @@ def rotas(recomendacao_origem=date(2026, 9, 1), cache_carga=False):
         linha.update(
             sens_id="caso_base",
             origem=recomendacao_origem,
+            execucao_id="51cf99b073fe",
             estrategia=e,
             tipo="previa",
             v_mwm=0.14,
@@ -103,6 +104,22 @@ def rotas(recomendacao_origem=date(2026, 9, 1), cache_carga=False):
         ("fct_erro_previsao_carga", [], 300, 10 * MIB, False),
         ("fct_previsao_carga", previsao, 400, 10 * MIB, False),
         ("fct_recomendacao_contrato", recomendacao, 600, 10 * MIB, False),
+        ("fct_cenario_pld", esperado_falso(), 900, 10 * MIB, False),
+    ]
+
+
+def esperado_falso():
+    """PLD esperado dos cenários: a execução do caso base, as origens usadas nos testes."""
+    return [
+        {
+            "execucao_id": "51cf99b073fe",
+            "origem": date(2026, mes, 1),
+            "metodo": metodo,
+            "pld_esperado_rs_mwh": valor,
+            "n_cenarios": 2000,
+        }
+        for mes in (8, 9)
+        for metodo, valor in (("blocos", 188.5), ("simples", 190.0))
     ]
 
 
@@ -218,7 +235,7 @@ def test_o_conjunto_de_arquivos_e_o_aprovado(gravado):
         "sens_resumo.csv", "sens_resumo_por_ano.csv", "sens_banda_f.csv", "sens_invariancias.csv",
         "pre_registros.csv", "previsoes_teste_final.csv", "mape_por_ano.csv", "modelos_resumo.csv",
         "cobertura_fora_da_amostra.csv", "saude_execucoes.csv", "saude_testes_dbt.csv",
-        "manifest.json",
+        "pld_esperado_cenarios.csv", "manifest.json",
     }  # fmt: skip
     assert {p.name for p in destino.iterdir()} == esperado
 
@@ -483,7 +500,7 @@ def test_os_bytes_faturados_vem_do_job_e_o_cache_nao_fatura(tmp_path):
     por_nome = {c["nome"]: c for c in s.manifesto["consultas"]}
     assert set(por_nome) == {
         "carga_mensal", "pld_semanal", "pld_ponderado", "consumo_exemplo",
-        "previsao_producao", "erros_producao", "recomendacao",
+        "previsao_producao", "erros_producao", "recomendacao", "pld_esperado_cenarios",
     }  # fmt: skip
     assert por_nome["carga_mensal"] == {
         "nome": "carga_mensal",
@@ -496,7 +513,7 @@ def test_os_bytes_faturados_vem_do_job_e_o_cache_nao_fatura(tmp_path):
         por_nome["recomendacao"]["faturados"] == 10 * MIB
         and not por_nome["recomendacao"]["cache_hit"]
     )
-    assert s.manifesto["bytes_faturados_total"] == 6 * 10 * MIB
+    assert s.manifesto["bytes_faturados_total"] == 7 * 10 * MIB
     assert all("sql" not in c for c in s.manifesto["consultas"])
 
 
@@ -506,7 +523,7 @@ def test_toda_consulta_tem_teto_de_bytes(tmp_path):
     snap.montar_snapshot(
         gcp, None, RESULTADOS, executar_psql=psql_ok, run_results=rr, dbt_manifest=mf, agora=AGORA
     )
-    assert len(gcp.sqls) == 7 and all(
+    assert len(gcp.sqls) == 8 and all(
         kw["max_bytes_faturados"] == snap.TETO_BYTES for _, kw in gcp.sqls
     )
     # nenhuma tabela horária grande: o consumo é agregado por mês no próprio SQL
@@ -581,15 +598,24 @@ def test_gerar_grava_e_remove_csv_antigo_que_saiu_do_conjunto(tmp_path):
 
 
 def test_o_app_nao_importa_o_snapshot_nem_o_bigquery():
-    """Só o snapshot fala com a nuvem; o resto de `dashboard/` (o app) não pode."""
-    for p in (RAIZ / "dashboard").glob("*.py"):
+    """Só o snapshot fala com a nuvem; o resto de `dashboard/` (o app) não pode importá-la."""
+    import ast
+
+    for p in (RAIZ / "dashboard").rglob("*.py"):
         if p.name == "snapshot.py":
             continue
-        texto = p.read_text()
-        assert not re.search(r"^\s*(from|import)\s+(google|ml|ingestion)", texto, re.M), p.name
-        assert (
-            "snapshot" not in re.sub(r'""".*?"""', "", texto, flags=re.S) or p.name == "__init__.py"
-        )
+        for no in ast.walk(ast.parse(p.read_text())):
+            modulos = []
+            if isinstance(no, ast.Import):
+                modulos = [a.name for a in no.names]
+            elif isinstance(no, ast.ImportFrom):
+                modulos = [no.module or "", *[f"{no.module}.{a.name}" for a in no.names]]
+            for m in modulos:
+                assert m.split(".")[0] not in {"google", "ml", "ingestion", "dbt", "scripts"}, (
+                    p,
+                    m,
+                )
+                assert m != "dashboard.snapshot" and not m.endswith(".snapshot"), (p, m)
 
 
 # ---- o mês corrente: carga e curva do consumidor-exemplo
@@ -709,3 +735,46 @@ def test_o_snapshot_versionado_marca_o_mes_incompleto():
             r["mes"] for r in linhas if r[campo] == "False" and r["mes"] > m["ultimo_mes_fechado"]
         ]
         assert incompletos == m["meses_incompletos"][arquivo], arquivo
+
+
+# ---- o PLD esperado dos cenários (a prévia diz "PLD esperado X contra contrato de Y")
+
+
+def test_o_snapshot_traz_o_pld_esperado_das_origens(gravado):
+    s, destino = gravado
+    linhas = ler_csv(destino / "pld_esperado_cenarios.csv")
+    assert list(linhas[0]) == [
+        "execucao_id",
+        "origem",
+        "metodo",
+        "pld_esperado_rs_mwh",
+        "n_cenarios",
+    ]
+    blocos = [r for r in linhas if r["metodo"] == "blocos"]
+    assert {r["origem"] for r in blocos} == {"2026-08-01", "2026-09-01"}
+    manifesto = json.loads((destino / "manifest.json").read_text())
+    info = manifesto["arquivos"]["pld_esperado_cenarios.csv"]
+    assert info["tipo"] == "bigquery" and info["fontes"] == [{"tabela": "marts.fct_cenario_pld"}]
+
+
+def test_a_consulta_do_pld_esperado_pondera_pelas_horas_do_mes():
+    sql = snap.SQL_PLD_ESPERADO
+    assert "SUM(pld_rs_mwh * horas)" in sql and "SUM(horas)" in sql
+    assert "24 * EXTRACT(DAY FROM LAST_DAY(mes_alvo))" in sql  # horas do mês, como o P_t
+    assert "GROUP BY execucao_id, origem, metodo" in sql and "marts.fct_cenario_pld" in sql
+
+
+def test_sem_pld_esperado_para_a_previa_o_snapshot_falha(tmp_path):
+    rotas_ = [r for r in rotas() if r[0] != "fct_cenario_pld"]
+    rotas_.append(("fct_cenario_pld", [], 900, 10 * MIB, False))
+    with pytest.raises(snap.ErroDeSnapshot, match="sem PLD esperado"):
+        montar(tmp_path, rotas_=rotas_)
+
+
+def test_o_pld_esperado_so_de_simples_nao_basta(tmp_path):
+    so_simples = [r for r in esperado_falso() if r["metodo"] == "simples"]
+    rotas_ = [r for r in rotas() if r[0] != "fct_cenario_pld"] + [
+        ("fct_cenario_pld", so_simples, 900, 10 * MIB, False)
+    ]
+    with pytest.raises(snap.ErroDeSnapshot, match="sem PLD esperado"):
+        montar(tmp_path, rotas_=rotas_)
