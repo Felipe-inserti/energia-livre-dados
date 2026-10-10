@@ -212,6 +212,10 @@ Ao abrir uma conversa com o Claude, diga a sprint e a tarefa (ex.: "Sprint 1, ta
 
 **Pronto quando:** a tabela do backtest está em `docs/metricas.md` e o dashboard está no ar.
 
+**Backlog (registrado antes do backtest, não implementado):**
+- Investigar o nível da carga do SE de set a dez/2023 (+9,7%, +7,8%, +15,1% e +15,6% sobre os mesmos meses de 2022; jan–abr/2023 ficou entre −1,7% e +2,3%), que puxa o `V_pont` de 2024 (+10,19% sobre 2023). Sem atribuir causa: os números estão em `docs/decisoes.md` ("Salto do `V_pont`"), e a investigação deve começar por eles.
+- Rebuild da imagem do Airflow: o `pyarrow` entrou no grupo `ml` (que a imagem instala), então a imagem precisa de rebuild para levá-lo. Medir o rebuild com `time` (tempo e tamanho da imagem antes e depois), como nas medições anteriores da imagem. Só é necessário se `ml.otimizacao` passar a rodar dentro do Airflow; hoje roda local.
+
 **Estudar:** regras básicas de contratação no ACL (flexibilidade, sazonalização, lastro e penalidade por insuficiência) para defender as simplificações.
 
 ---
