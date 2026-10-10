@@ -1580,3 +1580,37 @@ Tempo do `producao`: 14,8 s (dry-run) e 16,9 s (real) para montar e validar.
 | **Cadeia (passos 2 e 3)** | ~138 MiB | ~83 MiB | **~221 MiB por mês, ~0,02% de 1 TiB** |
 Contra o plano (`plano_sprint6c.md`, **~170 MiB** para a cadeia): a **cadeia completa** ficou acima da estimativa (**~221 MiB calculados contra ~170**), e a leitura do `producao` (**88 MiB medidos**) é a maior parte dela (~40% do total). O destino dos `MERGE` dos cenários cresce ~5 MB por mês de origem nova (depois de 12 meses, +60 MB e ~+60 MiB no `MERGE` do PLD); o particionamento por origem, que só passa a fazer sentido agora, fica no backlog até o `MERGE` passar de ~100 MiB por mês. Com cache quente (repetir o mesmo dia), a leitura cai a 0 e só o `MERGE` fatura (20 MiB por tabela referenciada).
 **Engenharia:** a leitura vem toda do BigQuery (nenhum parquet local); o app da C2 não a usa. Suíte: **883 testes** passam (testes novos: nenhuma linha de backtest é tocada, id do caso base intacto, idempotência, seleção da origem mais recente, aviso de defasagem, mensagem de escopo).
+
+## Sprint 6, Parte C2: saúde do pipeline e snapshot do dashboard (11/10/2026)
+
+### `dbt test` da suíte inteira (feito no host antes do snapshot, para a página de saúde)
+Comando: `dbt test --project-dir dbt --profiles-dir dbt`, sem `--select`; logs `data/logs/dbt_test_completo_6c2.log` e `dbt_test_completo_6c2_bytes.log` (fora do git). Resultado gravado em `dbt/target/run_results.json`, que o snapshot lê.
+| Medida | Valor |
+|---|---|
+| Testes | **250**: **249 PASS, 1 WARN**, 0 ERROR (os 62 testes que a DAG diária não seleciona entram) |
+| Aviso | `fct_clima_horario_completude_estacao_por_ano`: **10 casos** (configurado para avisar se for diferente de 0) |
+| Tempo | **80 s** |
+| Jobs do dbt | **335** (0 com erro): 747,0 MB processados, **3.086,0 MB faturados** |
+| Jobs fora do dbt no intervalo | 2 jobs, 0,0 MB processados, **21,0 MB faturados**, de origem **não identificada** (a consulta da medição em si leu 0 MB de metadados); sem causa atribuída |
+| **Total faturado no intervalo, medido pelos jobs** | **3.106,9 MB** (3.086,0 dos jobs do dbt + 21,0 dos 2 jobs fora do dbt) |
+Bytes **medidos pelos jobs** (`scripts.medir_bytes_bigquery`, intervalo 16:39:13Z a 16:43:00Z), **contra a estimativa** do cálculo (~200 a 230 testes × 10,5 a 13 MB = 2,1 a 3,0 GB): os jobs do dbt ficaram em 3,09 GB, **~3% acima do teto da estimativa** (o número de testes foi 250, acima dos ~230 que supus). Custo: ~0,3% de 1 TiB de uma vez. Cada teste vira um ou mais jobs (335 jobs para 250 testes); a causa dos jobs extras não foi investigada aqui.
+
+### Snapshot do dashboard: `--dry-run` e `gerar` real
+Logs `data/logs/snapshot_dry_run.log` e `snapshot_gerar.log` (fora do git); saída em `dashboard/dados/` (21 CSV + `manifest.json`). O `--dry-run` executa as 7 consultas e não grava; o `gerar` roda em seguida.
+| Medida | Valor |
+|---|---|
+| Arquivos | 21 CSV + `manifest.json` em `dashboard/dados/` |
+| **Tamanho** | **337.088 bytes (0,32 MiB)**, contra o limite de 5 MiB |
+| **Bytes faturados nas consultas (job)** | **62.914.560 (60,0 MiB)**: 6 consultas × 10 MiB; a consulta do PLD semanal veio do cache (0 faturado) |
+| Linhas | carga mensal 322, PLD mensal 297, consumo do exemplo 82, previsão de produção 12, erros de produção 0, recomendação 213, `previsoes_teste_final` 1.308, execuções da DAG (saúde) 160 |
+| Estado | origem de produção 2026-09 e prévia 2026-09, último mês fechado 2026-09, sem aviso de defasagem; saúde das execuções e dos testes disponível |
+**`gerar` real (gravou `dashboard/dados/`):**
+| Medida | `--dry-run` | `gerar` |
+|---|---|---|
+| Arquivos | 21 CSV | **21 CSV + `manifest.json`** |
+| Tamanho | 337.088 bytes (0,32 MiB) | **337.513 bytes (0,32 MiB)**, contra o limite de 5 MiB (+425 bytes sobre o dry-run: +424 do `consumo_exemplo_mensal.csv`, que ganhou a coluna `mes_completo` (2.746 → 3.170 bytes), e +1 do `frescor_fontes.csv` (246 → 247); o total não conta o `manifest.json`) |
+| **Bytes faturados nas consultas (job)** | 62.914.560 (60,0 MiB), 6 consultas de 10 MiB | **0**: as **7 consultas vieram do cache** do dry-run (`cache_hit` nas 7) |
+| Linhas | carga mensal 322, PLD mensal 297, consumo 82, previsão 12, erros 0, recomendação 213, `previsoes_teste_final` 1.308, execuções da DAG 160, testes do dbt 8 | as mesmas |
+**Custo do ciclo dry-run + gerar = 60,0 MiB** (o dry-run paga, o gerar sai do cache); o cache dura enquanto as tabelas não mudam (em geral, até ~24 h). Estado gravado no manifesto: origem de produção e da prévia 2026-09, último mês fechado 2026-09, sem aviso de defasagem; `meses_incompletos`: 2026-10 na carga e no consumo; saúde: 11 execuções da DAG (a última em 10/10 às 16:38Z) e **250 testes do dbt** (`dbt test` completo, sem seleção, 80,2 s, gerado em 10/10 às 16:40Z); cobertura exibida 70,2% e 87,8%.
+
+O mês corrente (outubro de 2026) está nos dois arquivos mensais **e marcado**: `carga_mensal_se.csv` o traz com `mes_utilizavel = False` (cobertura de 26%) e `consumo_exemplo_mensal.csv` (82 linhas, jan/2020 a out/2026) ganhou a coluna `mes_completo` (horas da curva iguais às esperadas do mês): outubro tem 192 horas e fica `False`. O manifesto lista esses meses em `meses_incompletos`, e o "último dado" do consumo é o último mês **completo**. A página usa só os meses completos.

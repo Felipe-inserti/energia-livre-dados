@@ -33,12 +33,16 @@ uv run --env-file .env python -m ml.recomendacao producao 2>&1 | tee data/logs/r
   `bq query --use_legacy_sql=false "SELECT COUNT(*) n FROM marts.fct_recomendacao_contrato" 2>&1 | tee data/logs/recomendacao_producao_contagem.log` (o mesmo comando que gerou o log de 213 linhas)
 - Custo esperado (cache frio): ~108 MiB, dos quais 88 MiB de leitura (medido) e 20 MiB do MERGE.
 
-## 4. Snapshot do dashboard (Parte C2; ainda não implementado)
+## 4. Snapshot do dashboard (Parte C2)
+Antes: (a) o **Airflow no ar** (`docker compose up -d`; sem ele a saúde das execuções sai "indisponível"); (b) o `dbt test` da **suíte inteira**, no host, para a página de saúde mostrar a suíte e não um teste solto: `uv run --env-file .env dbt test --project-dir dbt --profiles-dir dbt 2>&1 | tee data/logs/dbt_test_completo.log` (~80 s, ~3,1 GB faturados, `metricas.md`). **Não rode outro comando do dbt depois dele e antes do snapshot** (sobrescreve o `run_results.json`).
 ```bash
-uv run --env-file .env python -m dashboard.snapshot --dry-run
-uv run --env-file .env python -m dashboard.snapshot
+uv run --env-file .env python -m dashboard.snapshot gerar --dry-run 2>&1 | tee data/logs/snapshot_dry_run.log
+uv run --env-file .env python -m dashboard.snapshot gerar 2>&1 | tee data/logs/snapshot_gerar.log
 ```
-Regenera os CSV de `dashboard/dados/` e o `manifest.json` (lê o BigQuery, o `run_results.json` local e o Postgres do Airflow); depois **commite** o snapshot: o Community Cloud reimplanta a cada push. Mensal, junto com os passos acima.
+- **Rode o dry-run imediatamente antes do gerar.** O dry-run executa as 7 consultas e paga por elas (~60 MiB, pelo job); o `gerar` seguinte repete as mesmas consultas e **sai do cache** (0 bytes faturados: a gravação não custa nada). O cache vale enquanto as tabelas não mudam (em geral, até ~24 h). Pular o dry-run só troca quem paga os ~60 MiB.
+- Regenera os CSV de `dashboard/dados/` e o `manifest.json` (BigQuery, os CSV versionados de `docs/resultados/`, o `run_results.json` local e as durações da DAG no banco de metadados do orquestrador). Se uma fonte local falta, a saúde sai "indisponível no momento do snapshot" e o resto do snapshot sai normalmente.
+- O manifesto traz o aviso de defasagem (a prévia atrás da previsão ou do último mês fechado), os meses incompletos (o corrente fica fora do que a página usa) e os bytes faturados de cada consulta.
+- Depois, **commite `dashboard/dados/`**: o Community Cloud reimplanta a cada push. Mensal, junto com os passos acima.
 
 ## Se algo falhar
 - `ABORTADO, nada foi gravado: … backtest`: a origem pedida é do backtest; a cadeia só grava origens posteriores a 2024-12.
