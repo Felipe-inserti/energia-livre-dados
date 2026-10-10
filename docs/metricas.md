@@ -1406,3 +1406,155 @@ Sobra em meses com PLDp < `P_t` (1 a 7 e 12): **20,201 MWh (69%)**, com Δ custo
 
 ### Engenharia (leitura congelada que alimentou o backtest, 6.2)
 `ml.otimizacao ler --congelar` (10/10/2026): 7 consultas, **27.263.342 bytes processados e 81.788.928 faturados (78,0 MiB)**, 45,9 s; o backtest e a otimização só leem o disco (parquet em `data/cenarios_6a/`, fora do git). Suíte: 725 testes passam; o backtest sintético é conferido à mão.
+
+## Sprint 6, Parte B: as 13 sensibilidades da 6.4 (execução única, 11/10/2026)
+
+Executadas uma vez cada, depois do pré-registro `4c02987` (plano `docs/planejamento/plano_sprint6b.md`), com o código no HEAD `67a879d`; resultados commitados em `37c3d60` (`docs/resultados/sens_<sens_id>_*.csv` e `sensibilidades_execucoes.jsonl`; as tabelas agregadas `sens_resumo*.csv`, `sens_banda_f.csv` e `sens_invariancias.csv` são função pura dessas saídas). Uma variável por vez em relação ao caso base, sem combinações; 10 sobre os cenários congelados `51cf99b073fe` e 3 sobre cenários novos gerados em disco (`disp125`, `disp150`, `clip`). Percentuais sobre o custo da ingênua do recorte. **5 anos, sem teste de significância; 2021–2023 contrafactuais; a flexibilidade não tem preço no modelo (a economia da otimizada é um teto) e não há penalidade de lastro (o valor da previsão é um piso).** Conferência e leitura em `data/logs/relatorio_6b_resultados.md` (fora do git).
+
+### Tabela-resumo: Total 2021–2025 (o caso base é este recorte)
+| sens_id | parâmetro | Valor da previsão (ing → pont) | Valor da otimização (pont → otim) | Economia total (ing → otim) |
+|---|---|---|---|---|
+| `caso_base` | caso base (f = 10%, spread 20, λ 0,5, α 0,95, blocos) | −330,10 (−0,03%) | +9.020,19 (+0,92%) | +8.690,10 (+0,89%) |
+| `f00` | f = 0% | +3.740,51 (+0,38%) | 0,00 (0,00%) | +3.740,51 (+0,38%) |
+| `f05` | f = 5% | +1.560,57 (+0,16%) | +7.469,17 (+0,76%) | +9.029,74 (+0,92%) |
+| `f15` | f = 15% | 0,00 (0,00%) | +9.704,63 (+0,99%) | +9.704,63 (+0,99%) |
+| `spread00` | spread R$ 0 | −248,21 (−0,03%) | +9.584,76 (+1,12%) | +9.336,54 (+1,09%) |
+| `spread40` | spread R$ 40 | −411,98 (−0,04%) | +7.583,84 (+0,69%) | +7.171,86 (+0,65%) |
+| `lam00` | λ = 0 | −330,10 (−0,03%) | +8.917,64 (+0,91%) | +8.587,54 (+0,88%) |
+| `lam10` | λ = 1 | −330,10 (−0,03%) | +6.713,11 (+0,69%) | +6.383,01 (+0,65%) |
+| `alfa90` | α = 0,90 | −330,10 (−0,03%) | +9.109,67 (+0,93%) | +8.779,57 (+0,90%) |
+| `rmax120` | r até 1,20 | −330,10 (−0,03%) | +18.459,63 (+1,89%) | +18.129,53 (+1,85%) |
+| `pldsimples` | PLD `simples` | −330,10 (−0,03%) | +9.020,19 (+0,92%) | +8.690,10 (+0,89%) |
+| `disp125` | dispersão ×1,25 | −330,10 (−0,03%) | +9.020,19 (+0,92%) | +8.690,10 (+0,89%) |
+| `disp150` | dispersão ×1,5 | −330,10 (−0,03%) | +9.020,19 (+0,92%) | +8.690,10 (+0,89%) |
+| `clip` | clip simples | −330,10 (−0,03%) | +9.020,19 (+0,92%) | +8.690,10 (+0,89%) |
+
+### Tabela-resumo: Total sem 2021 (2022–2025)
+| sens_id | parâmetro | Valor da previsão (ing → pont) | Valor da otimização (pont → otim) | Economia total (ing → otim) |
+|---|---|---|---|---|
+| `caso_base` | caso base (f = 10%, spread 20, λ 0,5, α 0,95, blocos) | −310,50 (−0,04%) | +9.020,19 (+1,20%) | +8.709,69 (+1,16%) |
+| `f00` | f = 0% | +324,02 (+0,04%) | 0,00 (0,00%) | +324,02 (+0,04%) |
+| `f05` | f = 5% | +308,49 (+0,04%) | +7.244,58 (+0,97%) | +7.553,08 (+1,01%) |
+| `f15` | f = 15% | 0,00 (0,00%) | +9.704,63 (+1,29%) | +9.704,63 (+1,29%) |
+| `spread00` | spread R$ 0 | −233,15 (−0,04%) | +9.584,76 (+1,47%) | +9.351,60 (+1,43%) |
+| `spread40` | spread R$ 40 | −387,86 (−0,05%) | +7.571,63 (+0,89%) | +7.183,77 (+0,85%) |
+| `lam00` | λ = 0 | −310,50 (−0,04%) | +9.020,19 (+1,20%) | +8.709,69 (+1,16%) |
+| `lam10` | λ = 1 | −310,50 (−0,04%) | +6.713,11 (+0,89%) | +6.402,60 (+0,85%) |
+| `alfa90` | α = 0,90 | −310,50 (−0,04%) | +9.020,19 (+1,20%) | +8.709,69 (+1,16%) |
+| `rmax120` | r até 1,20 | −310,50 (−0,04%) | +18.459,63 (+2,46%) | +18.149,12 (+2,41%) |
+| `pldsimples` | PLD `simples` | −310,50 (−0,04%) | +9.020,19 (+1,20%) | +8.709,69 (+1,16%) |
+| `disp125` | dispersão ×1,25 | −310,50 (−0,04%) | +9.020,19 (+1,20%) | +8.709,69 (+1,16%) |
+| `disp150` | dispersão ×1,5 | −310,50 (−0,04%) | +9.020,19 (+1,20%) | +8.709,69 (+1,16%) |
+| `clip` | clip simples | −310,50 (−0,04%) | +9.020,19 (+1,20%) | +8.709,69 (+1,16%) |
+
+Valores em R$ (custo evitado; negativo = custo a mais). `rmax120` dobra o valor da otimização (R$ 18.459,63; 1,89% do custo da ingênua; economia total 1,85%) e **não** entra no caso base (limites simétricos, D13); `lam10` e `spread40` são as que mais o reduzem. As quatro `pldsimples`, `disp125`, `disp150` e `clip` dão o mesmo total do caso base (explicação em `decisoes.md`).
+
+### Valor da otimização e r* por ano (R$; r* = V*/V_pont)
+| sens_id | 2021 | 2022 | 2023 | 2024 | 2025 |
+|---|---|---|---|---|---|
+| `caso_base` | 0,0 (r* 0,9841) | +5.843,2 (r* 0,9091) | −116,1 (r* 1,1111) | −66,3 (r* 1,1111) | +3.359,4 (r* 1,1111) |
+| `f00` | 0,0 (r* 1,0) | 0,0 (r* 1,0) | 0,0 (r* 1,0) | 0,0 (r* 1,0) | 0,0 (r* 1,0) |
+| `f05` | +224,6 (r* 1,0049) | +4.364,4 (r* 0,9524) | −170,0 (r* 1,0526) | −21,3 (r* 1,0526) | +3.071,5 (r* 1,0526) |
+| `f15` | 0,0 (r* 0,9446) | +6.308,9 (r* 0,8696) | −137,7 (r* 1,1765) | −66,3 (r* 1,1765) | +3.599,8 (r* 1,1765) |
+| `spread00` | 0,0 (r* 1,0166) | +4.479,3 (r* 0,9166) | +292,1 (r* 1,1111) | +518,6 (r* 1,1111) | +4.294,7 (r* 1,1111) |
+| `spread40` | +12,2 (r* 0,9666) | +6.323,2 (r* 0,9091) | −524,4 (r* 1,1111) | −651,2 (r* 1,1111) | +2.424,0 (r* 1,1111) |
+| `lam00` | −102,6 (r* 0,9091) | +5.843,2 (r* 0,9091) | −116,1 (r* 1,1111) | −66,3 (r* 1,1111) | +3.359,4 (r* 1,1111) |
+| `lam10` | 0,0 (r* 0,9866) | +3.536,2 (r* 0,9291) | −116,1 (r* 1,1111) | −66,3 (r* 1,1111) | +3.359,4 (r* 1,1111) |
+| `alfa90` | +89,5 (r* 0,9591) | +5.843,2 (r* 0,9091) | −116,1 (r* 1,1111) | −66,3 (r* 1,1111) | +3.359,4 (r* 1,1111) |
+| `rmax120` | 0,0 (r* 0,9841) | +5.843,2 (r* 0,9091) | −558,7 (r* 1,2) | +3.484,3 (r* 1,2) | +9.690,7 (r* 1,2) |
+| `pldsimples` | 0,0 (r* 1,0091) | +5.843,2 (r* 0,9091) | −116,1 (r* 1,1111) | −66,3 (r* 1,1111) | +3.359,4 (r* 1,1111) |
+| `disp125` | 0,0 (r* 0,9941) | +5.843,2 (r* 0,9091) | −116,1 (r* 1,1111) | −66,3 (r* 1,1111) | +3.359,4 (r* 1,1111) |
+| `disp150` | 0,0 (r* 1,0041) | +5.843,2 (r* 0,9091) | −116,1 (r* 1,1111) | −66,3 (r* 1,1111) | +3.359,4 (r* 1,1111) |
+| `clip` | 0,0 (r* 0,9741) | +5.843,2 (r* 0,9091) | −116,1 (r* 1,1111) | −66,3 (r* 1,1111) | +3.359,4 (r* 1,1111) |
+
+### Análise principal: banda de flexibilidade f (por ano e no total)
+| f | sens_id | limites de r | recorte | Valor da previsão | Valor da otimização | Economia total | Meses fora da faixa (ing / pont / otim) |
+|---|---|---|---|---|---|---|---|
+| 0% | `f00` | [1,0000; 1,0000] | 2021 | +3.416,49 (+1,51%) | 0,00 (0,00%) | +3.416,49 (+1,51%) | 12 / 12 / 12 |
+| 0% | `f00` | [1,0000; 1,0000] | 2022 | −2.679,52 (−0,77%) | 0,00 (0,00%) | −2.679,52 (−0,77%) | 12 / 12 / 12 |
+| 0% | `f00` | [1,0000; 1,0000] | 2023 | −27,49 (−0,03%) | 0,00 (0,00%) | −27,49 (−0,03%) | 12 / 12 / 12 |
+| 0% | `f00` | [1,0000; 1,0000] | 2024 | +2.766,60 (+2,29%) | 0,00 (0,00%) | +2.766,60 (+2,29%) | 12 / 12 / 12 |
+| 0% | `f00` | [1,0000; 1,0000] | 2025 | +264,43 (+0,14%) | 0,00 (0,00%) | +264,43 (+0,14%) | 12 / 12 / 12 |
+| 0% | `f00` | [1,0000; 1,0000] | 2021-2025 | +3.740,51 (+0,38%) | 0,00 (0,00%) | +3.740,51 (+0,38%) | 60 / 60 / 60 |
+| 0% | `f00` | [1,0000; 1,0000] | 2022-2025 | +324,02 (+0,04%) | 0,00 (0,00%) | +324,02 (+0,04%) | 48 / 48 / 48 |
+| 5% | `f05` | [0,9524; 1,0526] | 2021 | +1.252,08 (+0,55%) | +224,59 (+0,10%) | +1.476,67 (+0,65%) | 4 / 5 / 5 |
+| 5% | `f05` | [0,9524; 1,0526] | 2022 | −603,72 (−0,17%) | +4.364,35 (+1,25%) | +3.760,63 (+1,08%) | 2 / 3 / 5 |
+| 5% | `f05` | [0,9524; 1,0526] | 2023 | −11,53 (−0,01%) | −170,00 (−0,18%) | −181,53 (−0,19%) | 8 / 8 / 6 |
+| 5% | `f05` | [0,9524; 1,0526] | 2024 | +801,28 (+0,67%) | −21,26 (−0,02%) | +780,02 (+0,66%) | 7 / 3 / 6 |
+| 5% | `f05` | [0,9524; 1,0526] | 2025 | +122,46 (+0,07%) | +3.071,49 (+1,64%) | +3.193,96 (+1,70%) | 7 / 6 / 9 |
+| 5% | `f05` | [0,9524; 1,0526] | 2021-2025 | +1.560,57 (+0,16%) | +7.469,17 (+0,76%) | +9.029,74 (+0,92%) | 28 / 25 / 31 |
+| 5% | `f05` | [0,9524; 1,0526] | 2022-2025 | +308,49 (+0,04%) | +7.244,58 (+0,97%) | +7.553,08 (+1,01%) | 24 / 20 / 26 |
+| 10% | `caso_base` | [0,9091; 1,1111] | 2021 | −19,59 (−0,01%) | 0,00 (0,00%) | −19,59 (−0,01%) | 1 / 0 / 0 |
+| 10% | `caso_base` | [0,9091; 1,1111] | 2022 | −254,03 (−0,07%) | +5.843,24 (+1,67%) | +5.589,21 (+1,60%) | 1 / 1 / 5 |
+| 10% | `caso_base` | [0,9091; 1,1111] | 2023 | −1,59 (0,00%) | −116,14 (−0,12%) | −117,73 (−0,12%) | 3 / 3 / 4 |
+| 10% | `caso_base` | [0,9091; 1,1111] | 2024 | −37,85 (−0,03%) | −66,28 (−0,06%) | −104,13 (−0,09%) | 1 / 0 / 6 |
+| 10% | `caso_base` | [0,9091; 1,1111] | 2025 | −17,05 (−0,01%) | +3.359,38 (+1,79%) | +3.342,33 (+1,78%) | 1 / 1 / 8 |
+| 10% | `caso_base` | [0,9091; 1,1111] | 2021-2025 | −330,10 (−0,03%) | +9.020,19 (+0,92%) | +8.690,10 (+0,89%) | 7 / 5 / 23 |
+| 10% | `caso_base` | [0,9091; 1,1111] | 2022-2025 | −310,50 (−0,04%) | +9.020,19 (+1,20%) | +8.709,69 (+1,16%) | 6 / 5 / 23 |
+| 15% | `f15` | [0,8696; 1,1765] | 2021 | 0,00 (0,00%) | 0,00 (0,00%) | 0,00 (0,00%) | 0 / 0 / 0 |
+| 15% | `f15` | [0,8696; 1,1765] | 2022 | 0,00 (0,00%) | +6.308,85 (+1,80%) | +6.308,85 (+1,80%) | 0 / 0 / 5 |
+| 15% | `f15` | [0,8696; 1,1765] | 2023 | 0,00 (0,00%) | −137,73 (−0,14%) | −137,73 (−0,14%) | 0 / 0 / 4 |
+| 15% | `f15` | [0,8696; 1,1765] | 2024 | 0,00 (0,00%) | −66,28 (−0,06%) | −66,28 (−0,06%) | 0 / 0 / 6 |
+| 15% | `f15` | [0,8696; 1,1765] | 2025 | 0,00 (0,00%) | +3.599,79 (+1,91%) | +3.599,79 (+1,91%) | 0 / 0 / 8 |
+| 15% | `f15` | [0,8696; 1,1765] | 2021-2025 | 0,00 (0,00%) | +9.704,63 (+0,99%) | +9.704,63 (+0,99%) | 0 / 0 / 23 |
+| 15% | `f15` | [0,8696; 1,1765] | 2022-2025 | 0,00 (0,00%) | +9.704,63 (+1,29%) | +9.704,63 (+1,29%) | 0 / 0 / 23 |
+
+Leitura: o **módulo** do valor da previsão cresce quando f diminui (R$ 0 em 15%, 330,10 em 10%, 1.560,57 em 5%, 3.740,51 em 0%), mas com f = 0 o custo é `C·PLDp + V·h·(P_t − PLDp)` e o sinal por ano é o de `(V_ing − V_pont)·Σ(P_t − PLDp)` (negativo em 2022, positivo em 2021, 2024 e 2025): é aposta de preço, e a precisão da previsão não entra. O valor da **otimização** cresce com f (0; 7.469,17; 9.020,19; 9.704,63), o contrário do que a H4 (ii) registrava.
+
+### Quantos r* mudaram em relação ao caso base (|Δr*| > 1e-6)
+| sens_id | 2021 | 2022 | 2023 | 2024 | 2025 | Mudaram |
+|---|---|---|---|---|---|---|
+| `f00` | mudou | mudou | mudou | mudou | mudou | 5 de 5 |
+| `f05` | mudou | mudou | mudou | mudou | mudou | 5 de 5 |
+| `f15` | mudou | mudou | mudou | mudou | mudou | 5 de 5 |
+| `spread00` | mudou | mudou | igual | igual | igual | 2 de 5 |
+| `spread40` | mudou | igual | igual | igual | igual | 1 de 5 |
+| `lam00` | mudou | igual | igual | igual | igual | 1 de 5 |
+| `lam10` | mudou | mudou | igual | igual | igual | 2 de 5 |
+| `alfa90` | mudou | igual | igual | igual | igual | 1 de 5 |
+| `rmax120` | igual | igual | mudou | mudou | mudou | 3 de 5 |
+| `pldsimples` | mudou | igual | igual | igual | igual | 1 de 5 |
+| `disp125` | mudou | igual | igual | igual | igual | 1 de 5 |
+| `disp150` | mudou | igual | igual | igual | igual | 1 de 5 |
+| `clip` | mudou | igual | igual | igual | igual | 1 de 5 |
+| **sensibilidades com r\* diferente, por origem** | **12 de 13** | **5 de 13** | **4 de 13** | **4 de 13** | **4 de 13** | |
+
+O r* de 2021 (interior no caso base) muda em 12 das 13; o de 2022–2025 só muda onde o limite muda (`f00`, `f05`, `f15`, `rmax120`) ou onde o `P_t` ou o peso do risco o movem (`spread00`, `lam10` em 2022). O custo realizado só muda com o r* quando o ano sai da faixa: em 2021 isso ocorreu em `lam00` (−102,6), `alfa90` (+89,5), `f05` (+224,6) e `spread40` (+12,2).
+
+### Invariância e cenários novos (medidos)
+- Ingênua e pontual com custo, V e exposição **idênticos** ao caso base em `lam00`, `lam10`, `alfa90`, `rmax120`, `pldsimples`, `disp125`, `disp150` e `clip`; o ex-ante (E[custo], CVaR, PIT) também em `lam00`, `lam10` e `rmax120` (`sens_invariancias.csv`).
+- Cenários novos (média por origem, dez/2020 a dez/2024): consumo anual do `disp125` +0,025% a +0,059% e do `disp150` +0,057% a +0,126% contra o caso base (efeito de Jensen; desvio ×1,25 e ×1,5); PLD médio do `clip` 161,5 / 175,0 / 181,3 / 169,5 / 163,5 contra 179,1 / 195,2 / 207,9 / 190,7 / 182,4 (−9,8% a −12,8%); desvio do PLD anual do `simples` 45 a 49 contra 129 a 144 dos blocos.
+- Identidade com f = 0 nos dados reais: `custo_ing − custo_pont = Σ ΔV_m (P_t − PLDp_m)` com resíduo de no máximo R$ 0,0003 (2021: 3.416,49; 2022: −2.679,52; 2023: −27,49; 2024: +2.766,60; 2025: +264,43).
+- **Engenharia:** cada execução leu só o disco (parquet de `data/cenarios_6a/` e `data/cenarios_6b/`), **0 byte de BigQuery**; o lote das 13 está em `data/logs/sens_todas.log`. A geração dos 3 conjuntos novos não foi gravada no BigQuery (decisão B6).
+
+### Sprint 6, Parte B: `fct_recomendacao_contrato` (6.5): gravação, idempotência e prévia de produção (11/10/2026)
+Gravada por `python -m ml.recomendacao gravar` (logs `data/logs/recomendacao_gravar.log`, `recomendacao_gravar_2.log` e `recomendacao_contagem.log`, fora do git). **213 linhas** = 210 de backtest (caso base e as 13 sensibilidades × 5 origens × 3 estratégias) + 3 de prévia (origem 2026-09).
+| Medida | 1ª execução | 2ª execução (mesmos insumos) |
+|---|---|---|
+| Linhas na tabela depois da execução | 213 | **213** (`recomendacao_contagem.log`: nenhuma duplicata) |
+| Montagem e validação (impresso) | 4,5 s | 4,5 s |
+| Carga da temporária / MERGE | 4,4 s / 2,6 s | 3,7 s / 2,5 s |
+| Bytes do MERGE, processados | **67.750** | **135.500** (dobra: o MERGE lê a temporária e o destino) |
+| Bytes do MERGE, faturados (`total_bytes_billed`) | **20.971.520** (20 MiB: o piso de 10 MiB para cada uma das duas tabelas) | **20.971.520** |
+| DDL (`CREATE TABLE`, `ALTER`) | 0 | 0 |
+| Leitura do BigQuery (previsão de produção e consumo dos 12 meses) | **0 faturados**: as 2 consultas vieram do cache (`cache_hit`) | **0 faturados**: cache |
+Fonte dos bytes: `INFORMATION_SCHEMA.JOBS_BY_PROJECT` (`total_bytes_processed`, `total_bytes_billed`, `cache_hit`), não o cálculo do script. Leitura do `--dry-run` (que executou as 2 consultas, sem cache): 949.632 processados (768 em `fct_previsao_carga`, 948.864 em `fct_consumo_horario`) e **20.971.520 faturados** (2 jobs × 10.485.760). A idempotência vale pelo mesmo motivo do MERGE dos cenários (chave natural `sens_id, origem, estrategia`).
+
+**Prévia da origem de produção 2026-09** (`tipo = previa`, caso base, f = 10%, λ = 0,5, α = 0,95, `execucao_id` `51cf99b073fe`, janela **out/2026 a set/2027**, `ano_contrato` nulo, `limites_assumidos = true`: os limites de 2027 repetem os de 2026). `P` = PLD médio simples dos 12 meses fechados até a origem + R$ 20 = **R$ 246,89/MWh** (acima do PLD médio dos cenários, R$ 188,53).
+| Estratégia | V (MWm) | r (contra a pontual) | E[custo] ex-ante (R$) | CVaR95 ex-ante (R$) |
+|---|---|---|---|---|
+| ingênua | 0,144833 | 0,9847 | 318.358,69 | 339.145,80 |
+| pontual | 0,147084 | 1,0000 | 318.528,92 | 339.640,93 |
+| **otimizada** | **0,136655** | **0,929** | 317.211,05 | 339.010,85 |
+Com `P` acima de `E[PLD]` a otimizada contrata menos (r = 0,929, interior: o limite inferior é 0,9091), o mesmo sentido dos anos de PLD baixo do backtest. É uma **prévia de janela móvel**, não a decisão de 2027; não tem custo realizado. **Limite conhecido:** fixa na origem 2026-09 (backlog em `sprints-projeto-energia.md`).
+
+### Correção de medição: bytes faturados (11/10/2026)
+O medidor `_ContaBytes` (em `ml/cenarios_sens.py`, usado também por `ml/recomendacao.py`) somava o **piso de 10 MiB** sempre que `total_bytes_billed` vinha 0, e 0 é o valor correto de uma consulta atendida pelo **cache** (`cache_hit`). Corrigido em `ml/medida_bytes.py` (`ContaBytes`): o faturado é o `total_bytes_billed` do job, com `cache_hit`; o piso só entra como **estimativa rotulada** no `--dry-run`, fora da soma do medido; teste em `tests/test_ml_medida_bytes.py`. Números dos logs, conferidos nos jobs (`INFORMATION_SCHEMA.JOBS_BY_PROJECT`):
+| Log | Impresso | De onde vinha | Real (job) |
+|---|---|---|---|
+| `cenarios_sens_dry_run.log` (leitura dos 3 conjuntos) | 663.182 processados; 31.457.280 faturados | job (3 consultas fora do cache) | **igual**: 3 × 10.485.760 |
+| `cenarios_sens_gerar.log` | 0 processados; **31.457.280** faturados | **cálculo do piso** (o job veio do cache) | **0 faturados** (3 `cache_hit`) |
+| `recomendacao_dry_run.log` | 949.632 processados; 20.971.520 faturados | job (2 consultas fora do cache) | **igual** |
+| `recomendacao_gravar.log` e `_2.log`, linha "leitura do BigQuery" | 0 processados; **20.971.520** faturados | **cálculo do piso** (cache) | **0 faturados** (`cache_hit`) |
+| Linha "marts.fct_recomendacao_contrato … bytes faturados" (MERGE) | 20.971.520 | job (`gravar_medido` usa o do job) | **igual** (67.750 e 135.500 processados) |
+**No `metricas.md` nenhum número de bytes da Parte B vinha do cálculo do piso:** as medidas anteriores (leitura congelada de 81.788.928 faturados, MERGE dos cenários) são de job (`usar_cache=False` no `ler`, e `INFORMATION_SCHEMA` na confirmação do MERGE). Os números de **estimativa** do plano B (`~30 a 40 MiB` de leitura na geração, `~20 MiB` na gravação da 6.5, `~323 MiB` se os 3 conjuntos fossem ao BigQuery) são cálculos e continuam rotulados assim; a leitura medida da geração foi **30,0 MiB** (dry-run, 3 jobs), e a gravação da 6.5 foi **20,0 MiB** (MERGE). A geração real (`gerar`) e as duas gravações da 6.5 leram do cache e **não faturaram leitura**.
