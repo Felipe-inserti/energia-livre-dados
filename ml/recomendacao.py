@@ -2,6 +2,8 @@
 
     uv run --env-file .env python -m ml.recomendacao gravar --dry-run   # monta e valida; não grava
     uv run --env-file .env python -m ml.recomendacao gravar             # MERGE idempotente
+    uv run --env-file .env python -m ml.recomendacao producao --dry-run # origem mais recente
+    uv run --env-file .env python -m ml.recomendacao producao           # grava só as 3 linhas dela
 
 Plano: `docs/planejamento/plano_sprint6b.md`, seção 7 (decisões B12 e B13).
 - **Chave natural:** (`sens_id`, `origem`, `estrategia`). Grão: uma decisão de volume.
@@ -15,11 +17,19 @@ Plano: `docs/planejamento/plano_sprint6b.md`, seção 7 (decisões B12 e B13).
   origem** + spread. Para uma origem de dezembro é exatamente "o ano `t−1`" do caso base (teste).
   A ingênua da prévia usa o consumo realizado dos mesmos 12 meses.
 - `janela_inicio` e `janela_fim` são o primeiro dia do primeiro e do último mês da janela.
+
+`producao` (Sprint 6, Parte C1): a cadeia mensal. Escolhe a **origem de produção mais recente que
+tem previsão E cenários**, lê tudo do BigQuery (nada de parquet local), decide com o caso base e
+grava **só as 3 linhas** dela (`tipo` = `producao` ou `previa`). Nunca escreve linhas de backtest: o
+SQL só olha execuções de origens posteriores a 2024-12 e a validação recusa qualquer outra. Emite
+**aviso de defasagem** quando a previsão mais recente não tem cenários, ou quando o último mês
+fechado já passou da previsão.
 """
 
 import argparse
 import sys
 import time
+from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from pathlib import Path
 
@@ -27,6 +37,7 @@ import numpy as np
 import pandas as pd
 
 from ml import backtest as bt
+from ml.cenarios import ORIGENS_DE_BACKTEST
 from ml.cenarios_consumo import hash_curto, horas_do_mes, k_do_dbt
 from ml.custo import SPREAD_PADRAO, preco_do_contrato, volume_medio_mwm
 from ml.medida_bytes import ContaBytes
@@ -45,6 +56,7 @@ from ml.otimizacao import (
     otimizar,
     v_previsto_mwm,
 )
+from ml.registro import MODELO_VERSAO
 from ml.sensibilidades import (
     IDS,
     LOG,
@@ -412,12 +424,268 @@ def montar(dry_run: bool, resultados: Path = RESULTADOS, agora=lambda: datetime.
     return 0
 
 
+# ------------------------------------------------------------ cadeia mensal: origem mais recente
+
+
+class ErroDeProducao(RuntimeError):
+    """A cadeia de produção não pode seguir (sem cenários, origem de backtest, linha errada)."""
+
+
+def _indice_de_mes(d: date) -> int:
+    return d.year * 12 + d.month
+
+
+def escolher_origem(origens_previsao: list[date], execucoes: list[dict]) -> date:
+    """A origem de produção mais recente que tem previsão **e** cenários, posterior ao backtest."""
+    com_cenarios = {e["origem"] for e in execucoes}
+    candidatas = sorted(
+        o for o in set(origens_previsao) & com_cenarios if o > max(ORIGENS_DE_BACKTEST)
+    )
+    if not candidatas:
+        raise ErroDeProducao(
+            "nenhuma origem de produção tem previsão e cenários; rode "
+            "`python -m ml.cenarios gerar-producao` para a origem mais recente"
+        )
+    return candidatas[-1]
+
+
+def escolher_execucao(execucoes: list[dict], origem: date) -> str:
+    """O `execucao_id` mais recente (por `gerado_em`; empate, o maior id) da origem."""
+    da_origem = [e for e in execucoes if e["origem"] == origem]
+    if not da_origem:
+        raise ErroDeProducao(f"não há cenários gravados para a origem {origem:%Y-%m}")
+    return max(da_origem, key=lambda e: (str(e["gerado_em"]), e["execucao_id"]))["execucao_id"]
+
+
+def aviso_de_defasagem(
+    origem_usada: date, ultima_previsao: date, ultimo_mes_fechado: date
+) -> list[str]:
+    """Avisos (vazio se tudo em dia): a prévia é da `origem_usada`; a previsão e o mês fechado podem
+    estar à frente."""
+    avisos = []
+    if ultima_previsao > origem_usada:
+        d = _indice_de_mes(ultima_previsao) - _indice_de_mes(origem_usada)
+        avisos.append(
+            f"AVISO DE DEFASAGEM: a previsão mais recente é de {ultima_previsao:%Y-%m}, mas não há "
+            f"cenários para ela; a prévia é da origem {origem_usada:%Y-%m} ({d} mês(es) atrás). "
+            "Rode `python -m ml.cenarios gerar-producao`."
+        )
+    if ultimo_mes_fechado > ultima_previsao:
+        d = _indice_de_mes(ultimo_mes_fechado) - _indice_de_mes(ultima_previsao)
+        avisos.append(
+            f"AVISO DE DEFASAGEM: o último mês fechado é {ultimo_mes_fechado:%Y-%m}, mas a "
+            f"previsão de produção mais recente é de {ultima_previsao:%Y-%m} ({d} mês(es) atrás). "
+            "Rode `python -m ml.previsao gerar` (a DAG o faz quando o mês fecha)."
+        )
+    return avisos
+
+
+def validar_somente_producao(df: pd.DataFrame) -> None:
+    """Nenhuma linha de backtest: só o caso base, `producao`/`previa`, 3 estratégias, 1 origem."""
+    if set(df["sens_id"]) != {"caso_base"}:
+        raise ErroDeProducao("a cadeia de produção só escreve o caso base")
+    if not set(df["tipo"]) <= {"producao", "previa"}:
+        raise ErroDeProducao("a cadeia de produção não escreve linhas de backtest")
+    if df["origem"].nunique() != 1 or len(df) != len(ESTRATEGIAS):
+        raise ErroDeProducao("a cadeia de produção escreve exatamente 3 linhas de uma origem")
+    if set(df["origem"]) & set(ORIGENS_DE_BACKTEST):
+        raise ErroDeProducao("a origem é do backtest: nada é gravado")
+    if sorted(df["estrategia"]) != sorted(ESTRATEGIAS):
+        raise ErroDeProducao("faltam estratégias")
+
+
+@dataclass(frozen=True)
+class Inicio:
+    origens_previsao: list[date]
+    execucoes: list[dict]  # execucao_id, origem, gerado_em (só origens após o backtest)
+    ultimo_mes_fechado: date
+
+
+@dataclass(frozen=True)
+class LeituraDaOrigem:
+    dados: Dados
+    previsto_mwmed: list[float]
+    consumo_mensal: pd.DataFrame
+
+
+def _linhas(gcp, cliente, sql: str) -> list[dict]:
+    from ml.previsao import _consulta
+
+    return [dict(r.items()) for r in _consulta(gcp, cliente, sql).linhas]
+
+
+def ler_inicio(gcp, cliente) -> Inicio:
+    """Origens com previsão, execuções de cenário posteriores ao backtest e o último mês fechado."""
+    from ml.previsao import ler_serie
+
+    origens = _linhas(
+        gcp,
+        cliente,
+        f"SELECT DISTINCT origem FROM `marts.fct_previsao_carga` "
+        f"WHERE modelo_versao = '{MODELO_VERSAO}' AND tipo = 'producao' ORDER BY origem",
+    )
+    # o filtro `origem > último mês do backtest` mantém as 5 origens do backtest fora da leitura
+    fim_backtest = max(ORIGENS_DE_BACKTEST).isoformat()
+    execucoes = _linhas(
+        gcp,
+        cliente,
+        "SELECT execucao_id, origem, gerado_em FROM `marts.fct_cenario_execucao` "
+        f"WHERE origem > DATE '{fim_backtest}'",
+    )
+    _, ultimo_fechado = ler_serie(gcp, cliente)
+    return Inicio([r["origem"] for r in origens], execucoes, ultimo_fechado)
+
+
+def ler_da_origem(gcp, cliente, origem: date, execucao_id: str) -> LeituraDaOrigem:
+    from ml.otimizacao import _normalizar_datas, consultas
+
+    filtro = f"execucao_id = '{execucao_id}' AND origem = DATE '{origem.isoformat()}'"
+    execucao = _linhas(
+        gcp,
+        cliente,
+        "SELECT origem, modelo_versao, n_cenarios, semente_base, calibracao, n_vetores_consumo, "
+        "erros_hash, k_consumo, n_meses_pld, n_blocos_pld, pld_hash, pisos_hash, "
+        f"limites_assumidos, codigo_hash FROM `marts.fct_cenario_execucao` WHERE {filtro}",
+    )
+    consumo = _linhas(
+        gcp,
+        cliente,
+        "SELECT origem, cenario, horizonte, mes_alvo, consumo_mwh "
+        f"FROM `marts.fct_cenario_consumo` WHERE {filtro}",
+    )
+    pld = _linhas(
+        gcp,
+        cliente,
+        "SELECT origem, metodo, cenario, horizonte, mes_alvo, pld_rs_mwh "
+        f"FROM `marts.fct_cenario_pld` WHERE {filtro} AND metodo = '{METODO_BASE}'",
+    )
+    previsao = _linhas(
+        gcp,
+        cliente,
+        "SELECT horizonte, previsao_mwmed FROM `marts.fct_previsao_carga` "
+        f"WHERE modelo_versao = '{MODELO_VERSAO}' AND tipo = 'producao' "
+        f"AND origem = DATE '{origem.isoformat()}' ORDER BY horizonte",
+    )
+    if [r["horizonte"] for r in previsao] != list(HORIZONTES):
+        raise ErroDeProducao(f"a previsão da origem {origem:%Y-%m} não tem os 12 horizontes")
+    pld_mensal = _linhas(gcp, cliente, consultas()["pld_mensal"])
+    consumo_mensal = _linhas(gcp, cliente, _sql_consumo_12m(origem))
+    dados = Dados(
+        execucao=_normalizar_datas("execucao", pd.DataFrame(execucao)),
+        cenario_consumo=_normalizar_datas("cenario_consumo", pd.DataFrame(consumo)),
+        cenario_pld=_normalizar_datas("cenario_pld", pd.DataFrame(pld)),
+        previstos=pd.DataFrame(),
+        pld_mensal=_normalizar_datas("pld_mensal", pd.DataFrame(pld_mensal)),
+        pld_2020=0.0,
+    )
+    return LeituraDaOrigem(
+        dados,
+        [float(r["previsao_mwmed"]) for r in previsao],
+        _normalizar_datas("consumo_mensal", pd.DataFrame(consumo_mensal)),
+    )
+
+
+def cabecalho_do_caso_base(log_base: Path | None = None) -> dict:
+    """`config_hash` e `preregistro` do caso base (a prévia usa a regra dele), do log versionado."""
+    entradas = bt.ler_log(log_base or bt.LOG)
+    base = next(e for e in entradas if e.get("evento") == "caso_base" and e.get("numero") == 1)
+    return {"config_hash": base["config_hash"], "preregistro": base["preregistro"]}
+
+
+def producao(
+    dry_run: bool,
+    gcp=None,
+    cliente=None,
+    ler_o_inicio=ler_inicio,
+    ler_a_origem=ler_da_origem,
+    gravar=None,
+    prov: dict | None = None,
+    cabecalho: dict | None = None,
+    agora=lambda: datetime.now(UTC),
+) -> int:
+    """A origem de produção mais recente com previsão e cenários: decide e grava 3 linhas."""
+    t0 = time.perf_counter()
+    if gcp is None:
+        from ml.previsao import _cliente
+
+        gcp, cliente = _cliente()
+    gcp = ContaBytes(gcp)
+    inicio = ler_o_inicio(gcp, cliente)
+    origem = escolher_origem(inicio.origens_previsao, inicio.execucoes)
+    execucao_id = escolher_execucao(inicio.execucoes, origem)
+    ultima_previsao = max(inicio.origens_previsao)
+    avisos = aviso_de_defasagem(origem, ultima_previsao, inicio.ultimo_mes_fechado)
+    for a in avisos:
+        print(a)
+    leitura = ler_a_origem(gcp, cliente, origem, execucao_id)
+    if prov is None:
+        from ml.previsao import hash_blob_git, ler_commit
+
+        prov = _proveniencia(
+            ler_commit(bt.RAIZ),
+            hash_curto({c: hash_blob_git(bt.RAIZ / c) for c in CODIGO}),
+            agora(),
+        )
+    df = linhas_producao(
+        leitura.dados,
+        origem,
+        leitura.previsto_mwmed,
+        leitura.consumo_mensal,
+        execucao_id,
+        cabecalho or cabecalho_do_caso_base(),
+        prov,
+    )
+    validar(df, com_backtest=False)
+    validar_somente_producao(df)
+    print(
+        f"origem {origem:%Y-%m} ({df['tipo'].iloc[0]}), execucao_id {execucao_id}, janela "
+        f"{df['janela_inicio'].iloc[0]:%Y-%m} a {df['janela_fim'].iloc[0]:%Y-%m}; "
+        f"P = R$ {df['preco_contrato_rs_mwh'].iloc[0]:,.2f}/MWh; "
+        f"limites assumidos: {bool(df['limites_assumidos'].iloc[0])}; "
+        f"{time.perf_counter() - t0:.1f}s".replace(",", "X")
+        .replace(".", ",")
+        .replace("X", ".")
+    )
+    print(
+        df[["estrategia", "v_mwm", "razao_v_pontual", "custo_esperado_rs", "cvar_rs"]].to_string(
+            index=False
+        )
+    )
+    print(f"leitura do BigQuery: {gcp.linha(com_estimativa=dry_run)}")
+    if dry_run:
+        print(
+            "dry-run: nada gravado. A gravação seria 1 MERGE de 3 linhas "
+            "(ESTIMATIVA pelo piso de 10 MiB por tabela: ~20 MiB faturados, não medida)"
+        )
+        return 0
+    if gravar is None:
+        from ml.cenarios import gravar_medido as gravar
+    m = gravar(gcp, cliente, linhas_para_carga(df), TABELA, ESQUEMA, CHAVE)
+    print(
+        f"{m['tabela']}: {m['linhas']} linhas; carga {m['s_carga']:.1f}s, "
+        f"MERGE {m['s_merge']:.1f}s, {m['bytes_faturados']:,} bytes faturados (job)".replace(
+            ",", "."
+        )
+    )
+    for a in avisos:
+        print(a)
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     sub = ap.add_subparsers(dest="comando", required=True)
     g = sub.add_parser("gravar", help="monta, valida e grava (MERGE)")
     g.add_argument("--dry-run", action="store_true")
+    p = sub.add_parser("producao", help="a origem de produção mais recente (cadeia mensal)")
+    p.add_argument("--dry-run", action="store_true")
     a = ap.parse_args(argv)
+    if a.comando == "producao":
+        try:
+            return producao(a.dry_run)
+        except ErroDeProducao as erro:
+            print(f"ABORTADO, nada foi gravado: {erro}", file=sys.stderr)
+            return 2
     return montar(a.dry_run)
 
 

@@ -2,6 +2,8 @@
 
     uv run --env-file .env python -m ml.cenarios gerar --n 2000 --dry-run   # só lê e conta
     uv run --env-file .env python -m ml.cenarios gerar --n 2000             # grava (idempotente)
+    uv run --env-file .env python -m ml.cenarios gerar-producao --dry-run   # só a origem nova
+    uv run --env-file .env python -m ml.cenarios gerar-producao             # grava só ela
 
 Grava três tabelas em `marts`, por `MERGE` numa chave natural (reexecutar dá o mesmo resultado):
 - `fct_cenario_consumo`: carga do SE/CO e consumo do supermercado por (execução, origem, cenário,
@@ -15,6 +17,11 @@ O `execucao_id` é um hash dos insumos: mesmo N, semente, `k`, erros, PLD e piso
 Origens: dezembro de 2020 a 2024 (decisão de 2021 a 2025) e a última origem de produção. Na
 produção, os meses de 2027 repetem os limites de 2026 (o ANEEL publica os de `y` em dezembro de
 `y − 1`; coluna `limites_assumidos` da tabela de execução).
+
+`gerar-producao` (Sprint 6, Parte C1): a cadeia mensal. Gera os cenários **só da origem de produção
+mais recente**, com um `execucao_id` próprio derivado dos insumos DELA, sem tocar nas origens de
+backtest nem na execução congelada `51cf99b073fe` (recusa qualquer origem `<= 2024-12`). Mesmo N e
+mesma semente do caso base; o MERGE é idempotente (mesmos insumos, mesmo id, mesmas linhas).
 
 Funções de leitura e de linhas primeiro; a nuvem no fim.
 """
@@ -53,6 +60,7 @@ from ml.cenarios_pld import (
     meses_alvo,
 )
 from ml.intervalos import vetores_completos_ate
+from ml.medida_bytes import ContaBytes
 from ml.piso_pld import completar_pisos, detectar_por_ano
 from ml.registro import MODELO_VERSAO
 from ml.validacao import HORIZONTES
@@ -105,6 +113,10 @@ ESQUEMA_EXECUCAO = [
     ("gerado_em", "TIMESTAMP"),
 ]
 CHAVE_EXECUCAO = ("execucao_id", "origem")
+# As origens do backtest 2021-2025 (decidem 2021 a 2025) pertencem à execução congelada: a cadeia
+# mensal de produção nunca as escreve.
+ORIGENS_DE_BACKTEST = tuple(date(a, 12, 1) for a in range(2020, 2025))
+EXECUCAO_CONGELADA = "51cf99b073fe"
 SQL_SEMANAL = """SELECT data_inicio_semana, inicio_semana_utc, fim_semana_utc,
     CAST(pld_rs_mwh AS FLOAT64) AS pld
     FROM `marts.fct_pld_semanal` WHERE codigo_submercado = 'SE'"""
@@ -371,6 +383,222 @@ def gerar(n: int, dry_run: bool, semente: int = SEMENTE_BASE) -> int:
     return 0
 
 
+# ---------------------------------------------------------------- cadeia mensal: só a origem nova
+
+
+class ErroDeOrigem(RuntimeError):
+    """A origem pedida não pode ser gerada pela cadeia mensal de produção."""
+
+
+def conferir_origem_de_producao(origem: date) -> None:
+    """Recusa as origens do backtest e qualquer origem que não seja posterior a elas."""
+    if origem in ORIGENS_DE_BACKTEST or origem <= max(ORIGENS_DE_BACKTEST):
+        raise ErroDeOrigem(
+            f"a origem {origem:%Y-%m} é do backtest (a execução congelada {EXECUCAO_CONGELADA}); "
+            "a cadeia de produção só gera origens posteriores a 2024-12"
+        )
+
+
+def id_da_origem(
+    origem: date, n: int, semente: int, k: float, erros_hash: str, pld_hash: str, pisos_hash: str
+) -> str:
+    """`execucao_id` da origem de produção: só dos insumos dela (e do N, da semente e do `k`).
+
+    Não passa pela mesma conta de `gerar` (que mistura todas as origens): tem o marcador `producao`
+    e uma única origem, então nunca coincide com o id do caso base."""
+    return execucao_id(
+        n,
+        semente,
+        k,
+        {origem: erros_hash},
+        {"pld": {origem.isoformat(): pld_hash}, "pisos": pisos_hash, "producao": True},
+    )
+
+
+@dataclass(frozen=True)
+class CenariosDaOrigem:
+    execucao_id: str
+    origem: date
+    consumo: list[dict]
+    pld: list[dict]
+    execucao: dict
+
+
+def gerar_cenarios_da_origem(
+    origem: date,
+    previsto_mwmed: list[float],
+    erros,
+    dados_pld: DadosPld,
+    k: float,
+    n: int = N_PADRAO,
+    semente: int = SEMENTE_BASE,
+    prov: dict | None = None,
+) -> CenariosDaOrigem:
+    """Cenários de consumo e de PLD (simples e blocos) de UMA origem de produção. Função pura."""
+    conferir_origem_de_producao(origem)
+    if len(previsto_mwmed) != len(HORIZONTES):
+        raise ValueError("são necessários os 12 previstos da origem")
+    erros = list(erros)
+    pisos = dados_pld.pisos()
+    historico = historico_ate(dados_pld.serie, origem)
+    erros_h = hash_dos_erros(erros, origem)
+    pld_h = impressao_do_pld(historico)
+    pisos_h = impressao_dos_pisos(pisos, dados_pld.limites)
+    id_ = id_da_origem(origem, n, semente, k, erros_h, pld_h, pisos_h)
+    consumo = linhas_de_cenarios(id_, origem, previsto_mwmed, sortear(erros, origem, n, semente), k)
+    pld = []
+    for metodo in METODOS:
+        pld += linhas_de_pld(
+            id_,
+            origem,
+            metodo,
+            bootstrap(metodo, historico, origem, n, semente, pisos, dados_pld.limites),
+        )
+    assumidos = any(limites_do_ano(dados_pld.limites, m.year)[2] for m in meses_alvo(origem))
+    execucao = {
+        "execucao_id": id_,
+        "origem": origem.isoformat(),
+        "modelo_versao": MODELO_VERSAO,
+        "n_cenarios": n,
+        "semente_base": semente,
+        "calibracao": "crescente",
+        "n_vetores_consumo": len(vetores_completos_ate(erros, origem)),
+        "erros_hash": erros_h,
+        "k_consumo": k,
+        "n_meses_pld": len(historico),
+        "n_blocos_pld": len(blocos_de_12(historico, meses_alvo(origem)[0])),
+        "pld_hash": pld_h,
+        "pisos_hash": pisos_h,
+        "limites_assumidos": assumidos,
+        **(prov or {"codigo_hash": "", "commit": "", "gerado_em": "1970-01-01T00:00:00Z"}),
+    }
+    return CenariosDaOrigem(id_, origem, consumo, pld, execucao)
+
+
+def ler_insumos_de_producao(gcp, cliente):
+    """(k, erros, origem, previsto, dados_pld): o BigQuery, da origem de produção mais recente."""
+    k = k_do_dbt()
+    erros, _ = ler_erros_e_previstos(gcp, cliente)
+    origem, previsto = previstos_de_producao(gcp, cliente)
+    return k, erros, origem, previsto, carregar_dados_pld(gcp, cliente)
+
+
+CAMPOS_DOS_INSUMOS = ("erros_hash", "pld_hash", "pisos_hash")
+
+
+def execucoes_da_origem(gcp, cliente, origem: date) -> list[dict]:
+    """As execuções já gravadas para a origem, com a impressão dos insumos de cada uma (vazio se a
+    tabela ainda não existe)."""
+    from ml.previsao import _consulta, _tabela_existe
+
+    if not _tabela_existe(cliente, EXECUCAO):
+        return []
+    sql = (
+        "SELECT execucao_id, erros_hash, pld_hash, pisos_hash, k_consumo "
+        f"FROM `{EXECUCAO}` WHERE origem = DATE '{origem.isoformat()}'"
+    )
+    return [dict(r.items()) for r in _consulta(gcp, cliente, sql).linhas]
+
+
+def descrever_estado(execucao: dict, ja: list[dict]) -> str:
+    """Como a origem está gravada. O id muda por DOIS motivos que não se confundem: (1) o escopo da
+    derivação (a execução congelada mistura 6 origens; aqui há 1) e (2) mudança de insumo. Só o
+    segundo é "os insumos mudaram": compara-se o que realmente entra no id, campo a campo."""
+    if not ja:
+        return "ainda não gravada"
+    if any(e["execucao_id"] == execucao["execucao_id"] for e in ja):
+        return "já gravada com este id (idempotente: o MERGE só atualiza)"
+    partes = []
+    for e in ja:
+        diferentes = [c for c in CAMPOS_DOS_INSUMOS if e.get(c) != execucao[c]]
+        if abs(float(e["k_consumo"]) - float(execucao["k_consumo"])) > 1e-18:
+            diferentes.append("k_consumo")
+        if diferentes:
+            partes.append(
+                f"insumos DIFERENTES dos do id {e['execucao_id']} ({', '.join(diferentes)}): "
+                "este é um conjunto novo"
+            )
+        else:
+            origem_do_id = (
+                "a execução congelada do backtest, que deriva o id de 6 origens"
+                if e["execucao_id"] == EXECUCAO_CONGELADA
+                else "outra execução"
+            )
+            partes.append(
+                f"mesmos insumos (erros, PLD, pisos e k) do id {e['execucao_id']}; o id difere só "
+                f"pelo escopo da derivação ({origem_do_id}; aqui, 1 origem): nenhum insumo mudou"
+            )
+    return "; ".join(partes)
+
+
+def gerar_producao(
+    dry_run: bool,
+    n: int = N_PADRAO,
+    semente: int = SEMENTE_BASE,
+    gcp=None,
+    cliente=None,
+    ler=ler_insumos_de_producao,
+    existentes=execucoes_da_origem,
+    gravar=None,
+    prov: dict | None = None,
+    forcar: bool = False,
+) -> int:
+    """Gera e grava os cenários da origem de produção mais recente (só ela).
+
+    Se a origem já está na execução congelada (hoje, 2026-09), nada é gravado: a cadeia usa o id
+    que já existe. `forcar` gera um id próprio mesmo assim."""
+    inicio = time.perf_counter()
+    if gcp is None:
+        from ml.previsao import _cliente
+
+        gcp, cliente = _cliente()
+    gcp = ContaBytes(gcp)
+    if prov is None:
+        prov = proveniencia()
+    k, erros, origem, previsto, dados_pld = ler(gcp, cliente)
+    conferir_origem_de_producao(origem)  # antes de gastar qualquer cálculo
+    cen = gerar_cenarios_da_origem(origem, previsto, erros, dados_pld, k, n, semente, prov)
+    ja = existentes(gcp, cliente, origem)
+    estado = descrever_estado(cen.execucao, ja)
+    print(
+        f"origem de produção {origem:%Y-%m}: execucao_id {cen.execucao_id}; "
+        f"{len(cen.consumo)} linhas de consumo, {len(cen.pld)} de PLD, 1 de execução; "
+        f"limites assumidos: {cen.execucao['limites_assumidos']}; {estado}"
+    )
+    print(f"leitura do BigQuery: {gcp.linha(com_estimativa=dry_run)}")
+    if any(e["execucao_id"] == EXECUCAO_CONGELADA for e in ja) and not forcar:
+        print(
+            f"nada a gravar: a origem {origem:%Y-%m} já está na execução congelada "
+            f"{EXECUCAO_CONGELADA}, que a cadeia usa. (--forcar gera um id próprio.)"
+        )
+        return 0
+    if dry_run:
+        print(
+            "dry-run: nada gravado. A gravação seria 3 MERGE (consumo, PLD, execução); o MERGE "
+            "lê o destino inteiro (ESTIMATIVA pelo piso de 10 MiB por tabela: ~63 MiB, não medida)"
+        )
+        return 0
+    if gravar is None:
+        gravar = gravar_medido
+    medidas = [
+        gravar(gcp, cliente, cen.consumo, CONSUMO, ESQUEMA_CENARIOS, CHAVE_CONSUMO),
+        gravar(gcp, cliente, cen.pld, PLD, ESQUEMA_PLD, CHAVE_PLD),
+        gravar(gcp, cliente, [cen.execucao], EXECUCAO, ESQUEMA_EXECUCAO, CHAVE_EXECUCAO),
+    ]
+    print("\ntabela | linhas | s DDL | s carga | s MERGE | bytes faturados (job)")
+    for m in medidas:
+        print(
+            f"{m['tabela']} | {m['linhas']} | {m['s_ddl']:.1f} | {m['s_carga']:.1f} | "
+            f"{m['s_merge']:.1f} | {m['bytes_faturados']:,}".replace(",", ".")
+        )
+    total = sum(m["bytes_faturados"] for m in medidas)
+    print(
+        f"total: {total:,} bytes faturados ({total / 1024 / 1024:.1f} MiB); "
+        f"tempo total {time.perf_counter() - inicio:.1f}s".replace(",", ".")
+    )
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     sub = ap.add_subparsers(dest="comando", required=True)
@@ -378,7 +606,18 @@ def main(argv: list[str] | None = None) -> int:
     g.add_argument("--n", type=int, default=N_PADRAO)
     g.add_argument("--semente", type=int, default=SEMENTE_BASE)
     g.add_argument("--dry-run", action="store_true")
+    p = sub.add_parser(
+        "gerar-producao", help="só a origem de produção mais recente (cadeia mensal)"
+    )
+    p.add_argument("--dry-run", action="store_true")
+    p.add_argument("--forcar", action="store_true", help="id próprio mesmo se a origem já existe")
     args = ap.parse_args(argv)
+    if args.comando == "gerar-producao":
+        try:
+            return gerar_producao(args.dry_run, forcar=args.forcar)
+        except ErroDeOrigem as erro:
+            print(f"ABORTADO, nada foi gravado: {erro}", file=sys.stderr)
+            return 2
     return gerar(args.n, args.dry_run, args.semente)
 
 
