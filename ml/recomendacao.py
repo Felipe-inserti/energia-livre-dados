@@ -29,6 +29,7 @@ import pandas as pd
 from ml import backtest as bt
 from ml.cenarios_consumo import hash_curto, horas_do_mes, k_do_dbt
 from ml.custo import SPREAD_PADRAO, preco_do_contrato, volume_medio_mwm
+from ml.medida_bytes import ContaBytes
 from ml.otimizacao import (
     ALFA,
     BANDA,
@@ -360,6 +361,7 @@ def montar(dry_run: bool, resultados: Path = RESULTADOS, agora=lambda: datetime.
     ids, cab = cabecalhos_do_log(log_sens, log_base)
     backtest = linhas_backtest(ler_saidas(resultados), ids, cab, prov)
     gcp, cliente = _cliente()
+    gcp = ContaBytes(gcp)
     origem, previstos = previstos_de_producao(gcp, cliente)
     consumo = _normalizar_datas(
         "consumo_mensal",
@@ -394,8 +396,12 @@ def montar(dry_run: bool, resultados: Path = RESULTADOS, agora=lambda: datetime.
             ]
         ].to_string(index=False)
     )
+    print(f"leitura do BigQuery: {gcp.linha(com_estimativa=dry_run)}")
     if dry_run:
-        print("dry-run: nada gravado")
+        print(
+            f"dry-run: nada gravado. A gravação seria 1 MERGE de {len(df)} linhas na tabela nova "
+            "(ESTIMATIVA pelo piso de 10 MiB por tabela: ~20 MiB faturados, não medida)"
+        )
         return 0
     m = gravar_medido(gcp, cliente, linhas_para_carga(df), TABELA, ESQUEMA, CHAVE)
     print(

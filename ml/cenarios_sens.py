@@ -48,13 +48,13 @@ from ml.cenarios_pld import (
     meses_alvo,
 )
 from ml.intervalos import vetores_completos_ate
+from ml.medida_bytes import ContaBytes
 from ml.otimizacao import Dados, ErroDeCongelamento, ler_congelado
 from ml.registro import MODELO_VERSAO
 from ml.validacao import HORIZONTES
 
 RAIZ = Path(__file__).resolve().parents[1]
 DIR_6B = RAIZ / "data" / "cenarios_6b"
-PISO_FATURADO = 10 * 1024 * 1024
 CODIGO = (
     "ml/cenarios_sens.py",
     "ml/cenarios.py",
@@ -299,23 +299,6 @@ def salvar_conjunto(c: Conjunto, diretorio: Path = DIR_6B) -> Path:
 # ---------------------------------------------------------------- nuvem (só leitura)
 
 
-class _ContaBytes:
-    """Envolve o módulo `gcp` e soma os bytes de cada consulta (faturado, ou o piso de 10 MiB)."""
-
-    def __init__(self, gcp):
-        self._gcp = gcp
-        self.consultas: list[tuple[int, int]] = []
-
-    def executar_consulta(self, cliente, sql, **kw):
-        r = self._gcp.executar_consulta(cliente, sql, **kw)
-        proc = r.bytes_processados or 0
-        self.consultas.append((proc, r.bytes_faturados or max(proc, PISO_FATURADO)))
-        return r
-
-    def __getattr__(self, nome):
-        return getattr(self._gcp, nome)
-
-
 def gerar(dry_run: bool, diretorio: Path = DIR_6B) -> int:
     from ml.otimizacao import ARQUIVO_CONGELADO, DIR_DADOS, carregar_dados
     from ml.previsao import _cliente, hash_blob_git
@@ -328,7 +311,7 @@ def gerar(dry_run: bool, diretorio: Path = DIR_6B) -> int:
     congelado_6a = ler_congelado(ARQUIVO_CONGELADO)
     base = carregar_dados(DIR_DADOS)
     gcp, cliente = _cliente()
-    gcp = _ContaBytes(gcp)
+    gcp = ContaBytes(gcp)
     k = k_do_dbt()
     erros, previstos = ler_erros_e_previstos(gcp, cliente)
     dados_pld = carregar_dados_pld(gcp, cliente)
@@ -353,12 +336,9 @@ def gerar(dry_run: bool, diretorio: Path = DIR_6B) -> int:
     ids = {c.execucao_id for c in conjuntos}
     if len(ids) != len(conjuntos) or "51cf99b073fe" in ids:
         raise ErroDeCongelamento("os ids novos colidem entre si ou com o caso base")
-    proc = sum(p for p, _ in gcp.consultas)
-    fat = sum(f for _, f in gcp.consultas)
     print(
-        f"leitura do BigQuery: {len(gcp.consultas)} consultas, {proc:,} processados, "
-        f"{fat:,} faturados ({fat / 1024**2:.1f} MiB); leitura {t_leitura:.1f}s; "
-        f"total {time.perf_counter() - inicio:.1f}s".replace(",", ".")
+        f"leitura do BigQuery: {gcp.linha(com_estimativa=dry_run)}; leitura {t_leitura:.1f}s; "
+        f"total {time.perf_counter() - inicio:.1f}s"
     )
     if dry_run:
         print("dry-run: nada gravado (nem parquet, nem congelado)")
