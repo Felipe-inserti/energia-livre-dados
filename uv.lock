@@ -888,6 +888,7 @@ dev = [
     { name = "ruff" },
 ]
 ml = [
+    { name = "pyarrow" },
     { name = "scikit-learn" },
     { name = "statsmodels" },
 ]
@@ -920,6 +921,7 @@ dev = [
     { name = "ruff", specifier = ">=0.16.10" },
 ]
 ml = [
+    { name = "pyarrow", specifier = ">=25.0.1" },
     { name = "scikit-learn", specifier = ">=1.9.1" },
     { name = "statsmodels", specifier = ">=0.15.0" },
 ]

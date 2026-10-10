@@ -140,7 +140,10 @@ def test_dockerfile_instala_ml_mas_nao_ml_exploracao_nem_dev():
     import tomllib
 
     grupos = tomllib.loads((RAIZ / "pyproject.toml").read_text())["dependency-groups"]
-    assert {d.split(">")[0] for d in grupos["ml"]} == {"statsmodels", "scikit-learn"}
+    # Conjunto EXATO. O pyarrow entrou de propósito na Sprint 6, Parte A: ml/otimizacao.py grava
+    # e lê o parquet da leitura congelada dos cenários (dependência direta, não só transitiva).
+    esperado = {"statsmodels", "scikit-learn", "pyarrow"}
+    assert {d.split(">")[0] for d in grupos["ml"]} == esperado
     assert [d.split(">")[0] for d in grupos["ml-exploracao"]] == ["lightgbm"]
 
 
