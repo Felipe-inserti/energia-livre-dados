@@ -32,6 +32,11 @@ ml = [
 ml-exploracao = [
     "lightgbm>=4.7.0",
 ]
+# Dashboard (Sprint 6, Parte C2). Fora da imagem do Airflow. O Community Cloud NÃO lê este grupo: ele lê
+# dashboard/requirements.txt (gerado deste grupo com `uv pip compile`; um teste confere os dois).
+dashboard = [
+    "streamlit==1.64.0",
+]
 notebook = [
     "ipykernel>=7.4.0",
     "matplotlib>=3.11.2",
@@ -42,7 +47,7 @@ notebook = [
 
 [tool.uv]
 # Um ambiente só: `uv sync` instala também o dbt (ver docs/decisoes.md)
-default-groups = ["dev", "dbt", "notebook", "ml", "ml-exploracao"]
+default-groups = ["dev", "dbt", "notebook", "ml", "ml-exploracao", "dashboard"]
 # Projeto de scripts, não uma biblioteca: não precisa ser construído/instalado.
 package = false
 
