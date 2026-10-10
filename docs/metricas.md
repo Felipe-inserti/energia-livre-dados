@@ -1558,3 +1558,25 @@ O medidor `_ContaBytes` (em `ml/cenarios_sens.py`, usado também por `ml/recomen
 | `recomendacao_gravar.log` e `_2.log`, linha "leitura do BigQuery" | 0 processados; **20.971.520** faturados | **cálculo do piso** (cache) | **0 faturados** (`cache_hit`) |
 | Linha "marts.fct_recomendacao_contrato … bytes faturados" (MERGE) | 20.971.520 | job (`gravar_medido` usa o do job) | **igual** (67.750 e 135.500 processados) |
 **No `metricas.md` nenhum número de bytes da Parte B vinha do cálculo do piso:** as medidas anteriores (leitura congelada de 81.788.928 faturados, MERGE dos cenários) são de job (`usar_cache=False` no `ler`, e `INFORMATION_SCHEMA` na confirmação do MERGE). Os números de **estimativa** do plano B (`~30 a 40 MiB` de leitura na geração, `~20 MiB` na gravação da 6.5, `~323 MiB` se os 3 conjuntos fossem ao BigQuery) são cálculos e continuam rotulados assim; a leitura medida da geração foi **30,0 MiB** (dry-run, 3 jobs), e a gravação da 6.5 foi **20,0 MiB** (MERGE). A geração real (`gerar`) e as duas gravações da 6.5 leram do cache e **não faturaram leitura**.
+
+## Sprint 6, Parte C1: cadeia mensal da origem de produção (11/10/2026)
+`ml.cenarios gerar-producao` (cenários só da origem nova, `execucao_id` por origem) e `ml.recomendacao producao` (a origem mais recente com previsão e cenários, aviso de defasagem). Logs em `data/logs/cenarios_producao_dry_run.log`, `recomendacao_producao_dry_run.log`, `recomendacao_producao.log` e `recomendacao_producao_contagem.log` (fora do git). Origem em produção hoje: **2026-09**, que já está na execução congelada `51cf99b073fe`; por isso o `gerar-producao` não grava nada nela e o `producao` a lê desse id. **A prévia gravada pelo `producao` é idêntica à anterior** (V 0,144833 / 0,147084 / 0,136655 MWm; P = R$ 246,89; E[custo] 318.358,69 / 318.528,92 / 317.211,05) e a tabela segue com **213 linhas** (210 de backtest + as 3 da prévia, regravadas pelo MERGE).
+
+**Bytes medidos pelo job** (`total_bytes_billed` e `cache_hit` de cada consulta, medidor `ml/medida_bytes.py`; a linha "estimativa" dos dry-runs é o piso de 10 MiB e **não** é medida):
+| Execução | Consultas (do cache) | Processados | Faturados (job) | Observação |
+|---|---|---|---|---|
+| `gerar-producao --dry-run` | 5 (4 do cache) | 132 B | **10.485.760 (10,0 MiB)** | uma consulta saiu do cache e processou 132 B (compatível com a das execuções já gravadas em `fct_cenario_execucao`; o log não a identifica); a estimativa pelo piso coincide (10,0 MiB) |
+| `producao --dry-run` | 9 (1 do cache; **8 fora**) | 25.812.350 | **92.274.688 (88,0 MiB)** | leitura dos cenários (consumo e PLD da origem), execução, previsão, PLD mensal, consumo de 12 meses, série e execuções; estimativa pelo piso 87,2 MiB |
+| `producao` (real) | 9 (**9 do cache**) | 0 | **0 (leitura)** | tudo veio do cache da execução anterior |
+| `producao` (real), MERGE de 3 linhas | n/d | n/d | **20.971.520 (20,0 MiB)** (job, `gravar_medido`) | carga 3,4 s e MERGE 2,3 s; o piso de 10 MiB para cada uma das 2 tabelas |
+Tempo do `producao`: 14,8 s (dry-run) e 16,9 s (real) para montar e validar.
+
+**Estimativa mensal da cadeia, com cache frio** (um mês que fecha; **cálculo a partir das medidas acima, não medida de uma execução fria completa**):
+| Passo | Leitura | Gravação | Total |
+|---|---|---|---|
+| `ml.previsao gerar` (já na DAG; medido antes, 22 s) | ~1 consulta de verificação, piso 10 MiB | MERGEs da previsão e dos erros | fora desta soma |
+| `ml.cenarios gerar-producao` | 5 consultas × 10 MiB = ~50 MiB (piso; a única medida foi a de 1 consulta fora do cache) | 3 MERGEs: ~20 (consumo) + ~23 (PLD) + 20 (execução) = ~63 MiB (cálculo a partir do `numBytes` do destino; o MERGE lê o destino inteiro) | **~113 MiB** |
+| `ml.recomendacao producao` | **88,0 MiB (medido, 8 consultas fora do cache)** | 20,0 MiB (medido) | **~108 MiB** |
+| **Cadeia (passos 2 e 3)** | ~138 MiB | ~83 MiB | **~221 MiB por mês, ~0,02% de 1 TiB** |
+Contra o plano (`plano_sprint6c.md`, **~170 MiB** para a cadeia): a **cadeia completa** ficou acima da estimativa (**~221 MiB calculados contra ~170**), e a leitura do `producao` (**88 MiB medidos**) é a maior parte dela (~40% do total). O destino dos `MERGE` dos cenários cresce ~5 MB por mês de origem nova (depois de 12 meses, +60 MB e ~+60 MiB no `MERGE` do PLD); o particionamento por origem, que só passa a fazer sentido agora, fica no backlog até o `MERGE` passar de ~100 MiB por mês. Com cache quente (repetir o mesmo dia), a leitura cai a 0 e só o `MERGE` fatura (20 MiB por tabela referenciada).
+**Engenharia:** a leitura vem toda do BigQuery (nenhum parquet local); o app da C2 não a usa. Suíte: **883 testes** passam (testes novos: nenhuma linha de backtest é tocada, id do caso base intacto, idempotência, seleção da origem mais recente, aviso de defasagem, mensagem de escopo).
