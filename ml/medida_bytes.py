@@ -20,6 +20,7 @@ class Medida:
     faturados: int | None  # total_bytes_billed do job; None quando não houve job faturado
     cache: bool | None
     estimativa: int  # piso de 10 MiB (ou os processados, se maiores): só serve de estimativa
+    sql: str = ""  # o texto da consulta (para o dry-run imprimir; nunca vai para arquivo)
 
 
 class ContaBytes:
@@ -33,7 +34,13 @@ class ContaBytes:
         r = self._gcp.executar_consulta(cliente, sql, **kw)
         proc = r.bytes_processados or 0
         self.medidas.append(
-            Medida(proc, r.bytes_faturados, getattr(r, "cache", None), max(proc, PISO_FATURADO))
+            Medida(
+                proc,
+                r.bytes_faturados,
+                getattr(r, "cache", None),
+                max(proc, PISO_FATURADO),
+                sql if isinstance(sql, str) else "",
+            )
         )
         return r
 
