@@ -348,7 +348,7 @@ regime de preço de cada ano.
 10. Piso e teto do PLD por ano, na ANEEL: **valores encontrados e em uso** (seed `pld_limites`, teto horário); **[pendente]** só a conferência no texto oficial das resoluções e despachos de 2021 a 2026 (`fontes.md`). Em 08/10/2026: o teto horário não entra no modelo mensal (vale o estrutural); o piso de 2021–2026 foi confirmado nos dados pelo detector de repetição (`ml/piso_pld.py`), inclusive 2023.
 11. Unidade do consumo por ramo da CCEE (`fontes.md`).
 12. Número e método de geração dos cenários de PLD e de consumo (Sprint 5). **Consumo (5.6): feito** (vetores completos por origem, calibração crescente, independência do PLD como premissa, `decisoes.md`); **PLD (5.7): feito no código** (bootstrap simples e em blocos de 12 meses, piso por detector, transformação `PLD − piso_orig + piso_alvo`); N = 2.000; as tabelas esperam a execução do usuário (`decisoes.md`).
-13. Definição final do CVaR ex-ante no relatório do backtest (Sprint 6).
+13. ~~Definição final do CVaR ex-ante no relatório do backtest~~ (resolvido na Sprint 6, Parte A: CVaR95 do custo de cada estratégia sobre os mesmos 2.000 cenários da decisão, ao lado do custo realizado e do PIT do realizado; `docs/planejamento/plano_sprint6a.md`, D7).
 14. ~~Recalcular as estações do INMET com os anos 2021 a 2025~~ (resolvido: 37 estações; a
     lista caiu de 72 para 37; ver `fontes.md` e `decisoes.md`).
 15. Estações do INMET que degradaram em 2026 (10 das 37 abaixo de 95% de horas válidas, 5 abaixo

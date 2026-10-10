@@ -4,9 +4,9 @@ Nunca otimizar antes de medir a versão simples. Preencher "Antes" na versão in
 
 | Nível | Métrica | Antes (versão simples) | Depois | Fase |
 |---|---|---|---|---|
-| Negócio | Custo anual de energia do consumidor-exemplo (backtest) | estratégia ingênua: R$ __ | estratégia otimizada: R$ __ | 6 |
-| Negócio | Economia | — | R$ __ / __% | 6 |
-| Negócio | Exposição ao PLD (MWh descobertos ou sobrando) | __ | __ | 6 |
+| Negócio | Custo de energia do consumidor-exemplo no backtest (soma 2021–2025; caso base, f = 10%) | estratégia ingênua: **R$ 979.285,67** (sem 2021: R$ 751.593,15) | estratégia otimizada: **R$ 970.595,57** (sem 2021: R$ 742.883,46); pontual R$ 979.615,76. Por ano na seção "Sprint 6, Parte A" | 6 |
+| Negócio | Economia contra a ingênua | — | **R$ 8.690,10 / 0,89%** em 5 anos (sem 2021: R$ 8.709,69 / 1,16%): previsão −R$ 330,10 (−0,03%), otimização +R$ 9.020,19 (+0,92%). Concentrada em 2022 (+1,60%) e 2025 (+1,78%); 2023 e 2024 negativos. 5 anos, sem teste de significância | 6 |
+| Negócio | Exposição ao PLD (MWh descobertos ou sobrando, soma 2021–2025) | ingênua: 17,10 descobertos e 0 sobrando | otimizada: 25,90 descobertos e 85,32 sobrando (pontual: 13,01 e 0). A otimizada troca compra por venda de sobra | 6 |
 | Ciência | MAPE mensal da previsão de carga (12 meses à frente, rolling origin) | baseline (sazonal ingênuo): **2,92%** no desenvolvimento (2012–2019, original); 4,30% no teste final (2021–2025, ajustada) | desenvolvimento: **2,66%** (média ETS+SARIMA+regressão), vitória marginal sobre o ingênuo (+0,26 pp, EP 0,27 pp); teste final (ajustada): **3,11%** contra 4,17% do ingênuo nos mesmos pares (4,30% em todos os pares); origem de dezembro 2,53% contra 4,30% | 5 |
 | Engenharia | Dados lidos por consulta típica (**bytes processados**) | 0,037 GB (ONS, raw STRING sem partição: 37,3 MB processados; 37,7 MB faturados) | tipado sem partição: 0,018 GB (18,3 MB); **fato particionado por mês e clusterizado: 0,0007 GB (0,74 MB processados, −98,0% contra o raw)**. O faturado cai para 10,5 MB, o piso de 10 MiB do BigQuery, então a métrica de comparação são os bytes processados | 1 → 2 |
 | Engenharia | Tempo de carga diária | full: **9,3 min** (ONS 4,9 + CCEE 1,2 + INMET 3,1 + feriados 0,2; sem o tempo do download manual) | incremental (DAG diária, ONS): **1,6 min** (1 min 33 s; só a ingestão do ONS leva 20 s, contra 4,9 min da carga full do ONS). Seção "Sprint 4, Parte A" | 1 → 4 |
@@ -1083,7 +1083,7 @@ Medido em 08/10/2026. **O que foi medido sem gravar na nuvem** (a validação co
 - **`ml.previsao verificar` e `gerar --dry-run` na nuvem (só leitura):** ~5 s, 2 consultas de ~10 MiB faturados; primeira previsão de produção (origem 2026-09, não gravada): 44.921 MWmed em 2026-10 [42.805; 48.298] e 44.836 em 2027-09 [41.816; 48.825].
 - **Custo esperado na DAG:** nos ~29 dias sem mês novo, `previsao_ha_mes_novo` custa 1 consulta (~10 MiB faturados, ~5 s); no dia do mês novo, `previsao_mensal` faz ~4 consultas + 2 load jobs (não cobrados), ~40 MiB faturados.
 - **Imagem:** `ldd` dos binários do grupo `ml` mostra só glibc, `libgcc_s`, `libstdc++` e `libz`; rebuild necessário. Sem `lightgbm` na imagem.
-- **Medido na DAG (veja a seção abaixo):** `previsao_mensal` 22 s e `previsao_ha_mes_novo` 6 s no `dag-gerar`. O tempo do rebuild da imagem não foi registrado.
+- **Medido na DAG (veja a seção abaixo):** `previsao_mensal` 22 s e `previsao_ha_mes_novo` 6 s no `dag-gerar`. O tempo do rebuild da imagem não foi registrado (a medição está no backlog da Sprint 6, junto com o pyarrow; o último build medido foi o da Sprint 3: 2 min 32 s).
 
 ### O que medir depois
 Sprint 6: o backtest com a calibração crescente; a cobertura dos intervalos de 80% e 95% de produção conforme os erros realizados forem entrando em `fct_erro_previsao_carga`.
@@ -1339,3 +1339,70 @@ Por tabela, 1ª execução (carga da temporária / MERGE, em s): consumo 12,0 / 
 **Idempotência:** a 2ª execução teve o mesmo `execucao_id` e a contagem das tabelas, conferida em `cenarios_contagem.log`, ficou em **144.000 linhas de consumo, 288.000 de PLD e 6 de execução** (as mesmas da 1ª): nenhuma duplicata, o MERGE só atualizou as linhas existentes.
 
 **Regra de regeração:** os cenários dependem dos erros de previsão, do PLD e dos pisos, que só mudam quando fecha um mês. Eles **só são regerados quando um mês fecha**. Se entrarem na DAG, ficam **atrás da `previsao_ha_mes_novo`** (o ShortCircuit mensal da 5.4), nunca na execução diária: as outras 29 execuções do mês gerariam o mesmo `execucao_id` e pagariam ~79 MiB à toa.
+
+## Sprint 6, Parte A: backtest do caso base 2021–2025 (6.1 a 6.3)
+
+Executado uma vez em 10/10/2026 04:02Z, depois do pré-registro (`02990fd`), com o código no HEAD `463d431`; resultados commitados em `b20ac86`. Caso base congelado, sem alterar critério: f = 10%, λ = 0,5, α = 0,95, PLD em blocos, N = 2.000, execução de cenários `51cf99b073fe`, limites simétricos de r, spread de R$ 20. Arquivos: `docs/resultados/backtest_caso_base_{mensal,anual,economia}.csv` e o log `docs/resultados/backtest_execucoes.jsonl`. **2021–2023 são contrafactuais** (premissas, seção 1). Percentuais sobre o custo da ingênua do recorte.
+
+### Custo e economia (R$)
+| Recorte | Ingênua | Pontual | Otimizada | Valor da previsão (ing → pont) | Valor da otimização (pont → otim) | Economia total (ing → otim) |
+|---|---|---|---|---|---|---|
+| 2021 | 227.692,52 | 227.712,11 | 227.712,11 | −19,59 (−0,01%) | 0,00 (0,00%) | −19,59 (−0,01%) |
+| 2022 | 349.774,31 | 350.028,33 | 344.185,09 | −254,03 (−0,07%) | +5.843,24 (+1,67%) | +5.589,21 (+1,60%) |
+| 2023 | 96.245,22 | 96.246,81 | 96.362,95 | −1,59 (−0,00%) | −116,14 (−0,12%) | −117,73 (−0,12%) |
+| 2024 | 117.826,09 | 117.863,93 | 117.930,22 | −37,85 (−0,03%) | −66,28 (−0,06%) | −104,13 (−0,09%) |
+| 2025 | 187.747,53 | 187.764,58 | 184.405,20 | −17,05 (−0,01%) | +3.359,38 (+1,79%) | +3.342,33 (+1,78%) |
+| **Total 2021–2025** | **979.285,67** | 979.615,76 | **970.595,57** | **−330,10 (−0,03%)** | **+9.020,19 (+0,92%)** | **+8.690,10 (+0,89%)** |
+| **Total sem 2021 (2022–2025)** | 751.593,15 | 751.903,65 | 742.883,46 | −310,50 (−0,04%) | +9.020,19 (+1,20%) | +8.709,69 (+1,16%) |
+
+Pior ano contra a ingênua: pontual, 2022 (−0,07%); otimizada, 2023 (−0,12%) (os mesmos nos dois recortes). `P_t`: 198,03 (2021, calculado 198,0261), 300,50, 79,05, 92,16 e 148,17 R$/MWh.
+
+### Decisão (r*, V) e cobertura
+| Ano | r* da otimizada | V ingênua / pontual / otimizada (MWm) | Meses fora da faixa (ing / pont / otim) | Consumo anual contra o teto contratado da otimizada |
+|---|---|---|---|---|
+| 2021 | 0,9841 (interior) | 0,1273 / 0,1319 / 0,1298 | 1 / 0 / 0 | 1.149,91 contra 1.250,60 MWh |
+| 2022 | 0,9091 (limite inferior) | 0,1313 / 0,1325 / 0,1205 | 1 / 1 / 5 | **1.166,38 contra 1.161,02 MWh (acima do teto: cobertura abaixo de 100%)** |
+| 2023 | 1,1111 (limite superior) | 0,1331 / 0,1337 / 0,1485 | 3 / 3 / 4 | 1.217,32 contra 1.431,29 MWh |
+| 2024 | 1,1111 (limite superior) | 0,1390 / 0,1473 / 0,1637 | 1 / 0 / 6 | 1.278,96 contra 1.581,48 MWh |
+| 2025 | 1,1111 (limite superior) | 0,1456 / 0,1460 / 0,1623 | 1 / 1 / 8 | 1.268,89 contra 1.563,48 MWh |
+Cobertura abaixo de 100% (consumo anual acima do teto `(1+f)·ΣV_m`): **1 caso em 15**, a otimizada de 2022 (por 5,36 MWh, +0,46%); a penalidade de lastro não está modelada. A ingênua e a pontual ficaram sempre acima de 100% no ano.
+
+### Exposição ao PLD (MWh; descobertos = comprados acima da faixa, sobrando = vendidos abaixo)
+| Recorte | Ingênua (desc. / sobr.) | Pontual | Otimizada |
+|---|---|---|---|
+| 2021 | 0,23 / 0 | 0 / 0 | 0 / 0 |
+| 2022 | 2,94 / 0 | 1,90 / 0 | 25,90 / 0 |
+| 2023 | 7,95 / 0 | 6,65 / 0 | 0 / 13,76 |
+| 2024 | 1,22 / 0 | 0 / 0 | 0 / 29,25 |
+| 2025 | 4,77 / 0 | 4,46 / 0 | 0 / 42,31 |
+| **Total** | **17,10 / 0** | **13,01 / 0** | **25,90 / 85,32** |
+A exposição é minúscula contra o consumo (~1.200 MWh/ano): a banda de ±10% absorve quase todo o erro de previsão (ingênua e pontual: 0 a 3 meses fora da faixa por ano). A otimizada leva a exposição para o outro lado: compra no limite inferior (2022), vende sobra nos limites superiores (2023 a 2025).
+
+### Risco ex-ante contra o custo realizado (CVaR95 e PIT nos cenários da decisão)
+| Ano | Estratégia | E[custo] ex-ante | CVaR95 ex-ante | Custo realizado | PIT do realizado |
+|---|---|---|---|---|---|
+| 2023 | ingênua | 92.275 | 96.025 | 96.245 | 0,9885 |
+| 2023 | pontual | 92.246 | 95.886 | 96.247 | 0,9905 |
+| 2023 | otimizada | 88.658 | 94.703 | 96.363 | 1,0000 |
+**O custo realizado de 2023 passou do CVaR95 ex-ante nas três estratégias** (+0,23%, +0,38% e +1,75%), e na otimizada ficou acima de todos os 2.000 cenários (PIT 1,0000). Nos outros anos o realizado ficou abaixo do CVaR95 (PIT de 0,17 a 0,58); em 2022 e 2025 a otimizada tem PIT de 0,43 e 0,17, e em 2024 todas ficam em 0,24 a 0,51. Em 2023 o consumo realizado também ficou acima de todos os cenários de consumo (PIT 1,000, seção da Parte B).
+
+### 2024, otimizada contra pontual: a sobra por mês (r = 1,1111; `P_t` = 92,16; custo −R$ 66,28)
+| Mês | Sobra vendida (MWh) | PLDp (R$/MWh) | P − PLDp | Δ custo otimizada − pontual (R$) |
+|---|---|---|---|---|
+| 1 | 0,000 | 61,10 | +31,06 | 0,00 |
+| 2 | 0,000 | 61,27 | +30,89 | 0,00 |
+| 3 | 0,000 | 61,07 | +31,09 | 0,00 |
+| 4 | 0,000 | 61,07 | +31,09 | 0,00 |
+| 5 | 1,605 | 61,07 | +31,09 | +49,90 |
+| 6 | 8,340 | 67,11 | +25,05 | +208,90 |
+| 7 | 9,658 | 88,33 | +3,83 | +36,94 |
+| 8 | 7,106 | 121,07 | −28,92 | −205,49 |
+| 9 | 0,000 | 307,84 | −215,68 | 0,00 |
+| 10 | 0,000 | 487,09 | −394,93 | 0,00 |
+| 11 | 1,940 | 112,65 | −20,49 | −39,76 |
+| 12 | 0,597 | 65,73 | +26,43 | +15,79 |
+| **Total** | **29,247** | média simples 129,6 | | **+66,28** |
+Sobra em meses com PLDp < `P_t` (1 a 7 e 12): **20,201 MWh (69%)**, com Δ custo de **+311,53**; em meses com PLDp > `P_t` (8 a 11): **9,046 MWh (31%)**, com Δ de **−245,25**. A sobra ficou concentrada em maio a agosto (26,709 MWh, 91% do total) e **nos meses de PLD baixo**: 20,2 dos 29,2 MWh. Em setembro e outubro (PLDp de 307,84 e 487,09, os dois maiores do ano) o consumo ficou acima da borda inferior da faixa (108,42 contra 106,06 e 110,11 contra 109,60 MWh) e **não houve sobra para vender**. O PLD médio anual (≈ 129,6 simples; 129,9 ponderado pelas horas contratadas) está acima de `P_t`, mas a sobra ocorreu em outros meses.
+
+### Engenharia (leitura congelada que alimentou o backtest, 6.2)
+`ml.otimizacao ler --congelar` (10/10/2026): 7 consultas, **27.263.342 bytes processados e 81.788.928 faturados (78,0 MiB)**, 45,9 s; o backtest e a otimização só leem o disco (parquet em `data/cenarios_6a/`, fora do git). Suíte: 725 testes passam; o backtest sintético é conferido à mão.
