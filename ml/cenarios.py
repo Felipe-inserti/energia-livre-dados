@@ -257,7 +257,7 @@ def gravar_medido(gcp, cliente, linhas, tabela, esquema, chave) -> dict:
         faturados += (
             gcp.executar_consulta(cliente, sql, max_bytes_faturados=TETO_BYTES).bytes_faturados or 0
         )
-    temp = TEMP[tabela]
+    temp = TEMP.get(tabela) or f"staging.tmp_{tabela.split('.')[-1]}"
     campos = [bigquery.SchemaField(n, t) for n, t in esquema]
     t1 = time.perf_counter()
     cliente.load_table_from_json(
