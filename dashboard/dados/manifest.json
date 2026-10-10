@@ -1,0 +1,469 @@
+{
+  "arquivos": {
+    "backtest_anual.csv": {
+      "bytes": 31784,
+      "fontes": [
+        {
+          "arquivo": "docs/resultados/backtest_caso_base_anual.csv",
+          "sha256": "ced53440094b8d27a167131e4211ca2466aff05f0b7825bd344ae3832b544714"
+        },
+        {
+          "arquivo": "docs/resultados/sens_f00_anual.csv",
+          "sha256": "2b627f439962813a59ad7a07d21a4a6a7158aae993e4211e0f21e6f7b1390271"
+        },
+        {
+          "arquivo": "docs/resultados/sens_f05_anual.csv",
+          "sha256": "70fdbd95ae024a300d70c6399b288b6c37fd26c0a6431a0deb500850e5f78167"
+        },
+        {
+          "arquivo": "docs/resultados/sens_f15_anual.csv",
+          "sha256": "01097c9aa3f87065b086030fc39f9fdfcb1fdc2f7f7efa0a2b40e89a27c2f8ae"
+        },
+        {
+          "arquivo": "docs/resultados/sens_spread00_anual.csv",
+          "sha256": "8dec16a0485f6692323935464759ae108a02bf4e6b3829db03d78dcc6adaac9f"
+        },
+        {
+          "arquivo": "docs/resultados/sens_spread40_anual.csv",
+          "sha256": "36f9bd34b87f33305757420dc7e37f426814dfbe9f7a67027635166505772467"
+        },
+        {
+          "arquivo": "docs/resultados/sens_lam00_anual.csv",
+          "sha256": "dc459b0b5458c7f1e160f4eec0956cca396f5cd2b5b6ac6ab54dbe3c7d7381b1"
+        },
+        {
+          "arquivo": "docs/resultados/sens_lam10_anual.csv",
+          "sha256": "cda736511f2210e3858ec180fbb37b1885b0a36ac5a6db49ef574433def9f29a"
+        },
+        {
+          "arquivo": "docs/resultados/sens_alfa90_anual.csv",
+          "sha256": "9dcde4b71f765178b27f414bdf7dde90734a21758220bb09c4ff23ab0b1af4c4"
+        },
+        {
+          "arquivo": "docs/resultados/sens_rmax120_anual.csv",
+          "sha256": "cfe3d3cb848a364dd6c4c95614bf79c1098b9c3fa0f167f5306b5ce4ec0642a0"
+        },
+        {
+          "arquivo": "docs/resultados/sens_pldsimples_anual.csv",
+          "sha256": "33aea5c4104e76db6b5b9db074702a2e12d972af93ca6504ac6d0f07f9fc63c6"
+        },
+        {
+          "arquivo": "docs/resultados/sens_disp125_anual.csv",
+          "sha256": "176d81214925c0fdbdd991e18bc7641f2e38e3143deb25b5902c87122db027a1"
+        },
+        {
+          "arquivo": "docs/resultados/sens_disp150_anual.csv",
+          "sha256": "b6cc1581fb7d5186f1ca29aeb8698b0f6d2255a06c9a24904e7916cd9c083118"
+        },
+        {
+          "arquivo": "docs/resultados/sens_clip_anual.csv",
+          "sha256": "1714d66d3ddf14562c2d34f0f5dcf3e16bad2b2026264b19efc8d58e01fbd17f"
+        }
+      ],
+      "linhas": 210,
+      "sha256": "85bd209ed7d100994e8781a36b941894390be5834a960cb948e55844b7e68488",
+      "tipo": "derivado"
+    },
+    "backtest_economia.csv": {
+      "bytes": 20361,
+      "fontes": [
+        {
+          "arquivo": "docs/resultados/backtest_caso_base_economia.csv",
+          "sha256": "a3a76dd2df8fbc2870920c314342ea78d8a35f62456a83db28b41f6b748994e1"
+        },
+        {
+          "arquivo": "docs/resultados/sens_f00_economia.csv",
+          "sha256": "97e2eb0bf53c843f95496f35a9fa94b3866c87f8b50fe41b61bf9e66976bed56"
+        },
+        {
+          "arquivo": "docs/resultados/sens_f05_economia.csv",
+          "sha256": "9516059e960e17e6f4fbe5781720d19862737a2c6cf6fe1eeee50b92d3cc57ac"
+        },
+        {
+          "arquivo": "docs/resultados/sens_f15_economia.csv",
+          "sha256": "a5de70eab0dacfc3237c32266e79553335a7549d4482606e605a15f747c32261"
+        },
+        {
+          "arquivo": "docs/resultados/sens_spread00_economia.csv",
+          "sha256": "e1f2154d7b67b4cc0346946e77dc5c0733b76e795b53df91b05253301c739ded"
+        },
+        {
+          "arquivo": "docs/resultados/sens_spread40_economia.csv",
+          "sha256": "a753db1a8e2c83756b161d8c9d76b3fec7de63527600603321b8f89f7b01c87c"
+        },
+        {
+          "arquivo": "docs/resultados/sens_lam00_economia.csv",
+          "sha256": "e966c4ca3d1203a367c25da42bca37f5b75dd5118a6aaacba1f20229b0da7a28"
+        },
+        {
+          "arquivo": "docs/resultados/sens_lam10_economia.csv",
+          "sha256": "e806512983d038c581bdafe99fceffac4cac6b1b897f21f7995ed7557deb8403"
+        },
+        {
+          "arquivo": "docs/resultados/sens_alfa90_economia.csv",
+          "sha256": "b47b2ac04634e7d704c683cff099d81bd9fb176cb13b508861f48114667b2d42"
+        },
+        {
+          "arquivo": "docs/resultados/sens_rmax120_economia.csv",
+          "sha256": "48a4da088447f0b7af95f4d313f5cd5229af3c39c437def9243a4b685aec4174"
+        },
+        {
+          "arquivo": "docs/resultados/sens_pldsimples_economia.csv",
+          "sha256": "3f4b4e17805cf67caa624895d2170fc12fd822f8aca9791f7f7e6b05329b510c"
+        },
+        {
+          "arquivo": "docs/resultados/sens_disp125_economia.csv",
+          "sha256": "df04133dcda9fe1d9a2ea6e0622f0600c883f6faea60a714fbebade6a8384223"
+        },
+        {
+          "arquivo": "docs/resultados/sens_disp150_economia.csv",
+          "sha256": "f2ef1469c22d55e5607599ce1ad8777209795e993fe9d7012f05b11c7f7d192e"
+        },
+        {
+          "arquivo": "docs/resultados/sens_clip_economia.csv",
+          "sha256": "ca15126cac669eb8872a7e27e6714fbdc138991296db6de0a9d9d0222f6801c6"
+        }
+      ],
+      "linhas": 98,
+      "sha256": "5c0449b704ba1a126f12161f9acdaf78c267c7bf3a31716e35d61a2d8c90e5bc",
+      "tipo": "derivado"
+    },
+    "backtest_mensal_caso_base.csv": {
+      "bytes": 24456,
+      "fontes": [
+        {
+          "arquivo": "docs/resultados/backtest_caso_base_mensal.csv",
+          "sha256": "17ce2040299027398a7fc8714347e06ba94b96bad589633d97b7b60722e3bb9c"
+        }
+      ],
+      "linhas": 180,
+      "sha256": "17ce2040299027398a7fc8714347e06ba94b96bad589633d97b7b60722e3bb9c",
+      "tipo": "copia"
+    },
+    "carga_mensal_se.csv": {
+      "bytes": 11352,
+      "fontes": [
+        {
+          "tabela": "marts.fct_carga_mensal"
+        }
+      ],
+      "linhas": 322,
+      "sha256": "137a4260994d6e88d3e05598df10f84eaa2db59373aa6406b2638f4a04903f3d",
+      "tipo": "bigquery"
+    },
+    "cobertura_fora_da_amostra.csv": {
+      "bytes": 997,
+      "fontes": [
+        {
+          "arquivo": "docs/resultados/analise_teste_final_reconstruida_cobertura_por_horizonte.csv",
+          "sha256": "1a0e76780a3065ff1f6515dede6a9ff2ec8716fe79d67e8e42c83012e96a8834"
+        }
+      ],
+      "linhas": 18,
+      "sha256": "1a0e76780a3065ff1f6515dede6a9ff2ec8716fe79d67e8e42c83012e96a8834",
+      "tipo": "copia"
+    },
+    "consumo_exemplo_mensal.csv": {
+      "bytes": 3170,
+      "fontes": [
+        {
+          "tabela": "marts.fct_consumo_horario"
+        }
+      ],
+      "linhas": 82,
+      "sha256": "8dd1bedec56ef43b83cda62af77a526bd14810855e1b9c57638ae1c46c3f5d66",
+      "tipo": "bigquery"
+    },
+    "erros_producao.csv": {
+      "bytes": 67,
+      "fontes": [
+        {
+          "tabela": "marts.fct_erro_previsao_carga"
+        }
+      ],
+      "linhas": 0,
+      "sha256": "0293e5471fcc8fdbee89822627ec618b2fe7a6271d5d9a4354c4527174eba49e",
+      "tipo": "bigquery"
+    },
+    "frescor_fontes.csv": {
+      "bytes": 247,
+      "fontes": [],
+      "linhas": 5,
+      "sha256": "f57cac1711645a5a3f8333c12d52baa32deaa261646796ef219431813aa1bb2c",
+      "tipo": "derivado"
+    },
+    "mape_por_ano.csv": {
+      "bytes": 543,
+      "fontes": [
+        {
+          "arquivo": "docs/resultados/analise_teste_final_reconstruida_por_ano.csv",
+          "sha256": "89e32f0eaecb14d62a7eca3b04518235b26449224aec6fc4dfa43f678be80fb8"
+        }
+      ],
+      "linhas": 10,
+      "sha256": "89e32f0eaecb14d62a7eca3b04518235b26449224aec6fc4dfa43f678be80fb8",
+      "tipo": "copia"
+    },
+    "modelos_resumo.csv": {
+      "bytes": 562,
+      "fontes": [
+        {
+          "arquivo": "docs/resultados/candidatos_teste_final_reconstruida_resumo.csv",
+          "sha256": "73e9e2de9e9892c2ac7d11d7999a063ca77cbe6a1d50b2f419b3d63ea444a5c3"
+        }
+      ],
+      "linhas": 3,
+      "sha256": "73e9e2de9e9892c2ac7d11d7999a063ca77cbe6a1d50b2f419b3d63ea444a5c3",
+      "tipo": "copia"
+    },
+    "pld_mensal_se.csv": {
+      "bytes": 13258,
+      "fontes": [
+        {
+          "tabela": "marts.fct_pld_semanal"
+        },
+        {
+          "tabela": "marts.fct_pld_ponderado_mensal"
+        }
+      ],
+      "linhas": 297,
+      "sha256": "64725b7e1f0e618f189d93a6f399e6174b3c1759dfb0e1c09e86b069bd54ad9e",
+      "tipo": "bigquery"
+    },
+    "pre_registros.csv": {
+      "bytes": 2424,
+      "fontes": [
+        {
+          "arquivo": "docs/resultados/backtest_execucoes.jsonl",
+          "sha256": "a07a3975db54abf961529f2ece4f87657d81dca5ce929cfaa19a33c93fa106b0"
+        },
+        {
+          "arquivo": "docs/resultados/sensibilidades_execucoes.jsonl",
+          "sha256": "ad36e51abad2c0cd76e7b93836e997d2a5be6e00a4aaf6cb6f1a83e7c93b291a"
+        }
+      ],
+      "linhas": 14,
+      "sha256": "29974ae11f15eec3641e2e439e031450cc74b47b6a389540145e14104f3514a0",
+      "tipo": "derivado"
+    },
+    "previsao_producao.csv": {
+      "bytes": 2796,
+      "fontes": [
+        {
+          "tabela": "marts.fct_previsao_carga"
+        }
+      ],
+      "linhas": 12,
+      "sha256": "11d3b6c623afe991e71032036dd255957c9b43685d9f46b7aba541b8e56b389d",
+      "tipo": "bigquery"
+    },
+    "previsoes_teste_final.csv": {
+      "bytes": 119137,
+      "fontes": [
+        {
+          "arquivo": "docs/resultados/candidatos_teste_final_reconstruida_previsoes.csv",
+          "sha256": "e9c4ed8d642a619bf424a518e305ae9429a464c241d7b613c5cede1e7dbacf75"
+        }
+      ],
+      "linhas": 1308,
+      "sha256": "90bca02308c9c203185d48338157e8e648193f7541bdb79ceaa1f0d937a20a76",
+      "tipo": "derivado"
+    },
+    "recomendacao.csv": {
+      "bytes": 73033,
+      "fontes": [
+        {
+          "tabela": "marts.fct_recomendacao_contrato"
+        }
+      ],
+      "linhas": 213,
+      "sha256": "237be6e65bd6441b173fa3921ca4fae35dffbf8b282043a4475498a3de51469d",
+      "tipo": "bigquery"
+    },
+    "saude_execucoes.csv": {
+      "bytes": 17294,
+      "fontes": [
+        {
+          "fonte": "banco de metadados do orquestrador"
+        }
+      ],
+      "linhas": 160,
+      "sha256": "84949d1f5ff2fbc816b87c3f79914a7efdd3bc675229dacf721adc654b6a61d4",
+      "tipo": "local"
+    },
+    "saude_testes_dbt.csv": {
+      "bytes": 246,
+      "fontes": [
+        {
+          "fonte": "dbt/target/run_results.json"
+        }
+      ],
+      "linhas": 8,
+      "sha256": "7a5c8bdfa250a6cb7debd6ad57b753ca1d0368f2846de8dbff98401f49dcf06d",
+      "tipo": "local"
+    },
+    "sens_banda_f.csv": {
+      "bytes": 5168,
+      "fontes": [
+        {
+          "arquivo": "docs/resultados/sens_banda_f.csv",
+          "sha256": "d334a37db99e90377637300dc66d67865a50b20f745f6cb40603e9c522d13796"
+        }
+      ],
+      "linhas": 28,
+      "sha256": "d334a37db99e90377637300dc66d67865a50b20f745f6cb40603e9c522d13796",
+      "tipo": "copia"
+    },
+    "sens_invariancias.csv": {
+      "bytes": 1179,
+      "fontes": [
+        {
+          "arquivo": "docs/resultados/sens_invariancias.csv",
+          "sha256": "3a498b6861e9569fd06827b79e3023f25f8f57b64278e1875eaf924bea87473b"
+        }
+      ],
+      "linhas": 13,
+      "sha256": "3a498b6861e9569fd06827b79e3023f25f8f57b64278e1875eaf924bea87473b",
+      "tipo": "copia"
+    },
+    "sens_resumo.csv": {
+      "bytes": 5099,
+      "fontes": [
+        {
+          "arquivo": "docs/resultados/sens_resumo.csv",
+          "sha256": "95b2f5eba9408d3b26003f68fa9a8f4d39ec53a2781180c37540a1fb498939b8"
+        }
+      ],
+      "linhas": 28,
+      "sha256": "95b2f5eba9408d3b26003f68fa9a8f4d39ec53a2781180c37540a1fb498939b8",
+      "tipo": "copia"
+    },
+    "sens_resumo_por_ano.csv": {
+      "bytes": 4340,
+      "fontes": [
+        {
+          "arquivo": "docs/resultados/sens_resumo_por_ano.csv",
+          "sha256": "c92b8a3c4ab3589b83ad77b5143a66b08e8ddfe551f218a4f5732937ec57e2c9"
+        }
+      ],
+      "linhas": 70,
+      "sha256": "c92b8a3c4ab3589b83ad77b5143a66b08e8ddfe551f218a4f5732937ec57e2c9",
+      "tipo": "copia"
+    }
+  },
+  "avisos_de_defasagem": [],
+  "bytes_faturados_total": 0,
+  "calibracao_dos_intervalos_de_producao": {
+    "descricao": "Intervalos da previsão de produção: quantis empíricos do erro do desenvolvimento (2012-2019) e do teste final (2021-2025), mais os erros de produção realizados. A calibração JÁ VIU o teste final; por isso não é cobertura fora da amostra.",
+    "fonte": "marts.fct_previsao_carga, coluna calibracao",
+    "valores_no_banco": [
+      "desenvolvimento+teste_final"
+    ]
+  },
+  "cobertura_exibida": {
+    "cobertura80_pct": 70.1835,
+    "cobertura95_pct": 87.7676,
+    "descricao": "Cobertura FORA DA AMOSTRA: teste final 2021-2025 (654 pares) com intervalos calibrados só no desenvolvimento (2012-2019), quantis por horizonte.",
+    "fonte": "docs/resultados/analise_teste_final_reconstruida_cobertura_por_horizonte.csv",
+    "n": 654,
+    "nominal_80_pct": 80,
+    "nominal_95_pct": 95,
+    "referencia": "docs/metricas.md, Sprint 5 (intervalos) e 5.6 (coluna anterior)"
+  },
+  "commit": "d44e665682b221f16749ae765b06eb521dd6fb40",
+  "consultas": [
+    {
+      "cache_hit": true,
+      "faturados": 0,
+      "nome": "carga_mensal",
+      "processados": 0,
+      "tabela": "marts.fct_carga_mensal"
+    },
+    {
+      "cache_hit": true,
+      "faturados": 0,
+      "nome": "pld_semanal",
+      "processados": 0,
+      "tabela": "marts.fct_pld_semanal"
+    },
+    {
+      "cache_hit": true,
+      "faturados": 0,
+      "nome": "pld_ponderado",
+      "processados": 0,
+      "tabela": "marts.fct_pld_ponderado_mensal"
+    },
+    {
+      "cache_hit": true,
+      "faturados": 0,
+      "nome": "consumo_exemplo",
+      "processados": 0,
+      "tabela": "marts.fct_consumo_horario"
+    },
+    {
+      "cache_hit": true,
+      "faturados": 0,
+      "nome": "previsao_producao",
+      "processados": 0,
+      "tabela": "marts.fct_previsao_carga"
+    },
+    {
+      "cache_hit": true,
+      "faturados": 0,
+      "nome": "erros_producao",
+      "processados": 0,
+      "tabela": "marts.fct_erro_previsao_carga"
+    },
+    {
+      "cache_hit": true,
+      "faturados": 0,
+      "nome": "recomendacao",
+      "processados": 0,
+      "tabela": "marts.fct_recomendacao_contrato"
+    }
+  ],
+  "limite_bytes": 5242880,
+  "meses_incompletos": {
+    "carga_mensal_se.csv": [
+      "2026-10-01"
+    ],
+    "consumo_exemplo_mensal.csv": [
+      "2026-10-01"
+    ]
+  },
+  "origem_da_previa": "2026-09-01",
+  "origem_de_producao": "2026-09-01",
+  "pre_registros": {
+    "caso_base": "02990fdf26529b59bd0aec5883f7ca7e9e2443d0",
+    "sensibilidades": "4c02987d0270dd91639cdc410d801fe550710af9"
+  },
+  "saude": {
+    "execucoes_da_dag": {
+      "estado": "disponivel",
+      "execucoes": 11,
+      "ultima_execucao_utc": "2026-10-10T16:38:12Z"
+    },
+    "testes_dbt": {
+      "aviso": "resultado do ÚLTIMO comando dbt desta máquina, que pode não ser o da DAG",
+      "comando": "test",
+      "estado": "disponivel",
+      "n_resultados": 250,
+      "run_results_gerado_em": "2026-10-10T16:40:53.047560Z",
+      "selecao": [],
+      "tempo_s": 80.2
+    }
+  },
+  "snapshot_gerado_em": "2026-10-10T16:47:55Z",
+  "tamanho_total_bytes": 337513,
+  "ultimo_dado_por_fonte": {
+    "backtest_ate": "2025-12-01",
+    "carga_mensal": "2026-09-01",
+    "consumo_exemplo": "2026-09-01",
+    "dbt_test_utc": "2026-10-10T16:40:53.047560Z",
+    "execucao_da_dag_utc": "2026-10-10T16:38:12Z",
+    "pld_mensal": "2026-09-01",
+    "previsao_producao_origem": "2026-09-01",
+    "recomendacao_origem": "2026-09-01"
+  },
+  "ultimo_mes_fechado": "2026-09-01"
+}
