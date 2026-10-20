@@ -8,6 +8,7 @@ import csv
 import io
 import json
 import re
+import shutil
 from datetime import UTC, date, datetime
 from pathlib import Path
 from types import SimpleNamespace
@@ -235,7 +236,7 @@ def test_o_conjunto_de_arquivos_e_o_aprovado(gravado):
         "sens_resumo.csv", "sens_resumo_por_ano.csv", "sens_banda_f.csv", "sens_invariancias.csv",
         "pre_registros.csv", "previsoes_teste_final.csv", "mape_por_ano.csv", "modelos_resumo.csv",
         "cobertura_fora_da_amostra.csv", "saude_execucoes.csv", "saude_testes_dbt.csv",
-        "pld_esperado_cenarios.csv", "manifest.json",
+        "pld_esperado_cenarios.csv", "desenvolvimento_resumo.csv", "manifest.json",
     }  # fmt: skip
     assert {p.name for p in destino.iterdir()} == esperado
 
@@ -778,3 +779,29 @@ def test_o_pld_esperado_so_de_simples_nao_basta(tmp_path):
     ]
     with pytest.raises(snap.ErroDeSnapshot, match="sem PLD esperado"):
         montar(tmp_path, rotas_=rotas_)
+
+
+# ---- anexar: cópias novas sem BigQuery
+
+
+def test_anexar_copia_do_local_e_atualiza_o_manifesto_sem_bigquery(tmp_path):
+    destino = tmp_path / "dados"
+    shutil.copytree(snap.DESTINO, destino)
+    caminho = destino / "manifest.json"
+    m = json.loads(caminho.read_text())
+    del m["arquivos"]["desenvolvimento_resumo.csv"]
+    m.pop("anexos_locais", None)
+    caminho.write_text(json.dumps(m))
+    (destino / "desenvolvimento_resumo.csv").unlink()
+    assert snap.anexar_copias(destino) == ["desenvolvimento_resumo.csv"]
+    novo = json.loads(caminho.read_text())
+    info = novo["arquivos"]["desenvolvimento_resumo.csv"]
+    origem = RESULTADOS / snap.COPIAS["desenvolvimento_resumo.csv"]
+    assert (
+        info["sha256"]
+        == snap.sha256(origem.read_bytes())
+        == snap.sha256((destino / "desenvolvimento_resumo.csv").read_bytes())
+    )
+    assert "desenvolvimento_resumo.csv" in novo["anexos_locais"]
+    assert novo["tamanho_total_bytes"] == sum(i["bytes"] for i in novo["arquivos"].values())
+    assert snap.anexar_copias(destino) == []  # idempotente

@@ -514,6 +514,8 @@ COPIAS = {
     "mape_por_ano.csv": "analise_teste_final_reconstruida_por_ano.csv",
     "modelos_resumo.csv": "candidatos_teste_final_reconstruida_resumo.csv",
     "cobertura_fora_da_amostra.csv": COBERTURA_FONTE,
+    # o desenvolvimento (2012–2019): a página de Previsão compara 2,66% × 2,92% sem digitar número
+    "desenvolvimento_resumo.csv": "candidatos_desenvolvimento_original_resumo.csv",
 }
 
 
@@ -911,6 +913,37 @@ def frescor_das_fontes(
 # ---------------------------------------------------------------- gravação e linha de comando
 
 
+def anexar_copias(destino: Path = DESTINO, resultados: Path = RESULTADOS) -> list[str]:
+    """Copia para `dados/` as cópias de `COPIAS` que ainda não estão no manifesto, SEM consultar
+    o BigQuery: lê só `docs/resultados/` (cópia local byte a byte), atualiza o manifesto (hash,
+    linhas, fontes) e registra em `anexos_locais` que entraram depois da geração. O próximo
+    `gerar` as inclui pelo caminho normal."""
+    caminho = destino / "manifest.json"
+    manifesto = json.loads(caminho.read_text())
+    novos = [n for n in COPIAS if n not in manifesto["arquivos"]]
+    agora = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+    for nome in novos:
+        origem = COPIAS[nome]
+        conteudo = _ler(resultados / origem)
+        (destino / nome).write_bytes(conteudo)
+        manifesto["arquivos"][nome] = {
+            "tipo": "copia",
+            "linhas": linhas_do_csv(conteudo),
+            "bytes": len(conteudo),
+            "sha256": sha256(conteudo),
+            "fontes": [_fonte_versionada(resultados, origem)],
+        }
+        manifesto.setdefault("anexos_locais", {})[nome] = agora
+    manifesto["arquivos"] = dict(sorted(manifesto["arquivos"].items()))
+    manifesto["tamanho_total_bytes"] = sum(i["bytes"] for i in manifesto["arquivos"].values())
+    if manifesto["tamanho_total_bytes"] > LIMITE_BYTES:
+        raise ErroDeSnapshot("o snapshot passaria do limite de 5 MiB")
+    caminho.write_bytes(
+        (json.dumps(manifesto, indent=2, sort_keys=True, ensure_ascii=False) + "\n").encode()
+    )
+    return novos
+
+
 def gravar(snap: Snapshot, destino: Path = DESTINO) -> list[str]:
     """Escreve os arquivos e o manifesto (por último); remove CSV antigos que saíram do conjunto."""
     destino.mkdir(parents=True, exist_ok=True)
@@ -996,8 +1029,14 @@ def main(argv: list[str] | None = None) -> int:
     sub = ap.add_subparsers(dest="comando", required=True)
     g = sub.add_parser("gerar", help="lê as fontes e grava dashboard/dados/")
     g.add_argument("--dry-run", action="store_true", help="lê e imprime; não grava")
+    sub.add_parser(
+        "anexar", help="copia para dados/ as cópias novas de docs/resultados (sem BigQuery)"
+    )
     a = ap.parse_args(argv)
     try:
+        if a.comando == "anexar":
+            print("anexados:", ", ".join(anexar_copias()) or "nada (já estavam no manifesto)")
+            return 0
         return gerar(a.dry_run)
     except ErroDeSnapshot as erro:
         print(f"ABORTADO, nada foi gravado: {erro}", file=sys.stderr)

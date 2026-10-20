@@ -1,4 +1,7 @@
 {
+  "anexos_locais": {
+    "desenvolvimento_resumo.csv": "2026-10-10T22:57:19Z"
+  },
   "arquivos": {
     "backtest_anual.csv": {
       "bytes": 31784,
@@ -173,6 +176,18 @@
       "linhas": 82,
       "sha256": "8dd1bedec56ef43b83cda62af77a526bd14810855e1b9c57638ae1c46c3f5d66",
       "tipo": "bigquery"
+    },
+    "desenvolvimento_resumo.csv": {
+      "bytes": 948,
+      "fontes": [
+        {
+          "arquivo": "docs/resultados/candidatos_desenvolvimento_original_resumo.csv",
+          "sha256": "e690a2531474bfbd4bcc1c66d4ce69b2f523c7b6a95b74d9e7c29b81bb835c37"
+        }
+      ],
+      "linhas": 7,
+      "sha256": "e690a2531474bfbd4bcc1c66d4ce69b2f523c7b6a95b74d9e7c29b81bb835c37",
+      "tipo": "copia"
     },
     "erros_producao.csv": {
       "bytes": 67,
@@ -472,7 +487,7 @@
     }
   },
   "snapshot_gerado_em": "2026-10-10T21:53:01Z",
-  "tamanho_total_bytes": 338231,
+  "tamanho_total_bytes": 339179,
   "ultimo_dado_por_fonte": {
     "backtest_ate": "2025-12-01",
     "carga_mensal": "2026-09-01",

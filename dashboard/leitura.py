@@ -153,6 +153,15 @@ def modelos_resumo(diretorio: Path = DADOS) -> pd.DataFrame:
     return _csv("modelos_resumo.csv", diretorio, ("candidato", "n", "mape_pct", "vies_pct"))
 
 
+def desenvolvimento_resumo(diretorio: Path = DADOS) -> pd.DataFrame:
+    """O desenvolvimento (2012–2019, série original): MAPE de cada candidato e o erro-padrão."""
+    return _csv(
+        "desenvolvimento_resumo.csv",
+        diretorio,
+        ("candidato", "mape_pct", "diferenca_mape_vs_ingenuo_pp", "ep_diferenca_pp"),
+    )
+
+
 def cobertura(diretorio: Path = DADOS) -> dict:
     """Cobertura FORA DA AMOSTRA (70,2% e 87,8%): {'geral', 'por_horizonte', 'por_ano', 'fonte'}."""
     df = _csv(

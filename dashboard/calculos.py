@@ -20,6 +20,12 @@ BANDA_DO_CASO_BASE = 0.10
 ESPECULATIVAS = ("rmax120",)  # excluída do caso base (D13): rotulada, nunca escolhida
 
 
+CANDIDATO_MODELO = "comb_ets_sarima_regressao"  # média ETS + SARIMA + regressão
+CANDIDATO_COMPARACAO = "sazonal_ingenuo_mesmos_pares"  # repete o mesmo mês do ano anterior
+CANDIDATO_COMPARACAO_DESENVOLVIMENTO = "sazonal_ingenuo"
+CANDIDATO_LIGHTGBM = "lgbm"
+
+
 # ---------------------------------------------------------------- formatação (padrão brasileiro)
 
 
@@ -307,3 +313,86 @@ def data_br(texto: str) -> str:
 def hora_utc(texto: str) -> str:
     d = pd.Timestamp(texto)
     return f"{d.day:02d}/{d.month:02d}/{d.year} {d.hour:02d}:{d.minute:02d} UTC"
+
+
+# ---------------------------------------------------------------- previsão
+
+
+def resumo_teste_final(modelos: pd.DataFrame) -> dict:
+    """MAPE e viés do modelo e do de comparação nos MESMOS 654 pares do teste final."""
+    m = modelos.set_index("candidato")
+    campos = ("mape_pct", "vies_pct", "n", "mape_h1_pct", "mape_h12_pct")
+    saida = {
+        nome: {c: float(m.loc[cand, c]) for c in campos}
+        for nome, cand in (("modelo", CANDIDATO_MODELO), ("comparacao", CANDIDATO_COMPARACAO))
+    }
+    saida["diferenca_pp"] = float(m.loc[CANDIDATO_MODELO, "diferenca_mape_vs_ingenuo_pp"])
+    saida["ep_pp"] = float(m.loc[CANDIDATO_MODELO, "ep_diferenca_pp"])
+    return saida
+
+
+def resumo_desenvolvimento(dev: pd.DataFrame) -> dict:
+    """O desenvolvimento (2012–2019): modelo, comparação e LightGBM (que perdeu), com o erro-padrão
+    da diferença."""
+    d = dev.set_index("candidato")
+    return {
+        "modelo_mape_pct": float(d.loc[CANDIDATO_MODELO, "mape_pct"]),
+        "comparacao_mape_pct": float(d.loc[CANDIDATO_COMPARACAO_DESENVOLVIMENTO, "mape_pct"]),
+        "diferenca_pp": float(d.loc[CANDIDATO_MODELO, "diferenca_mape_vs_ingenuo_pp"]),
+        "ep_pp": float(d.loc[CANDIDATO_MODELO, "ep_diferenca_pp"]),
+        "lightgbm_mape_pct": float(d.loc[CANDIDATO_LIGHTGBM, "mape_pct"]),
+    }
+
+
+def previsto_de_dezembro(previsoes: pd.DataFrame) -> pd.DataFrame:
+    """As previsões feitas em DEZEMBRO (12 meses à frente, o ano inteiro), uma linha por mês-alvo:
+    carga real, previsão do modelo e previsão do de comparação (MWm)."""
+    dez = previsoes[previsoes["origem"].dt.month == 12]
+    m = dez[dez["candidato"] == CANDIDATO_MODELO].set_index("alvo")
+    c = dez[dez["candidato"] == CANDIDATO_COMPARACAO].set_index("alvo")
+    saida = pd.DataFrame(
+        {
+            "real": m["real_mwmed"],
+            "modelo": m["previsto_mwmed"],
+            "comparacao": c["previsto_mwmed"].reindex(m.index),
+        }
+    ).sort_index()
+    saida.index.name = "alvo"
+    saida = saida.reset_index()
+    saida["ano"] = saida["alvo"].dt.year
+    return saida
+
+
+def erro_anual_dezembro(previsoes: pd.DataFrame) -> pd.DataFrame:
+    """Erro do ANO INTEIRO previsto em dezembro (soma prevista menos soma real, em % do real), do
+    modelo e do de comparação: é o '−3,8% em 2023' do metricas.md."""
+    p = previsto_de_dezembro(previsoes)
+    g = p.groupby("ano")[["real", "modelo", "comparacao"]].sum()
+    return pd.DataFrame(
+        {
+            "ano": g.index,
+            "modelo_pct": (100 * (g["modelo"] - g["real"]) / g["real"]).to_numpy(),
+            "comparacao_pct": (100 * (g["comparacao"] - g["real"]) / g["real"]).to_numpy(),
+        }
+    )
+
+
+def mape_por_ano_longo(mape: pd.DataFrame) -> pd.DataFrame:
+    """MAPE de cada ano (todas as origens), modelo e comparação, em formato longo para o gráfico."""
+    nomes = {CANDIDATO_MODELO: "modelo", CANDIDATO_COMPARACAO: "comparacao"}
+    d = mape[mape["candidato"].isin(nomes)].copy()
+    d["serie"] = d["candidato"].map(nomes)
+    return d[["ano", "serie", "mape_pct", "vies_pct"]].reset_index(drop=True)
+
+
+def anos_em_que_o_modelo_perde(mape: pd.DataFrame) -> list[int]:
+    d = mape_por_ano_longo(mape).pivot(index="ano", columns="serie", values="mape_pct")
+    return [int(a) for a in d.index[d["modelo"] > d["comparacao"]]]
+
+
+def historia_recente(carga: pd.DataFrame, meses: int = 36) -> pd.DataFrame:
+    """Os últimos `meses` meses FECHADOS da carga ajustada (sem meses incompletos)."""
+    d = carga[carga["mes_utilizavel"].astype(bool)].dropna(
+        subset=["carga_ajustada_reconstruida_mwmed"]
+    )
+    return d.sort_values("mes").tail(meses).reset_index(drop=True)
