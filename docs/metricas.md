@@ -7,7 +7,7 @@ Nunca otimizar antes de medir a versão simples. Preencher "Antes" na versão in
 | Negócio | Custo de energia do consumidor-exemplo no backtest (soma 2021–2025; caso base, f = 10%) | estratégia ingênua: **R$ 979.285,67** (sem 2021: R$ 751.593,15) | estratégia otimizada: **R$ 970.595,57** (sem 2021: R$ 742.883,46); pontual R$ 979.615,76. Por ano na seção "Sprint 6, Parte A" | 6 |
 | Negócio | Economia contra a ingênua | — | **R$ 8.690,10 / 0,89%** em 5 anos (sem 2021: R$ 8.709,69 / 1,16%): previsão −R$ 330,10 (−0,03%), otimização +R$ 9.020,19 (+0,92%). Concentrada em 2022 (+1,60%) e 2025 (+1,78%); 2023 e 2024 negativos. 5 anos, sem teste de significância | 6 |
 | Negócio | Exposição ao PLD (MWh descobertos ou sobrando, soma 2021–2025) | ingênua: 17,10 descobertos e 0 sobrando | otimizada: 25,90 descobertos e 85,32 sobrando (pontual: 13,01 e 0). A otimizada troca compra por venda de sobra | 6 |
-| Ciência | MAPE mensal da previsão de carga (12 meses à frente, rolling origin) | baseline (sazonal ingênuo): **2,92%** no desenvolvimento (2012–2019, original); 4,30% no teste final (2021–2025, ajustada) | desenvolvimento: **2,66%** (média ETS+SARIMA+regressão), vitória marginal sobre o ingênuo (+0,26 pp, EP 0,27 pp); teste final (ajustada): **3,11%** contra 4,17% do ingênuo nos mesmos pares (4,30% em todos os pares); origem de dezembro 2,53% contra 4,30% | 5 |
+| Ciência | MAPE mensal da previsão de carga (12 meses à frente, rolling origin) | baseline (sazonal ingênuo): **2,92%** no desenvolvimento (2012–2019, original); 4,30% no teste final (2021–2025, ajustada) | desenvolvimento: **2,66%** (média ETS+SARIMA+regressão), vitória marginal sobre o ingênuo (+0,255 pp, EP 0,27 pp); teste final (ajustada): **3,11%** contra 4,17% do ingênuo nos mesmos pares (4,30% em todos os pares); origem de dezembro 2,53% contra 4,30% | 5 |
 | Engenharia | Dados lidos por consulta típica (**bytes processados**) | 0,037 GB (ONS, raw STRING sem partição: 37,3 MB processados; 37,7 MB faturados) | tipado sem partição: 0,018 GB (18,3 MB); **fato particionado por mês e clusterizado: 0,0007 GB (0,74 MB processados, −98,0% contra o raw)**. O faturado cai para 10,5 MB, o piso de 10 MiB do BigQuery, então a métrica de comparação são os bytes processados | 1 → 2 |
 | Engenharia | Tempo de carga diária | full: **9,3 min** (ONS 4,9 + CCEE 1,2 + INMET 3,1 + feriados 0,2; sem o tempo do download manual) | incremental (DAG diária, ONS): **1,6 min** (1 min 33 s; só a ingestão do ONS leva 20 s, contra 4,9 min da carga full do ONS). Seção "Sprint 4, Parte A" | 1 → 4 |
 | Engenharia | Tempo do backfill completo (2021–hoje) | — | **~125 s (2,1 min)**: ingestão 74 s + dbt 51 s, de 2021-01 a 2026-10 (70 partições). A carga full de 2000 a hoje leva 94 s | 4 |
@@ -1069,7 +1069,7 @@ Checkpoint C: tempo da task mensal na DAG, bytes lidos e gravados, e o MAPE das 
 
 ### RESSALVAS do teste final (leia junto com o resultado)
 Resultado: **3,11% contra 4,17% do ingênuo nos mesmos pares** (−1,06 pp, 2,4 EP), viés −0,76% contra −2,17%, erro anual de dezembro 1,33% contra 2,72%.
-1. **Parte da vantagem vem do ingênuo piorar em 2021–2025** (2,92% → 4,30%): a vantagem foi de 0,26 pp no desenvolvimento e de 1,06 pp aqui.
+1. **Parte da vantagem vem do ingênuo piorar em 2021–2025** (2,92% → 4,30%): a vantagem foi de 0,255 pp no desenvolvimento (0,2548 no CSV) e de 1,06 pp aqui.
 2. **2023 continua com −3,8%** de erro anual em dezembro (e 2024 com −2,5% de viés com todas as origens).
 3. **O modelo perde em 2025** (3,72% contra 3,52%).
 4. **Os intervalos ficaram estreitos**: 70% de cobertura para 80% nominal e 88% para 95%.
@@ -1635,7 +1635,49 @@ Medido com `AppTest` sobre o snapshot de 10/10/2026 (prosa visível = título, s
 | Tempo de execução da página (AppTest, mediana, cache quente) | 0,5 s | 0,52 s (1ª execução 0,83 s) |
 
 - Limitações sempre visíveis: 5 itens, 114 palavras (estimativa: ~80; o orçamento do teste é 120).
-- A medição vale para o `AppTest`, não para o navegador: o tempo no Community Cloud (hibernação, 1ª carga) segue **não medido**.
+- A medição vale para o `AppTest`, não para o navegador. O Community Cloud foi medido depois, à mão e de forma aproximada (20/10/2026): fria (despertar do contêiner) ~25 s, quente 1 a 2 s; ver "Sprint 6, Parte C2: tempo e bytes por página".
 - Verificado no navegador (Chromium headless, 1280 px e 390 px): `R\$` aparece como "R$" literal; eixos com ponto de milhar; cartões empilhados no celular.
 
 **Sobre o teste dos 30 segundos.** O "antes" se perdeu: a versão antiga da página nunca foi commitada. O teste será feito **só na versão nova**, como medida **absoluta** (não há comparação). O antes/depois **quantitativo** deste redesenho é o de **palavras visíveis, caixas coloridas e tabelas à vista** (tabela acima).
+
+## Sprint 6, Parte C2: página de Previsão (10/10/2026)
+
+Medido com `AppTest` sobre o snapshot de 10/10/2026 (prosa visível = título, subtítulos, legendas, Markdown, caixas e métricas; sem tabelas, tooltips e expanders; mesmo método da Decisão).
+
+| Medida | Valor |
+|---|---|
+| Palavras visíveis | **284** (orçamento: 450) |
+| Caixas | 2 neutras, 0 âmbar (a página não tem prévia nem especulação) |
+| Gráficos à vista / no expander | 3 / 1 (cobertura por horizonte) |
+| Tabelas à vista | 0 (6 em expanders: 4 em "Ver valores", 2 na auditoria) |
+| Tempo da página no `AppTest` (mediana, cache quente) | 0,28 s (1ª execução 0,58 s) |
+| Testes novos | 24 (previsão) + 5 (nomes) + 1 (anexar do snapshot); suíte: 1.036 |
+
+Números exibidos, todos do snapshot e conferidos contra este arquivo: teste final 3,11% × 4,17% (mesmos 654 pares), viés −0,76% × −2,17%, cobertura 70,2% e 87,8%, desenvolvimento 2,66% × 2,92% (diferença 0,255 pp < EP 0,27 pp), modelo perde em 2025 (3,72% × 3,52%), erro do ano de 2023 previsto em dezembro −3,80% (ingênuo −4,18%), calculado de `previsoes_teste_final.csv` (confere com a tabela "Erro do ano inteiro na origem de dezembro").
+Novo arquivo no snapshot: `desenvolvimento_resumo.csv` (cópia local de `candidatos_desenvolvimento_original_resumo.csv`, 948 bytes; snapshot 0,32 MiB).
+Tempo no Community Cloud: ver "Tempo e bytes por página" abaixo.
+
+## Sprint 6, Parte C2: tempo e bytes por página (20/10/2026)
+
+Medido com `AppTest.from_function` sobre o snapshot de 10/10/2026, 7 repetições por página. **Frio** = `st.cache_data.clear()` antes do `run()` (a primeira repetição de cada página inclui também a importação dos módulos; a Decisão rodou primeiro e paga a importação do Streamlit e do Altair, por isso o pior frio dela é 1,21 s); **quente** = segundo `run()` da mesma instância, com o cache preenchido. Bytes = soma do tamanho dos arquivos de `dashboard/dados/` que a página abriu (interceptando `open`), medida, não estimada.
+
+| Página | Frio (mediana / pior) | Quente (mediana / pior) | CSV/JSON lidos | Bytes lidos |
+|---|---|---|---|---|
+| Decisão de contrato | 0,63 s / 1,21 s | 0,36 s / 0,38 s | 11 arquivos | 184.961 B (180,6 KiB) |
+| Previsão de carga | 0,38 s / 0,40 s | 0,13 s / 0,14 s | 9 arquivos | 152.801 B (149,2 KiB) |
+
+- Snapshot inteiro: 355.578 B (347 KiB, com o `manifest.json`). Cada página lê o `manifest.json` e só os arquivos dela.
+- **0 bytes de BigQuery no app:** o app não importa `google.*` (só `dashboard/snapshot.py` fala com o BigQuery e o Postgres; teste de higiene) e não lê credencial. O custo de BigQuery por acesso é R$ 0 para qualquer número de acessos.
+- O 0,28 s (quente) e 0,58 s (1ª execução) da Previsão registrados em 10/10/2026 vêm de outra amostra (mediana de poucas execuções); esta é a medida de referência (7 repetições, frio com cache limpo).
+
+- Testes: 1.042 na suíte (4 novos na Previsão: 12 horizontes contra o `metricas.md`, tabela do expander, legenda nas faixas, frase da limitação; 2 na Decisão: eixo com ≤ 6 marcas e cartão da concentração).
+
+**Community Cloud** (medição manual e aproximada, no navegador; não é a mesma coisa que o `AppTest`, que não inclui rede nem a subida do app):
+
+| Carga | Tempo | Amostras |
+|---|---|---|
+| Fria (reboot do app) | ~25 s | 1 |
+| Quente (F5 com o app acordado) | 1 a 2 s | 3 |
+
+- Cronômetro manual. Com 1 amostra fria não há mediana nem pior caso, e as 3 quentes são um intervalo (1 a 2 s), não uma mediana; o plano (seção 7) previa 3 cargas frias e 3 quentes por página. O ~25 s vale como ordem de grandeza, não como medida estável. O registro não diz qual página foi cronometrada.
+- **Leitura:** a carga fria de ~25 s é o **despertar do contêiner no plano gratuito** (o app hiberna sem uso), não o código da página: no `AppTest`, com o cache frio, a Decisão leva ~0,6 s (0,63 s de mediana) e a Previsão ~0,4 s. Com o app acordado, o F5 leva 1 a 2 s, que já inclui rede e renderização no navegador. Ou seja, o custo percebido pelo primeiro visitante depois de um período sem uso é o do contêiner; o do código é uma fração pequena dele.
