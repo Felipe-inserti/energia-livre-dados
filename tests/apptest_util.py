@@ -117,3 +117,27 @@ def palavras_visiveis(bloco) -> int:
         elif n.type == "metric":
             total += palavras(n.label) + palavras(n.value)
     return total
+
+
+def textos_do_grafico(no) -> str:
+    """O que o leitor VÊ de um gráfico: títulos e células de texto dos dados (não os nomes de campo,
+    que ficam no JSON)."""
+    import pyarrow as pa
+
+    def titulos(x):
+        if isinstance(x, dict):
+            for k, v in x.items():
+                if k in ("title", "text") and isinstance(v, str):
+                    yield v
+                else:
+                    yield from titulos(v)
+        elif isinstance(x, list):
+            for v in x:
+                yield from titulos(v)
+
+    saida = list(titulos(json.loads(no.proto.spec)))
+    for ds in no.proto.datasets:
+        d = pa.ipc.open_stream(ds.data.data).read_all().to_pandas()
+        for c in d.select_dtypes(include=["object", "string"]).columns:
+            saida.extend(map(str, d[c].unique()))
+    return "\n".join(saida)

@@ -2,7 +2,6 @@
 publicados no `docs/metricas.md`, ressalva acima do número, orçamento de palavras, `$` escapado,
 jargão fora da auditoria, âmbar ausente, meses incompletos fora dos gráficos, nomes sem troca."""
 
-import json
 import re
 import shutil
 from pathlib import Path
@@ -21,6 +20,7 @@ from apptest_util import (
     primeiro,
     spec,
     texto,
+    textos_do_grafico,
     toda_a_tela,
 )
 from streamlit.testing.v1 import AppTest
@@ -440,30 +440,6 @@ JARGAO = (
     ".csv",
     "Ano anterior",  # a estratégia de contrato da Decisão: aqui o comparativo é outro
 )
-
-
-def textos_do_grafico(no) -> str:
-    """O que o leitor VÊ de um gráfico: títulos e células de texto dos dados (não os nomes de campo,
-    que ficam no JSON)."""
-    import pyarrow as pa
-
-    def titulos(x):
-        if isinstance(x, dict):
-            for k, v in x.items():
-                if k in ("title", "text") and isinstance(v, str):
-                    yield v
-                else:
-                    yield from titulos(v)
-        elif isinstance(x, list):
-            for v in x:
-                yield from titulos(v)
-
-    saida = list(titulos(json.loads(no.proto.spec)))
-    for ds in no.proto.datasets:
-        d = pa.ipc.open_stream(ds.data.data).read_all().to_pandas()
-        for c in d.select_dtypes(include=["object", "string"]).columns:
-            saida.extend(map(str, d[c].unique()))
-    return "\n".join(saida)
 
 
 def test_nenhum_jargao_fora_da_auditoria_e_do_glossario(at):
