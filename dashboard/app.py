@@ -16,7 +16,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import streamlit as st  # noqa: E402
 
-from dashboard.paginas import decisao, previsao  # noqa: E402
+from dashboard.paginas import decisao, previsao, saude  # noqa: E402
 
 st.set_page_config(page_title="Contratação de energia no mercado livre", layout="wide")
 
@@ -24,6 +24,7 @@ pagina = st.navigation(
     [
         st.Page(decisao.renderizar, title="Decisão de contrato", url_path="decisao", default=True),
         st.Page(previsao.renderizar, title="Previsão de carga", url_path="previsao"),
+        st.Page(saude.renderizar, title="Saúde do pipeline", url_path="saude"),
     ]
 )
 pagina.run()

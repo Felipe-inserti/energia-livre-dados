@@ -30,6 +30,14 @@ TERMOS = {
     "Banda": "folga (±) que o contrato permite em torno do volume contratado.",
     "Valor da previsão": "custo do Ano anterior − custo da Previsão.",
     "Valor da otimização": "custo da Previsão − custo da Otimizada.",
+    "DAG": "a sequência de etapas que o Airflow roda todo dia às 21:00 UTC (18:00 em Brasília): "
+    "busca os dados novos, transforma com o dbt e testa.",
+    "dbt": "a ferramenta que transforma os dados no BigQuery e roda os testes de qualidade sobre "
+    "eles.",
+    "Aviso": "teste que não passou limpo mas não bloqueia nada: aparece como alerta, não como "
+    "erro.",
+    "Fonte manual": "dado baixado à mão (CCEE e INMET), sem coleta automática; o pipeline só avisa "
+    "quando ele fica velho.",
     "Contrafactual": "o que teria acontecido numa condição que não existiu; aqui, contratar no "
     "mercado livre antes de poder migrar.",
 }

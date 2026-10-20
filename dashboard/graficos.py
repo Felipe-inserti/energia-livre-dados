@@ -13,7 +13,7 @@ import pandas as pd
 from dashboard import calculos as cal
 from dashboard import visual as vis
 
-AZUL = vis.PETROLEO  # (as páginas de Previsão, Saúde e Panorama ainda usam estes nomes)
+AZUL = vis.PETROLEO  # (a página Panorama ainda usa estes nomes)
 CINZA = vis.CINZA
 CORES_ESTRATEGIA = {
     "ingenua": vis.CINZA_CLARO,
@@ -523,17 +523,99 @@ def previsao_producao(
 # ---------------------------------------------------------------- saúde
 
 
-def duracao_das_tasks(df: pd.DataFrame) -> alt.Chart:
-    """Duração (s) de cada task da última execução; só `failed` ganha cor de alerta."""
-    d = df.assign(falhou=df["estado_task"] == "failed")
-    return (
-        alt.Chart(d)
+def _rotulo_da_execucao(inicio: pd.Timestamp) -> str:
+    return f"{inicio.day:02d}/{inicio.month:02d} {inicio.hour:02d}:{inicio.minute:02d}"
+
+
+def duracao_das_execucoes(runs: pd.DataFrame, ausentes: list[pd.Timestamp]) -> alt.LayerChart:
+    """Uma barra por execução da DAG, da mais antiga à mais recente, sempre a partir de zero.
+
+    `runs` vem de `cal.marcar_falhas`. A falha se vê por símbolo e texto ("✕ falha"), não por cor
+    nova: a barra fica cinza-escura. Cada horário agendado sem execução (`ausentes`) ocupa o seu
+    lugar no eixo, sem barra, com o texto "sem execução registrada"."""
+    tipo = {"scheduled": "agendada", "manual": "manual"}
+    d = runs.assign(
+        rotulo=[
+            _rotulo_da_execucao(t) + f" · {tipo.get(r, r)}"
+            for t, r in zip(runs["inicio"], runs["run_type"], strict=True)
+        ],
+        hora=runs["inicio"].dt.strftime("%d/%m/%Y %H:%M UTC"),
+        duracao=[cal.duracao_texto(v) for v in runs["duracao_dag_s"]],
+        marca_ausente="",
+    )
+    vazias = pd.DataFrame(
+        {
+            "inicio": ausentes,
+            "rotulo": [_rotulo_da_execucao(t) + " · agendada" for t in ausentes],
+            "hora": [t.strftime("%d/%m/%Y %H:%M UTC") for t in ausentes],
+            "duracao": "sem execução registrada",
+            "duracao_dag_s": float("nan"),
+            "falhou": False,
+            "marca": "",
+            "marca_ausente": "sem execução registrada",
+        }
+    )
+    d = pd.concat([d, vazias], ignore_index=True).sort_values("inicio")
+    d = d[["rotulo", "hora", "duracao", "duracao_dag_s", "falhou", "marca", "marca_ausente"]]
+    ordem = list(d["rotulo"])
+    x = alt.X("rotulo:N", sort=ordem, title=None, axis=alt.Axis(labelAngle=-40, labelLimit=170))
+    barras = (
+        alt.Chart(d.dropna(subset=["duracao_dag_s"]))
         .mark_bar()
         .encode(
-            y=alt.Y("task_id:N", sort="-x", title=None),
-            x=alt.X("duracao_task_s:Q", title="Duração (s)", scale=alt.Scale(zero=True)),
-            color=alt.condition(alt.datum.falhou, alt.value(vis.AMBAR), alt.value(vis.PETROLEO)),
-            tooltip=["task_id:N", "estado_task:N", "duracao_task_s:Q"],
+            x=x,
+            y=alt.Y("duracao_dag_s:Q", title="Duração da execução (s)", scale=alt.Scale(zero=True)),
+            color=alt.condition(
+                alt.datum.falhou, alt.value(vis.CINZA_ESCURO), alt.value(vis.PETROLEO)
+            ),
+            tooltip=[
+                alt.Tooltip("hora:N", title="Início"),
+                alt.Tooltip("duracao:N", title="Duração"),
+            ],
         )
-        .properties(height=ALTURA)
+    )
+    falhas = (
+        alt.Chart(d[d["falhou"]])
+        .mark_text(dy=-8, fontSize=12, color=vis.TEXTO)
+        .encode(x=x, y="duracao_dag_s:Q", text="marca:N")
+    )
+    faltas = (
+        alt.Chart(d[d["marca_ausente"] != ""].assign(y=0.0))
+        .mark_text(angle=270, align="left", dx=0, dy=0, fontSize=11, color=vis.CINZA_ESCURO)
+        .encode(x=x, y=alt.Y("y:Q"), text="marca_ausente:N")
+    )
+    return (barras + falhas + faltas).properties(height=ALTURA)
+
+
+def duracao_por_task(d: pd.DataFrame, ordem: list[str]) -> alt.Chart:
+    """Um ponto por (execução, task), sempre a partir de zero. `d` vem de `cal.duracao_por_task`.
+    Falha = cruz cinza-escura ("falha ✕", também no texto da legenda); sucesso = círculo
+    petróleo."""
+    dados = d.assign(hora=d["inicio"].dt.strftime("%d/%m/%Y %H:%M UTC"))[
+        ["task_id", "hora", "resultado", "duracao_task_s"]
+    ]
+    dominio = ["sucesso", "falha ✕"]
+    return (
+        alt.Chart(dados)
+        .mark_point(filled=True, size=90, opacity=0.9)
+        .encode(
+            y=alt.Y("task_id:N", sort=ordem, title=None),
+            x=alt.X("duracao_task_s:Q", title="Duração (s)", scale=alt.Scale(zero=True)),
+            shape=alt.Shape(
+                "resultado:N",
+                scale=alt.Scale(domain=dominio, range=["circle", "cross"]),
+                legend=alt.Legend(title=None, orient="bottom"),
+            ),
+            color=alt.Color(
+                "resultado:N",
+                scale=alt.Scale(domain=dominio, range=[vis.PETROLEO, vis.CINZA_ESCURO]),
+                legend=None,
+            ),
+            tooltip=[
+                alt.Tooltip("task_id:N", title="Etapa"),
+                alt.Tooltip("hora:N", title="Execução"),
+                alt.Tooltip("duracao_task_s:Q", title="Duração (s)"),
+            ],
+        )
+        .properties(height=26 * len(ordem) + 60)
     )

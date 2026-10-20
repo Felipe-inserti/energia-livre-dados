@@ -347,7 +347,11 @@ def test_graficos_de_previsao_e_saude_sao_validos():
     g = gr.previsao_producao(lei.previsao_producao(), historia)
     assert maximo(g, "mes").startswith("2026-09-01") and len(historia) == 36
     exe, _ = lei.saude_execucoes()
-    gr.duracao_das_tasks(cal.ultima_execucao(exe)).to_dict(validate=True)
+    runs = cal.marcar_falhas(cal.execucoes_por_run(exe), frozenset())
+    ausentes = cal.execucoes_agendadas_ausentes(runs)
+    gr.duracao_das_execucoes(runs, ausentes).to_dict(validate=True)
+    etapas = cal.tasks_relevantes(exe)
+    gr.duracao_por_task(cal.duracao_por_task(exe, etapas), etapas).to_dict(validate=True)
 
 
 # ---- higiene: só o snapshot, sem nuvem

@@ -1679,5 +1679,34 @@ Medido com `AppTest.from_function` sobre o snapshot de 10/10/2026, 7 repetiçõe
 | Fria (reboot do app) | ~25 s | 1 |
 | Quente (F5 com o app acordado) | 1 a 2 s | 3 |
 
-- Cronômetro manual. Com 1 amostra fria não há mediana nem pior caso, e as 3 quentes são um intervalo (1 a 2 s), não uma mediana; o plano (seção 7) previa 3 cargas frias e 3 quentes por página. O ~25 s vale como ordem de grandeza, não como medida estável. O registro não diz qual página foi cronometrada.
-- **Leitura:** a carga fria de ~25 s é o **despertar do contêiner no plano gratuito** (o app hiberna sem uso), não o código da página: no `AppTest`, com o cache frio, a Decisão leva ~0,6 s (0,63 s de mediana) e a Previsão ~0,4 s. Com o app acordado, o F5 leva 1 a 2 s, que já inclui rede e renderização no navegador. Ou seja, o custo percebido pelo primeiro visitante depois de um período sem uso é o do contêiner; o do código é uma fração pequena dele.
+- Cronômetro manual. Com 1 amostra fria não há mediana nem pior caso, e as 3 quentes são um intervalo (1 a 2 s), não uma mediana; o plano (seção 7) previa 3 cargas frias e 3 quentes por página. O ~25 s vale como ordem de grandeza, não como medida estável. A página cronometrada foi a **Decisão**, a única no ar na hora (a Previsão ainda não estava publicada); a Previsão não tem medida no Cloud.
+- **Leitura:** a carga fria de ~25 s é o **despertar do contêiner no plano gratuito** (o app hiberna sem uso), não o código da página: no `AppTest`, com o cache frio, a Decisão (a página cronometrada no Cloud) leva ~0,6 s (0,63 s de mediana); a Previsão leva ~0,4 s, mas ainda não foi medida no Cloud. Com o app acordado, o F5 leva 1 a 2 s, que já inclui rede e renderização no navegador. Ou seja, o custo percebido pelo primeiro visitante depois de um período sem uso é o do contêiner; o do código é uma fração pequena dele.
+
+## Sprint 6, Parte C2: página Saúde do pipeline (20/10/2026)
+
+**Registro das execuções que falharam de propósito** (a página só rotula uma falha como proposital se o `run_id` está aqui ou na Sprint 3, 3.7; as outras aparecem como "falha"). Conferido nos logs locais (fora do repositório) em 20/10/2026:
+
+| `run_id` | Disparo com `{"falha_proposital": true}` | Onde está registrado |
+|---|---|---|
+| `manual__2026-10-06T22:12:05.158514+00:00` | sim | Sprint 3, 3.7 (acima), `airflow_falha_proposital.txt` |
+| `manual__passo8_falha_20261007T045457` | sim (`conf` do `dags trigger`) | `data/logs/passo8_falha_trigger.log` |
+| `manual__falha_20261008T032754` | sim (`disparando ... {"falha_proposital": true}`) | `data/logs/sprint5c_dag_falha.log` |
+
+Nas três, a task que falhou é o `dbt_test` e as seguintes ficam `upstream_failed`, como descreve o `docs/runbook_airflow.md` para `{"falha_proposital": true}`.
+
+Medido com `AppTest.from_function` sobre o snapshot de 10/10/2026, 7 repetições (frio = `st.cache_data.clear()` antes; quente = segundo `run()` da mesma instância; a Saúde rodou primeiro, então o pior frio dela, 0,86 s, inclui a importação das bibliotecas). Prosa visível = título, subtítulos, legendas, Markdown, caixas e métricas; sem tabelas, tooltips e expanders (mesmo método da Decisão e da Previsão).
+
+| Medida | Valor |
+|---|---|
+| Palavras visíveis | **328** (orçamento: 400) |
+| Caixas | 2 neutras, 0 âmbar |
+| Gráficos à vista / no expander | 1 / 1 (duração por etapa) |
+| Tabelas à vista | 0 (4 em "Ver valores", 1 na auditoria) |
+| Tempo da página no `AppTest`, frio (mediana / pior) | 0,31 s / 0,86 s |
+| Tempo da página no `AppTest`, quente (mediana / pior) | 0,07 s / 0,08 s |
+| Arquivos lidos / bytes | 4 (`saude_execucoes.csv` 17.294 B, `saude_testes_dbt.csv` 246 B, `frescor_fontes.csv` 247 B, `manifest.json` 16.399 B) / **34.186 B (33,4 KiB)** |
+| BigQuery | **0 bytes** (a página não importa `google.*`) |
+| Testes novos | 37 (Saúde); suíte: 1.079 |
+
+Números exibidos, todos do snapshot e conferidos contra os CSVs: 11 execuções (8 com sucesso, 3 com falha, todas no `dbt_test` e todas com fonte de falha proposital acima); última execução 114,4 s (1 min 54 s), agendada, início 10/10/2026 16:38 UTC; 250 testes (249 passaram, 1 aviso, 0 erros) em 8 tipos; 5 fontes com último dado em set/2026, mês encerrado há 10 dias na data do snapshot (39 dias desde o primeiro dia do mês, no CSV); execução agendada ausente: 08/10, 21:00 UTC; `run_results.json` gerado em 10/10/2026 16:40:53Z (80,2 s), coincidindo em horário e contagem com `data/logs/dbt_test_completo_6c2.log` (inferência, ver `decisoes.md`). Linha da Sprint 4 (6 min 40 s → 1 min 54 s, −71%; bytes faturados −69%) conferida contra a tabela "A DAG com a previsão mensal, medida" deste arquivo; a agendada de 06/10 mede 401,4 s no registro do Airflow (6 min 41 s).
+Não medido: tempo no Community Cloud (a página ainda não foi publicada) e o teste dos 30 segundos.

@@ -279,6 +279,126 @@ def ultima_execucao(execucoes: pd.DataFrame) -> pd.DataFrame:
     return execucoes[execucoes["inicio_utc"] == ultimo].reset_index(drop=True)
 
 
+def execucoes_por_run(execucoes: pd.DataFrame) -> pd.DataFrame:
+    """Uma linha por execução da DAG (o CSV tem uma por task), da mais antiga à mais recente."""
+    runs = (
+        execucoes[["run_id", "run_type", "estado_dag", "inicio_utc", "duracao_dag_s"]]
+        .drop_duplicates("run_id")
+        .assign(inicio=lambda d: pd.to_datetime(d["inicio_utc"], utc=True))
+    )
+    runs["duracao_dag_s"] = pd.to_numeric(runs["duracao_dag_s"])
+    return runs.sort_values("inicio").drop(columns="inicio_utc").reset_index(drop=True)
+
+
+def contagem_de_execucoes(runs: pd.DataFrame) -> dict:
+    return {
+        "total": len(runs),
+        "sucesso": int((runs["estado_dag"] == "success").sum()),
+        "falha": int((runs["estado_dag"] == "failed").sum()),
+    }
+
+
+def duracao_texto(segundos: float) -> str:
+    """114.4 -> '1 min 54 s'; 46.2 -> '46 s'. Arredonda uma vez, no fim."""
+    total = int(round(segundos))
+    minutos, resto = divmod(total, 60)
+    return f"{minutos} min {resto} s" if minutos else f"{resto} s"
+
+
+def execucoes_agendadas_ausentes(runs: pd.DataFrame) -> list[pd.Timestamp]:
+    """Horários da DAG (diária, mesma hora) SEM execução agendada entre a primeira e a última
+    registradas. O horário vem do `run_id` (`scheduled__2026-10-09T21:00:00+00:00`)."""
+    agendadas = (
+        runs[runs["run_type"] == "scheduled"]["run_id"].astype(str).str.removeprefix("scheduled__")
+    )
+    previstos = pd.to_datetime(agendadas, utc=True)
+    if previstos.empty:
+        return []
+    todos = pd.date_range(previstos.min(), previstos.max(), freq="D")
+    return [d for d in todos if d not in set(previstos)]
+
+
+def marcar_falhas(runs: pd.DataFrame, propositais: frozenset[str] = frozenset()) -> pd.DataFrame:
+    """Coluna `marca`: '✕ falha proposital' só se o run_id tem fonte (`propositais`); senão
+    '✕ falha'; execuções que deram certo ficam sem marca."""
+    falhou = runs["estado_dag"] != "success"
+    marca = pd.Series("", index=runs.index)
+    marca[falhou] = "✕ falha"
+    marca[falhou & runs["run_id"].isin(propositais)] = "✕ falha proposital"
+    return runs.assign(falhou=falhou, marca=marca)
+
+
+def resumo_da_ultima_execucao(runs: pd.DataFrame, execucoes: pd.DataFrame) -> dict:
+    """A execução mais recente (pelo início), a contagem de todas e a duração do `dbt_test`."""
+    r = runs.iloc[-1]
+    return {
+        "run_id": r["run_id"],
+        "estado": r["estado_dag"],
+        "inicio": r["inicio"],
+        "duracao_s": float(r["duracao_dag_s"]),
+        "tipo": r["run_type"],
+        "contagem": contagem_de_execucoes(runs),
+        "dbt_test_s": estado_da_etapa(execucoes, r["run_id"], "dbt_test")["duracao_s"],
+    }
+
+
+def resumo_do_dbt(testes: pd.DataFrame, status: dict) -> dict:
+    """Totais do último `dbt test` desta máquina; `completo` = comando `test` sem seleção."""
+    return {
+        **resumo_dos_testes(testes),
+        "gerado_em": status["run_results_gerado_em"],
+        "completo": status.get("comando") == "test" and not status.get("selecao"),
+    }
+
+
+def tasks_relevantes(execucoes: pd.DataFrame, minimo_s: float = 5.0) -> list[str]:
+    """As tasks com duração mediana de pelo menos `minimo_s`, da mais demorada à menos."""
+    mediana = pd.to_numeric(execucoes["duracao_task_s"]).groupby(execucoes["task_id"]).median()
+    mediana = mediana[mediana >= minimo_s].sort_values(ascending=False)
+    return list(mediana.index)
+
+
+def duracao_por_task(execucoes: pd.DataFrame, tasks: list[str]) -> pd.DataFrame:
+    """Um ponto por (execução, task) que rodou e terminou em sucesso ou falha. Puladas e
+    `upstream_failed` não têm duração e ficam de fora (nunca viram zero)."""
+    d = execucoes[
+        execucoes["task_id"].isin(tasks) & execucoes["estado_task"].isin(["success", "failed"])
+    ]
+    d = d.dropna(subset=["duracao_task_s"])
+    return d.assign(
+        resultado=d["estado_task"].map({"success": "sucesso", "failed": "falha ✕"}),
+        inicio=pd.to_datetime(d["inicio_utc"], utc=True),
+    )[["run_id", "inicio", "task_id", "resultado", "duracao_task_s"]].reset_index(drop=True)
+
+
+def estado_da_etapa(execucoes: pd.DataFrame, run_id: str, task_id: str) -> dict:
+    linha = execucoes[(execucoes["run_id"] == run_id) & (execucoes["task_id"] == task_id)]
+    if linha.empty:
+        return {"estado": None, "duracao_s": None}
+    r = linha.iloc[0]
+    duracao = None if pd.isna(r["duracao_task_s"]) else float(r["duracao_task_s"])
+    return {"estado": str(r["estado_task"]), "duracao_s": duracao}
+
+
+def ultimo_mes_das_fontes(frescor: pd.DataFrame) -> dict:
+    """O mês mais antigo entre os últimos dados das fontes (a mais atrasada) e quantas fontes
+    chegam só até ele."""
+    meses = pd.to_datetime(frescor["ultimo_dado"])
+    mais_antigo = meses.min()
+    return {
+        "mes": mais_antigo,
+        "fontes_nesse_mes": int((meses == mais_antigo).sum()),
+        "fontes": len(meses),
+    }
+
+
+def dias_desde_o_fim_do_mes(mes, referencia) -> int:
+    """Dias entre o ÚLTIMO dia do mês (`mes` é qualquer dia dele) e a data `referencia`; negativo
+    ou zero = o mês ainda não terminou na data do snapshot."""
+    fim = (pd.Timestamp(mes) + pd.offsets.MonthEnd(0)).date()
+    return (pd.Timestamp(referencia).date() - fim).days
+
+
 # ---------------------------------------------------------------- textos da Decisão (números)
 
 
