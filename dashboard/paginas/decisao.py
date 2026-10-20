@@ -92,7 +92,7 @@ def _tabela_f(t: pd.DataFrame) -> pd.DataFrame:
                 "—" if z else cal.reais(v, sinal=True)
                 for z, v in zip(zero, t["valor_previsao_rs"], strict=True)
             ],
-            "Efeito do volume sob o diferencial de preço (só banda 0%)": [
+            "Ganho por contratar acima ou abaixo da previsão (só banda 0%)": [
                 cal.reais(v, sinal=True) if z else "—"
                 for z, v in zip(zero, t["valor_previsao_rs"], strict=True)
             ],

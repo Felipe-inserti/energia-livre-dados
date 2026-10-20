@@ -340,38 +340,12 @@ def test_nenhum_grafico_de_serie_mostra_o_mes_incompleto():
 
 
 def test_graficos_de_previsao_e_saude_sao_validos():
-    prev = lei.previsoes_teste_final()
-    d = prev[prev["origem"] == pd.Timestamp("2024-12-01")]
-    longo = pd.concat(
-        [
-            d.assign(
-                serie=d["candidato"].map(
-                    {
-                        "comb_ets_sarima_regressao": "modelo",
-                        "sazonal_ingenuo_mesmos_pares": "ingênuo sazonal",
-                    }
-                ),
-                mwmed=d["previsto_mwmed"],
-            ),
-            d.assign(serie="real", mwmed=d["real_mwmed"]),
-        ]
-    )[["alvo", "serie", "mwmed"]]
-    gr.real_x_previsto(longo).to_dict(validate=True)
-    m = lei.mape_por_ano().assign(
-        rotulo=lambda x: x["candidato"].map(
-            {
-                "comb_ets_sarima_regressao": "modelo",
-                "sazonal_ingenuo_mesmos_pares": "ingênuo sazonal",
-            }
-        )
-    )
-    gr.mape(m).to_dict(validate=True)
+    gr.real_x_previsto(cal.previsto_de_dezembro(lei.previsoes_teste_final())).to_dict(validate=True)
+    gr.erro_por_ano(cal.mape_por_ano_longo(lei.mape_por_ano())).to_dict(validate=True)
     gr.cobertura_por_horizonte(lei.cobertura()["por_horizonte"]).to_dict(validate=True)
-    g = gr.previsao_producao(
-        lei.previsao_producao(),
-        cal.ate_o_mes(lei.carga_mensal(), pd.Timestamp("2026-09-01")).tail(36),
-    )
-    assert maximo(g, "mes").startswith("2026-09-01")
+    historia = cal.historia_recente(cal.ate_o_mes(lei.carga_mensal(), pd.Timestamp("2026-09-01")))
+    g = gr.previsao_producao(lei.previsao_producao(), historia)
+    assert maximo(g, "mes").startswith("2026-09-01") and len(historia) == 36
     exe, _ = lei.saude_execucoes()
     gr.duracao_das_tasks(cal.ultima_execucao(exe)).to_dict(validate=True)
 

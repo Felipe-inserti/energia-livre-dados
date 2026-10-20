@@ -18,6 +18,7 @@ import pytest
 from streamlit.testing.v1 import AppTest
 
 from dashboard import calculos as cal
+from dashboard import graficos as gr
 from dashboard import leitura as lei
 from dashboard import textos as tx
 from dashboard import visual as vis
@@ -50,114 +51,20 @@ def at():
 # ---------------------------------------------------------------- leitura da árvore da página
 
 
-def achatar(bloco, saida=None):
-    """Todos os elementos na ordem em que aparecem (entrando nos expanders e colunas)."""
-    saida = [] if saida is None else saida
-    for k in sorted(bloco.children):
-        n = bloco.children[k]
-        if getattr(n, "children", None):
-            saida.append((n.type, n))
-            achatar(n, saida)
-        else:
-            saida.append((n.type, n))
-    return saida
-
-
-def elementos(at):
-    return achatar(at.main)
-
-
-def spec(no) -> str:
-    """O spec Vega-Lite de um gráfico, legível (o JSON do Streamlit escapa os acentos)."""
-    return json.dumps(json.loads(no.proto.spec), ensure_ascii=False)
-
-
-def dados_do_grafico(no, coluna: str | None = None) -> pd.DataFrame:
-    """Os dados de um gráfico Altair (o Streamlit os manda em Arrow, fora do spec). Com várias
-    camadas há vários conjuntos: devolve o maior que tem a `coluna`."""
-    import pyarrow as pa
-
-    todos = [pa.ipc.open_stream(ds.data.data).read_all().to_pandas() for ds in no.proto.datasets]
-    candidatos = [d for d in todos if coluna is None or coluna in d.columns]
-    return max(candidatos, key=len)
-
-
-def texto(no) -> str:
-    """O texto de um elemento; de um gráfico, o spec e os dados; de uma tabela, o CSV."""
-    if hasattr(no, "proto") and hasattr(no.proto, "spec"):
-        tudo = [spec(no)]
-        for ds in no.proto.datasets:
-            import pyarrow as pa
-
-            tudo.append(pa.ipc.open_stream(ds.data.data).read_all().to_pandas().to_csv())
-        return "\n".join(tudo)
-    valor = getattr(no, "value", "")
-    rotulo = getattr(no, "label", "") or ""  # métricas e expanders: o rótulo também é texto
-    if isinstance(valor, str):
-        return f"{rotulo}\n{valor}" if rotulo else valor
-    if isinstance(valor, pd.DataFrame):
-        return valor.to_csv() + " ".join(map(str, valor.columns))
-    return rotulo
-
-
-def indice(at, tipo: str, contem: str) -> int:
-    for i, (t, no) in enumerate(elementos(at)):
-        if t == tipo and contem in texto(no):
-            return i
-    raise AssertionError(f"não achei {tipo} com {contem!r}")
-
-
-def indice_exp(at, comeca_com: str) -> int:
-    return next(
-        i
-        for i, (t, no) in enumerate(elementos(at))
-        if t == "expander" and no.label.startswith(comeca_com)
-    )
-
-
-def primeiro(at, tipo: str) -> int:
-    return next(i for i, (t, _) in enumerate(elementos(at)) if t == tipo)
-
-
-def expander(at, comeca_com: str):
-    return next(
-        no for t, no in elementos(at) if t == "expander" and no.label.startswith(comeca_com)
-    )
-
-
-def toda_a_tela(at) -> str:
-    return "\n".join(texto(no) for _, no in elementos(at))
-
-
-def antes_do_glossario(at) -> str:
-    """Tudo que aparece fora do glossário e da auditoria (o glossário vem antes da auditoria)."""
-    saida = []
-    for t, no in elementos(at):
-        if t == "expander" and no.label.startswith("Glossário"):
-            break
-        saida.append(texto(no))
-    return "\n".join(saida)
-
-
-def palavras(t: str) -> int:
-    return len(re.findall(r"\S+", re.sub(r"[*`_#>]", "", t or "")))
-
-
-def palavras_visiveis(bloco) -> int:
-    """Prosa visível, sem tooltips e sem o que está dentro de expanders (fechados)."""
-    total = 0
-    for k in sorted(bloco.children):
-        n = bloco.children[k]
-        if n.type == "expander":
-            continue
-        if getattr(n, "children", None):
-            total += palavras_visiveis(n)
-        elif n.type in ("title", "subheader", "caption", "markdown", "info", "warning"):
-            total += palavras(n.value)
-        elif n.type == "metric":
-            total += palavras(n.label) + palavras(n.value)
-    return total
-
+from apptest_util import (  # noqa: E402
+    achatar,
+    antes_do_glossario,
+    dados_do_grafico,
+    elementos,
+    expander,
+    indice,
+    indice_exp,
+    palavras,
+    palavras_visiveis,
+    primeiro,
+    spec,
+    toda_a_tela,
+)
 
 # ---------------------------------------------------------------- carrega e estrutura
 
@@ -216,7 +123,7 @@ def test_os_tres_cartoes_com_a_ressalva_antes_do_numero(at):
     c1, c2, c3 = list(at.metric)
     assert [c.label for c in at.metric] == [
         "Economia total",
-        "Parte vinda de 2022 e 2025",
+        "Mais que todo o ganho veio de 2022 e 2025",
         "Valor da previsão",
     ]
     assert (c1.value, c2.value, c3.value) == ("R$ 8,7 mil", "102%", "≈ 0")
@@ -357,7 +264,7 @@ def test_em_banda_zero_o_ponto_da_previsao_e_rotulado_como_efeito_do_volume(at):
     dados = dados_do_grafico(g)
     zero = dados[dados["banda"] == 0]
     assert set(zero["serie"]) == {
-        "Efeito do volume sob o diferencial de preço (não é previsão)",
+        "Ganho por contratar acima ou abaixo da previsão",
         "Valor da otimização",
     }
     assert "Valor da previsão" not in set(zero["serie"])
@@ -367,7 +274,7 @@ def test_em_banda_zero_o_ponto_da_previsao_e_rotulado_como_efeito_do_volume(at):
     assert "−R\\$ 2.679,52" in nota and "+R\\$ 3.416,49" in nota and "+R\\$ 3.740,51" in nota
     assert "a precisão da previsão não entra" in nota and "apostas de sinais opostos" in nota
     tabela = next(no.value for t, no in achatar(e) if t == "dataframe")
-    efeito = "Efeito do volume sob o diferencial de preço (só banda 0%)"
+    efeito = "Ganho por contratar acima ou abaixo da previsão (só banda 0%)"
     zero_l = tabela[tabela["Banda"] == "0%"].iloc[0]
     assert zero_l["Valor da previsão (banda > 0)"] == "—" and zero_l[efeito] == "+R$ 3.740,51"
     dez = tabela[tabela["Banda"] == "10%"].iloc[0]
@@ -406,6 +313,26 @@ def test_as_sensibilidades_em_pontos_na_ordem_do_plano_e_sem_ranking(at):
     assert f"{tx.CHAVES['especulacao']}, {tx.CHAVES['excluida']}" in toda_a_tela(at)
     base = dados_do_grafico(g, "x")  # a linha vertical do caso base
     assert round(float(base["x"].iloc[0]), 2) == 9020.19 and vis.AMBAR in spec(g)
+
+
+def test_o_eixo_das_sensibilidades_tem_no_maximo_6_marcas(at):
+    g = elementos(at)[indice(at, "vega_lite_chart", "Volume até 1,2× a previsão")][1]
+    s = json.loads(g.proto.spec)
+    eixos = [
+        c["encoding"]["x"]["axis"]
+        for c in s["layer"]
+        if "axis" in c.get("encoding", {}).get("x", {})
+    ]
+    assert eixos and all(e["tickCount"] <= 6 for e in eixos)
+    assert gr.MARCAS_SENSIBILIDADES <= 6
+
+
+def test_o_cartao_da_concentracao_diz_que_mais_que_todo_o_ganho_veio_de_2022_e_2025(at):
+    assert at.metric[1].label == "Mais que todo o ganho veio de 2022 e 2025"
+    assert at.metric[1].value == "102%"
+    legendas = [c.value for c in at.caption]
+    assert any("R\\$ 9,2 mil de R\\$ 9,0 mil" in c and "−R\\$ 182" in c for c in legendas)
+    assert "Parte vinda de" not in toda_a_tela(at)
 
 
 def tabela_sens(at):
@@ -710,7 +637,7 @@ def test_a_tabela_por_ano_soma_um_centavo_acima_do_total_e_a_legenda_explica(at)
 
 def test_a_tabela_da_banda_fecha_com_a_nota(at):
     t = tabela_em(at, "Detalhe da banda")
-    efeito = "Efeito do volume sob o diferencial de preço (só banda 0%)"
+    efeito = "Ganho por contratar acima ou abaixo da previsão (só banda 0%)"
     for _, linha in t.iterrows():
         previsao = (
             linha[efeito] if linha["Banda"] == "0%" else linha["Valor da previsão (banda > 0)"]

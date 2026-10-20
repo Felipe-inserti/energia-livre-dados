@@ -25,7 +25,9 @@ FUNDO_CARTAO = "#f5f7fa"
 PALETA = frozenset({PETROLEO, CINZA, CINZA_CLARO, CINZA_ESCURO, AMBAR, TEXTO, FUNDO_CARTAO})
 
 # nomes curtos e iguais em todo o dashboard (a definição fica no help= e no glossário)
-ANO_ANTERIOR = "Ano anterior"  # repete o consumo do ano anterior (a "ingênua")
+ANO_ANTERIOR = "Ano anterior"  # estratégia de CONTRATO: o consumo médio do ano anterior (Decisão)
+# modelo de COMPARAÇÃO da previsão: repete o mesmo mês do ano anterior (Previsão). NÃO é o de cima
+MESMO_MES = "Mesmo mês do ano anterior"
 PREVISAO = "Previsão"  # contrata o volume previsto (a "pontual")
 OTIMIZADA = "Otimizada"  # contrata o volume que a regra escolhe dentro da banda
 NOMES_DAS_ESTRATEGIAS = {"ingenua": ANO_ANTERIOR, "pontual": PREVISAO, "otimizada": OTIMIZADA}
@@ -114,9 +116,11 @@ def limitacoes(titulo: str, itens: list[str]) -> None:
     st.markdown("\n".join(f"{i}. {t}" for i, t in enumerate(itens, 1)))
 
 
-def glossario(termos: dict[str, str]):
+def glossario(termos: dict[str, str], titulo: str | None = None):
     """Expander fechado com as siglas e os termos; devolve o contêiner (usar com `with`)."""
-    caixa = st.expander("Glossário (PLD, MWm, CVaR e outros termos)", expanded=False)
+    if titulo is None:
+        titulo = f"Glossário ({', '.join(list(termos)[:3])} e outros termos)"
+    caixa = st.expander(titulo, expanded=False)
     with caixa:
         st.markdown("\n".join(f"- **{k}:** {v}" for k, v in termos.items()))
     return caixa

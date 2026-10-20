@@ -8,6 +8,7 @@ Os testes procuram as frases-chave abaixo (`CHAVES`) na tela e a posição delas
 """
 
 from dashboard import calculos as cal
+from dashboard import glossario
 from dashboard import visual as vis
 
 # Frases-chave que os testes procuram (e que não podem sumir da tela)
@@ -23,7 +24,7 @@ CHAVES = {
     "previsao_zero": "a previsão vale ≈ 0",
     "sem_preco": "A flexibilidade não tem preço no modelo",
     "opcao": "banda maior é uma opção maior",
-    "f0": "efeito do volume sob o diferencial de preço",
+    "f0": "ganho por contratar acima ou abaixo da previsão",
     "especulacao": "especulação",
     "excluida": "excluída do caso base",
     "previa": "PRÉVIA",
@@ -96,7 +97,7 @@ def cartoes(res: dict, res_sem_2021: dict, conc: dict, meses: tuple[int, int]) -
         },
         {
             "ressalva": CHAVES["concentracao"],
-            "rotulo": "Parte vinda de 2022 e 2025",
+            "rotulo": "Mais que todo o ganho veio de 2022 e 2025",
             "valor": vis.percentual(conc["pct_do_total"], 0),
             "linhas": [
                 f"do valor da otimização ({vis.reais_curto(conc['soma_destacados_rs'], md=True)} "
@@ -296,19 +297,18 @@ LIMITACOES_EXTRAS = (
 
 # ---------------------------------------------------------------- glossário
 
-GLOSSARIO = {
-    "PLD": "Preço de Liquidação das Diferenças: o preço da energia no mercado de curto prazo "
-    "(R\\$/MWh).",
-    "MWm": "megawatt médio: a energia média por hora; 100 MWh/mês ≈ 0,137 MWm.",
-    "CVaR": "média do custo nos 5% piores cenários.",
-    "Banda": "folga (±) que o contrato permite em torno do volume contratado.",
-    "Valor da previsão": "custo do Ano anterior − custo da Previsão.",
-    "Valor da otimização": "custo da Previsão − custo da Otimizada.",
-    "Ano anterior · Previsão · Otimizada": "contrata o consumo do ano passado · o volume previsto "
-    "· o volume que a regra escolhe dentro da banda.",
-    "Contrafactual": "o que teria acontecido numa condição que não existiu; aqui, contratar no "
-    "mercado livre antes de poder migrar.",
-}
+GLOSSARIO = glossario.selecionar(
+    "PLD",
+    "MWm",
+    "CVaR",
+    "Banda",
+    "Valor da previsão",
+    "Valor da otimização",
+    "Ano anterior",
+    "Previsão · Otimizada",
+    "Mesmo mês do ano anterior",
+    "Contrafactual",
+)
 
 
 # ---------------------------------------------------------------- auditoria

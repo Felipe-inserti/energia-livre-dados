@@ -26,8 +26,12 @@ ALTURA = 320
 _MILHAR_BR = "replace(format(datum.value, ',.0f'), regexp(',', 'g'), '.')"
 
 
-def eixo_reais(titulo: str) -> alt.Axis:
-    return alt.Axis(title=titulo, labelExpr=_MILHAR_BR)
+def eixo_reais(titulo: str, marcas: int | None = None) -> alt.Axis:
+    """Eixo em R$; `marcas` limita o número de marcas (dica ao Vega, que arredonda para valores
+    redondos: sai no máximo esse número, nunca um eixo cheio de rótulos)."""
+    if marcas is None:
+        return alt.Axis(title=titulo, labelExpr=_MILHAR_BR)
+    return alt.Axis(title=titulo, labelExpr=_MILHAR_BR, tickCount=marcas)
 
 
 # ---------------------------------------------------------------- decisão
@@ -115,7 +119,7 @@ def preco_x_esperado(d3: pd.DataFrame) -> alt.Chart:
 
 SERIE_PREVISAO = "Valor da previsão"
 SERIE_OTIMIZACAO = "Valor da otimização"
-SERIE_F0 = "Efeito do volume sob o diferencial de preço (não é previsão)"
+SERIE_F0 = "Ganho por contratar acima ou abaixo da previsão"
 
 
 def _longo_da_banda(t: pd.DataFrame, extra: list[str] | None = None) -> pd.DataFrame:
@@ -218,6 +222,9 @@ def banda_por_ano(por_ano: pd.DataFrame) -> alt.HConcatChart:
     return alt.hconcat(*paineis).resolve_scale(y="shared")
 
 
+MARCAS_SENSIBILIDADES = 6  # o eixo x tem rótulos largos (R$ 10.000); mais que isso se sobrepõe
+
+
 def sensibilidades_pontos(sens: pd.DataFrame, ordem: list[str], base_rs: float) -> alt.LayerChart:
     """Gráfico de pontos: uma linha por variação (na ordem declarada, nunca por valor), o valor da
     otimização no eixo x e a linha vertical do caso base. A especulação é âmbar e vazada."""
@@ -230,7 +237,7 @@ def sensibilidades_pontos(sens: pd.DataFrame, ordem: list[str], base_rs: float) 
         "valor_otimizacao_rs:Q",
         title="Valor da otimização em 5 anos (R$)",
         scale=alt.Scale(zero=True),
-        axis=eixo_reais("Valor da otimização em 5 anos (R$)"),
+        axis=eixo_reais("Valor da otimização em 5 anos (R$)", marcas=MARCAS_SENSIBILIDADES),
     )
     linha_base = (
         alt.Chart(pd.DataFrame({"x": [base_rs], "texto": ["caso base"]}))
@@ -326,39 +333,94 @@ def consumo(df: pd.DataFrame) -> alt.Chart:
 
 # ---------------------------------------------------------------- previsão
 
+NOME_REAL = "Carga real"
+NOME_MODELO = "Modelo"
+NOME_COMPARACAO = vis.MESMO_MES  # o modelo de comparação; NÃO é a estratégia "Ano anterior"
+_ESCALA_PREVISAO = alt.Scale(
+    domain=[NOME_REAL, NOME_MODELO, NOME_COMPARACAO],
+    range=[vis.CINZA_ESCURO, vis.PETROLEO, vis.CINZA],
+)
 
-def real_x_previsto(df: pd.DataFrame) -> alt.Chart:
-    """`df`: alvo, serie ('real', 'modelo', 'ingênuo sazonal') e mwmed."""
+
+def eixo_mwm(titulo: str = "Carga SE/CO (MWm)") -> alt.Axis:
+    return alt.Axis(title=titulo, labelExpr=_MILHAR_BR)
+
+
+def real_x_previsto(previsto: pd.DataFrame) -> alt.Chart:
+    """Carga real, modelo e comparação nos meses do teste final (previsões feitas em dezembro, 12
+    meses à frente). Uma linha por ano: a previsão recomeça a cada dezembro."""
+    nomes = {"real": NOME_REAL, "modelo": NOME_MODELO, "comparacao": NOME_COMPARACAO}
+    d = previsto.melt(
+        id_vars=["alvo", "ano"], value_vars=list(nomes), var_name="serie", value_name="mwm"
+    )
+    d["serie"] = d["serie"].map(nomes)
     return (
-        alt.Chart(df)
-        .mark_line(point=True)
+        alt.Chart(d)
+        .mark_line(strokeWidth=2)
         .encode(
-            x=alt.X("alvo:T", title=None),
-            y=alt.Y("mwmed:Q", title="Carga SE/CO (MWmed)", scale=alt.Scale(zero=False)),
-            color=alt.Color("serie:N", legend=alt.Legend(title=None, orient="bottom")),
-            tooltip=["alvo:T", "serie:N", "mwmed:Q"],
+            x=alt.X("alvo:T", title=None, axis=alt.Axis(format="%Y", tickCount="year")),
+            y=alt.Y("mwm:Q", scale=alt.Scale(zero=False), axis=eixo_mwm()),
+            color=alt.Color(
+                "serie:N",
+                scale=_ESCALA_PREVISAO,
+                legend=alt.Legend(title=None, orient="bottom", labelLimit=320),
+            ),
+            strokeDash=alt.condition(
+                alt.datum.serie == NOME_COMPARACAO, alt.value([5, 3]), alt.value([1, 0])
+            ),
+            detail=alt.Detail("ano:N"),
+            tooltip=[
+                alt.Tooltip("alvo:T", title="Mês", format="%m/%Y"),
+                alt.Tooltip("serie:N", title="Série"),
+                alt.Tooltip("mwm:Q", title="MWm", format=",.0f"),
+            ],
         )
         .properties(height=ALTURA)
     )
 
 
-def mape(df: pd.DataFrame) -> alt.Chart:
-    return (
-        alt.Chart(df)
+def erro_por_ano(mape: pd.DataFrame) -> alt.Chart:
+    """MAPE de cada ano, modelo e comparação, com o valor na barra (o modelo perde em 2025)."""
+    nomes = {"modelo": NOME_MODELO, "comparacao": NOME_COMPARACAO}
+    d = mape.assign(
+        ano_txt=mape["ano"].map(vis.ano),
+        serie=mape["serie"].map(nomes),
+        texto=mape["mape_pct"].map(lambda v: f"{cal.numero(v, 1)}%"),
+    )
+    ordem = list(dict.fromkeys(d["ano_txt"]))
+    x = alt.X("ano_txt:N", sort=ordem, title=None, axis=alt.Axis(labelAngle=0))
+    cor = alt.Color(
+        "serie:N",
+        scale=alt.Scale(domain=[NOME_MODELO, NOME_COMPARACAO], range=[vis.PETROLEO, vis.CINZA]),
+        legend=alt.Legend(title=None, orient="bottom", labelLimit=320),
+    )
+    barras = (
+        alt.Chart(d)
         .mark_bar()
         .encode(
-            x=alt.X("ano:O", title="Ano"),
-            xOffset="rotulo:N",
-            y=alt.Y("mape_pct:Q", title="MAPE (%)", scale=alt.Scale(zero=True)),
-            color=alt.Color("rotulo:N", legend=alt.Legend(title=None, orient="bottom")),
-            tooltip=["ano:O", "rotulo:N", "mape_pct:Q"],
+            x=x,
+            xOffset="serie:N",
+            y=alt.Y(
+                "mape_pct:Q", scale=alt.Scale(zero=True), axis=alt.Axis(title="Erro médio (%)")
+            ),
+            color=cor,
+            tooltip=[
+                alt.Tooltip("ano_txt:N", title="Ano"),
+                alt.Tooltip("serie:N", title="Série"),
+                alt.Tooltip("texto:N", title="Erro médio"),
+            ],
         )
-        .properties(height=ALTURA // 1.3)
     )
+    rotulos = (
+        alt.Chart(d)
+        .mark_text(dy=-6, fontSize=11, color=vis.TEXTO)
+        .encode(x=x, xOffset="serie:N", y="mape_pct:Q", text="texto:N")
+    )
+    return (barras + rotulos).properties(height=ALTURA // 1.3)
 
 
-def cobertura_por_horizonte(df: pd.DataFrame) -> alt.Chart:
-    """`df`: valor (horizonte), cobertura80_pct, cobertura95_pct; linhas de referência nominais."""
+def cobertura_por_horizonte(df: pd.DataFrame) -> alt.LayerChart:
+    """`df`: valor (horizonte), cobertura80_pct e cobertura95_pct; tracejado = o prometido."""
     longo = df.melt(
         id_vars="valor",
         value_vars=["cobertura80_pct", "cobertura95_pct"],
@@ -366,46 +428,96 @@ def cobertura_por_horizonte(df: pd.DataFrame) -> alt.Chart:
         value_name="cobertura",
     )
     longo["nivel"] = longo["nivel"].map(
-        {"cobertura80_pct": "observada (nominal 80%)", "cobertura95_pct": "observada (nominal 95%)"}
+        {"cobertura80_pct": "intervalo de 80%", "cobertura95_pct": "intervalo de 95%"}
     )
-    nominal = pd.DataFrame({"y": [80, 95]})
-    ref = alt.Chart(nominal).mark_rule(color=CINZA, strokeDash=[4, 3]).encode(y="y:Q")
+    prometido = pd.DataFrame({"y": [80, 95]})
+    ref = alt.Chart(prometido).mark_rule(color=vis.CINZA, strokeDash=[4, 3]).encode(y="y:Q")
     linhas = (
         alt.Chart(longo)
         .mark_line(point=True)
         .encode(
-            x=alt.X("valor:O", title="Horizonte (meses à frente)"),
+            x=alt.X("valor:O", title="Meses à frente", axis=alt.Axis(labelAngle=0)),
             y=alt.Y(
-                "cobertura:Q", title="Cobertura observada (%)", scale=alt.Scale(domain=[50, 100])
+                "cobertura:Q",
+                title="Cobertura observada (%) — tracejado: o prometido",
+                scale=alt.Scale(domain=[50, 100]),
             ),
-            color=alt.Color("nivel:N", legend=alt.Legend(title=None, orient="bottom")),
-            tooltip=["valor:O", "nivel:N", "cobertura:Q"],
+            color=alt.Color(
+                "nivel:N",
+                scale=alt.Scale(
+                    domain=["intervalo de 80%", "intervalo de 95%"],
+                    range=[vis.PETROLEO, vis.CINZA_ESCURO],
+                ),
+                legend=alt.Legend(title=None, orient="bottom"),
+            ),
+            tooltip=["valor:O", "nivel:N", alt.Tooltip("cobertura:Q", format=".1f")],
         )
     )
     return (linhas + ref).properties(height=ALTURA // 1.3)
 
 
-def previsao_producao(previsao: pd.DataFrame, historico: pd.DataFrame) -> alt.Chart:
-    """Previsão de produção (12 meses) com as faixas NOMINAIS de 80% e 95% e a carga realizada."""
-    base = alt.Chart(previsao).encode(x=alt.X("mes_alvo:T", title=None))
-    f95 = base.mark_area(opacity=0.15, color=AZUL).encode(
-        y=alt.Y("p025_mwmed:Q", scale=alt.Scale(zero=False), title="Carga SE/CO (MWmed)"),
-        y2="p975_mwmed:Q",
+def previsao_producao(
+    previsao: pd.DataFrame, historia: pd.DataFrame, cobertura: dict | None = None
+) -> alt.LayerChart:
+    """Os próximos 12 meses com as faixas de 80% e 95% e a carga ajustada dos últimos meses.
+
+    Com `cobertura` (a geral, fora da amostra), cada faixa leva escrita a cobertura que teve no
+    teste final: a faixa de 80% "cobre 70,2% no teste final, não 80%"."""
+    # só as colunas que o gráfico usa (calibração e série ficam na auditoria)
+    previsao = previsao[
+        ["mes_alvo", "previsao_mwmed", "p025_mwmed", "p10_mwmed", "p90_mwmed", "p975_mwmed"]
+    ]
+    historia = historia[["mes", "carga_ajustada_reconstruida_mwmed"]]
+    base = alt.Chart(previsao).encode(
+        x=alt.X("mes_alvo:T", title=None, axis=alt.Axis(format="%m/%Y"))
     )
-    f80 = base.mark_area(opacity=0.30, color=AZUL).encode(y="p10_mwmed:Q", y2="p90_mwmed:Q")
-    centro = base.mark_line(color=AZUL).encode(
-        y="previsao_mwmed:Q", tooltip=["mes_alvo:T", "previsao_mwmed:Q"]
+    f95 = base.mark_area(opacity=0.15, color=vis.PETROLEO).encode(
+        y=alt.Y("p025_mwmed:Q", scale=alt.Scale(zero=False), axis=eixo_mwm()), y2="p975_mwmed:Q"
+    )
+    f80 = base.mark_area(opacity=0.30, color=vis.PETROLEO).encode(y="p10_mwmed:Q", y2="p90_mwmed:Q")
+    centro = base.mark_line(color=vis.PETROLEO, strokeWidth=2.5).encode(
+        y="previsao_mwmed:Q",
+        tooltip=[
+            alt.Tooltip("mes_alvo:T", title="Mês", format="%m/%Y"),
+            alt.Tooltip("previsao_mwmed:Q", title="Previsão (MWm)", format=",.0f"),
+        ],
     )
     real = (
-        alt.Chart(historico)
-        .mark_line(color=CINZA)
+        alt.Chart(historia)
+        .mark_line(color=vis.CINZA_ESCURO)
         .encode(
             x="mes:T",
             y="carga_ajustada_reconstruida_mwmed:Q",
-            tooltip=["mes:T", "carga_ajustada_reconstruida_mwmed:Q"],
+            tooltip=[
+                alt.Tooltip("mes:T", title="Mês", format="%m/%Y"),
+                alt.Tooltip(
+                    "carga_ajustada_reconstruida_mwmed:Q", title="Real (MWm)", format=",.0f"
+                ),
+            ],
         )
     )
-    return (real + f95 + f80 + centro).properties(height=ALTURA)
+    camadas = real + f95 + f80 + centro
+    if cobertura is not None:
+        ultimo = previsao["mes_alvo"].max()
+        topo = previsao[previsao["mes_alvo"] == ultimo].iloc[0]
+        rotulos = pd.DataFrame(
+            {
+                "mes_alvo": [ultimo, ultimo],
+                "y": [topo["p90_mwmed"], topo["p975_mwmed"]],
+                "texto": [
+                    f"faixa de 80%: cobre {vis.percentual(cobertura['cobertura80_pct'])} no teste "
+                    "final, não 80%",
+                    f"faixa de 95%: cobre {vis.percentual(cobertura['cobertura95_pct'])} no teste "
+                    "final, não 95%",
+                ],
+            }
+        )
+        camadas += (
+            alt.Chart(rotulos)
+            .mark_text(align="right", baseline="bottom", dy=-4, fontSize=11, color=vis.TEXTO)
+            .encode(x="mes_alvo:T", y="y:Q", text="texto:N")
+        )
+    return camadas.properties(height=ALTURA)
 
 
 # ---------------------------------------------------------------- saúde
