@@ -132,6 +132,14 @@ def legenda_da_producao(previsao: "object") -> str:
     )
 
 
+def legenda_das_faixas(cobertura: dict) -> str:
+    """O que cada faixa do gráfico cobriu FORA da amostra (teste final), não o que prometia."""
+    return (
+        f"Faixa de 80%: cobre {pct(cobertura['cobertura80_pct'])} no teste final, não 80%. "
+        f"Faixa de 95%: cobre {pct(cobertura['cobertura95_pct'])} no teste final, não 95%."
+    )
+
+
 def erros_de_producao(erros: "object") -> str:
     if erros.empty:
         return f"{CHAVES['sem_realizado']}."

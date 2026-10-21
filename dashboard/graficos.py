@@ -152,10 +152,11 @@ def _longo_da_banda(t: pd.DataFrame, extra: list[str] | None = None) -> pd.DataF
     return d
 
 
-_ESCALA_BANDA = alt.Scale(
-    domain=[SERIE_PREVISAO, SERIE_OTIMIZACAO, SERIE_F0],
-    range=[vis.CINZA, vis.PETROLEO, vis.CINZA],
-)
+_SERIES_DA_BANDA = [SERIE_PREVISAO, SERIE_OTIMIZACAO, SERIE_F0]
+_ESCALA_BANDA = alt.Scale(domain=_SERIES_DA_BANDA, range=[vis.CINZA, vis.PETROLEO, vis.CINZA])
+# Preenchimento do ponto: só a série F0 é vazada (branca). É uma ESCALA própria (e não uma condição
+# `alt.condition`) para a legenda também mostrar o símbolo vazado: a legenda só enxerga escalas.
+_ESCALA_PREENCHIMENTO = alt.Scale(domain=_SERIES_DA_BANDA, range=[vis.CINZA, vis.PETROLEO, "white"])
 
 
 def _camadas_da_banda(
@@ -167,13 +168,10 @@ def _camadas_da_banda(
         scale=alt.Scale(domain=[-1, 16], nice=False),
         axis=alt.Axis(values=[0, 5, 10, 15], labelExpr="datum.value + '%'"),
     )
-    cor = alt.Color(
-        "serie:N",
-        scale=_ESCALA_BANDA,
-        legend=alt.Legend(title=None, orient="bottom", columns=1, labelLimit=520)
-        if legenda
-        else None,
-    )
+    legend = alt.Legend(title=None, orient="bottom", columns=1, labelLimit=520) if legenda else None
+    cor = alt.Color("serie:N", scale=_ESCALA_BANDA, legend=legend)
+    # a mesma legenda nos três canais (linha, contorno e preenchimento) funde num só símbolo
+    preenchimento = alt.Fill("serie:N", scale=_ESCALA_PREENCHIMENTO, legend=legend)
     y = alt.Y("valor_rs:Q", axis=eixo_reais("R$ de custo evitado"))
     linhas = alt.Chart(d).mark_line(strokeWidth=2.5).encode(x=x, y=y, color=cor, detail="serie:N")
     pontos = (
@@ -182,9 +180,9 @@ def _camadas_da_banda(
         .encode(
             x=x,
             y=y,
+            # em banda 0% o ponto da previsão é vazado (e a legenda também): não é valor da previsão
             stroke=cor,
-            # em banda 0% o ponto da previsão é vazado: não é valor da previsão
-            fill=alt.condition(alt.datum.serie == SERIE_F0, alt.value("white"), cor),
+            fill=preenchimento,
             tooltip=[
                 alt.Tooltip("serie:N", title="Série"),
                 alt.Tooltip("banda:Q", title="Banda (%)"),
@@ -279,41 +277,110 @@ def sensibilidades_pontos(sens: pd.DataFrame, ordem: list[str], base_rs: float) 
 # ---------------------------------------------------------------- panorama
 
 
-def carga(df: pd.DataFrame) -> alt.Chart:
+# um rótulo de ano a cada 2 anos: a série começa em 2000/2002 e rótulos de todo ano se sobrepõem
+_EIXO_ANOS = alt.Axis(format="%Y", tickCount={"interval": "year", "step": 2}, labelOverlap=True)
+
+SERIE_ORIGINAL = "Original (ONS)"
+SERIE_RECONSTRUIDA = "Reconstruída"
+
+
+def carga(df: pd.DataFrame, quebra: pd.Timestamp | None = None) -> alt.LayerChart:
+    """Carga mensal do SE/CO: a série original do ONS e a reconstruída (mesma definição em todo o
+    período). Com `quebra`, uma linha vertical marca o mês do degrau do tipo III, com o texto."""
     longo = df.melt(
         id_vars="mes",
         value_vars=["carga_original_mwmed", "carga_ajustada_reconstruida_mwmed"],
         var_name="serie",
-        value_name="mwmed",
-    )
+        value_name="mwm",
+    ).dropna(subset=["mwm"])
     longo["serie"] = longo["serie"].map(
         {
-            "carga_original_mwmed": "original (ONS)",
-            "carga_ajustada_reconstruida_mwmed": "reconstruída",
+            "carga_original_mwmed": SERIE_ORIGINAL,
+            "carga_ajustada_reconstruida_mwmed": SERIE_RECONSTRUIDA,
         }
     )
+    linhas = (
+        alt.Chart(longo)
+        .mark_line()
+        .encode(
+            x=alt.X("mes:T", title=None, axis=_EIXO_ANOS),
+            y=alt.Y("mwm:Q", title=None, scale=alt.Scale(zero=False), axis=eixo_mwm()),
+            color=alt.Color(
+                "serie:N",
+                scale=alt.Scale(
+                    domain=[SERIE_ORIGINAL, SERIE_RECONSTRUIDA], range=[vis.CINZA, vis.PETROLEO]
+                ),
+                legend=alt.Legend(title=None, orient="bottom"),
+            ),
+            tooltip=[
+                alt.Tooltip("mes:T", title="Mês", format="%m/%Y"),
+                alt.Tooltip("serie:N", title="Série"),
+                alt.Tooltip("mwm:Q", title="MWm", format=",.0f"),
+            ],
+        )
+    )
+    if quebra is None:
+        return linhas.properties(height=ALTURA)
+    marca = pd.DataFrame(
+        {
+            "mes": [quebra],
+            "texto": [f"quebra do tipo III ({cal.mes_por_extenso(quebra)})"],
+        }
+    )
+    regra = alt.Chart(marca).mark_rule(color=vis.CINZA_ESCURO, strokeDash=[4, 3]).encode(x="mes:T")
+    rotulo = (
+        alt.Chart(marca)
+        .mark_text(align="left", baseline="top", dx=5, dy=2, fontSize=11, color=vis.TEXTO)
+        .encode(x="mes:T", y=alt.value(0), text="texto:N")
+    )
+    return (linhas + regra + rotulo).properties(height=ALTURA)
+
+
+SERIE_PLD_SEMANAL = "PLD até 2020: semanal, agregado por mês"
+SERIE_PLD_PONDERADO = "PLD de 2021 em diante: ponderado pelo consumo"
+SERIE_PISO = "Piso do ano"
+SERIE_TETO = "Teto estrutural do ano"
+
+
+def pld(df: pd.DataFrame) -> alt.Chart:
+    """PLD mensal do SE em R$/MWh, a partir de zero. São DUAS contas (semanal até dez/2020,
+    ponderado pelo consumo depois), em cores diferentes e sem ligar uma à outra; o piso e o teto
+    estrutural (só de 2021 em diante) vão tracejados."""
+    nomes = {"semanal": SERIE_PLD_SEMANAL, "ponderado": SERIE_PLD_PONDERADO}
+    pld_ = df.assign(serie=df["fonte"].map(nomes), valor=df["pld_rs_mwh"])
+    piso = df.assign(serie=SERIE_PISO, valor=df["piso_rs_mwh"])
+    teto = df.assign(serie=SERIE_TETO, valor=df["teto_estrutural_rs_mwh"])
+    longo = pd.concat([pld_, piso, teto], ignore_index=True).dropna(subset=["valor"])
+    longo = longo[["mes", "serie", "valor"]]
+    dominio = [SERIE_PLD_SEMANAL, SERIE_PLD_PONDERADO, SERIE_PISO, SERIE_TETO]
     return (
         alt.Chart(longo)
         .mark_line()
         .encode(
-            x=alt.X("mes:T", title=None),
-            y=alt.Y("mwmed:Q", title="Carga SE/CO (MWmed)", scale=alt.Scale(zero=False)),
-            color=alt.Color("serie:N", legend=alt.Legend(title=None, orient="bottom")),
-            tooltip=["mes:T", "serie:N", "mwmed:Q"],
+            x=alt.X("mes:T", title=None, axis=_EIXO_ANOS),
+            y=alt.Y("valor:Q", title="PLD mensal do SE (R$/MWh)", scale=alt.Scale(zero=True)),
+            color=alt.Color(
+                "serie:N",
+                scale=alt.Scale(
+                    domain=dominio,
+                    range=[vis.CINZA_ESCURO, vis.PETROLEO, vis.CINZA, vis.CINZA],
+                ),
+                legend=alt.Legend(title=None, orient="bottom", columns=1, labelLimit=520),
+            ),
+            strokeDash=alt.StrokeDash(
+                "serie:N",
+                scale=alt.Scale(domain=dominio, range=[[1, 0], [1, 0], [4, 3], [4, 3]]),
+                legend=alt.Legend(title=None, orient="bottom", columns=1, labelLimit=520),
+            ),
+            detail="serie:N",
+            tooltip=[
+                alt.Tooltip("mes:T", title="Mês", format="%m/%Y"),
+                alt.Tooltip("serie:N", title="Série"),
+                alt.Tooltip("valor:Q", title="R$/MWh", format=",.2f"),
+            ],
         )
         .properties(height=ALTURA)
     )
-
-
-def pld(df: pd.DataFrame) -> alt.Chart:
-    base = alt.Chart(df).encode(x=alt.X("mes:T", title=None))
-    linha = base.mark_line(color=AZUL).encode(
-        y=alt.Y("pld_rs_mwh:Q", title="PLD mensal do SE (R$/MWh)", scale=alt.Scale(zero=True)),
-        tooltip=["mes:T", "pld_rs_mwh:Q", "fonte:N"],
-    )
-    piso = base.mark_line(color=CINZA, strokeDash=[4, 3]).encode(y="piso_rs_mwh:Q")
-    teto = base.mark_line(color=CINZA, strokeDash=[4, 3]).encode(y="teto_estrutural_rs_mwh:Q")
-    return (linha + piso + teto).properties(height=ALTURA)
 
 
 def consumo(df: pd.DataFrame) -> alt.Chart:
@@ -456,13 +523,11 @@ def cobertura_por_horizonte(df: pd.DataFrame) -> alt.LayerChart:
     return (linhas + ref).properties(height=ALTURA // 1.3)
 
 
-def previsao_producao(
-    previsao: pd.DataFrame, historia: pd.DataFrame, cobertura: dict | None = None
-) -> alt.LayerChart:
+def previsao_producao(previsao: pd.DataFrame, historia: pd.DataFrame) -> alt.LayerChart:
     """Os próximos 12 meses com as faixas de 80% e 95% e a carga ajustada dos últimos meses.
 
-    Com `cobertura` (a geral, fora da amostra), cada faixa leva escrita a cobertura que teve no
-    teste final: a faixa de 80% "cobre 70,2% no teste final, não 80%"."""
+    Sem texto dentro do gráfico: o que cada faixa cobriu no teste final vem na legenda abaixo
+    (`textos_previsao.legenda_das_faixas`), para nada ficar por cima das linhas."""
     # só as colunas que o gráfico usa (calibração e série ficam na auditoria)
     previsao = previsao[
         ["mes_alvo", "previsao_mwmed", "p025_mwmed", "p10_mwmed", "p90_mwmed", "p975_mwmed"]
@@ -496,35 +561,22 @@ def previsao_producao(
             ],
         )
     )
-    camadas = real + f95 + f80 + centro
-    if cobertura is not None:
-        ultimo = previsao["mes_alvo"].max()
-        topo = previsao[previsao["mes_alvo"] == ultimo].iloc[0]
-        rotulos = pd.DataFrame(
-            {
-                "mes_alvo": [ultimo, ultimo],
-                "y": [topo["p90_mwmed"], topo["p975_mwmed"]],
-                "texto": [
-                    f"faixa de 80%: cobre {vis.percentual(cobertura['cobertura80_pct'])} no teste "
-                    "final, não 80%",
-                    f"faixa de 95%: cobre {vis.percentual(cobertura['cobertura95_pct'])} no teste "
-                    "final, não 95%",
-                ],
-            }
-        )
-        camadas += (
-            alt.Chart(rotulos)
-            .mark_text(align="right", baseline="bottom", dy=-4, fontSize=11, color=vis.TEXTO)
-            .encode(x="mes_alvo:T", y="y:Q", text="texto:N")
-        )
-    return camadas.properties(height=ALTURA)
+    return (real + f95 + f80 + centro).properties(height=ALTURA)
 
 
 # ---------------------------------------------------------------- saúde
 
 
-def _rotulo_da_execucao(inicio: pd.Timestamp) -> str:
-    return f"{inicio.day:02d}/{inicio.month:02d} {inicio.hour:02d}:{inicio.minute:02d}"
+_TIPO_CURTO = {"scheduled": "ag.", "manual": "man."}  # no eixo; a legenda da página explica
+
+
+def _rotulo_da_execucao(inicio: pd.Timestamp, tipo: str) -> str:
+    """'06/10 21h57 · ag.': curto para as barras caberem sem esconder rótulo. Os minutos ficam
+    porque há execuções manuais na mesma hora (um rótulo repetido fundiria duas barras)."""
+    return (
+        f"{inicio.day:02d}/{inicio.month:02d} {inicio.hour:02d}h{inicio.minute:02d}"
+        f" · {_TIPO_CURTO.get(tipo, tipo)}"
+    )
 
 
 def duracao_das_execucoes(runs: pd.DataFrame, ausentes: list[pd.Timestamp]) -> alt.LayerChart:
@@ -533,11 +585,9 @@ def duracao_das_execucoes(runs: pd.DataFrame, ausentes: list[pd.Timestamp]) -> a
     `runs` vem de `cal.marcar_falhas`. A falha se vê por símbolo e texto ("✕ falha"), não por cor
     nova: a barra fica cinza-escura. Cada horário agendado sem execução (`ausentes`) ocupa o seu
     lugar no eixo, sem barra, com o texto "sem execução registrada"."""
-    tipo = {"scheduled": "agendada", "manual": "manual"}
     d = runs.assign(
         rotulo=[
-            _rotulo_da_execucao(t) + f" · {tipo.get(r, r)}"
-            for t, r in zip(runs["inicio"], runs["run_type"], strict=True)
+            _rotulo_da_execucao(t, r) for t, r in zip(runs["inicio"], runs["run_type"], strict=True)
         ],
         hora=runs["inicio"].dt.strftime("%d/%m/%Y %H:%M UTC"),
         duracao=[cal.duracao_texto(v) for v in runs["duracao_dag_s"]],
@@ -546,7 +596,7 @@ def duracao_das_execucoes(runs: pd.DataFrame, ausentes: list[pd.Timestamp]) -> a
     vazias = pd.DataFrame(
         {
             "inicio": ausentes,
-            "rotulo": [_rotulo_da_execucao(t) + " · agendada" for t in ausentes],
+            "rotulo": [_rotulo_da_execucao(t, "scheduled") for t in ausentes],
             "hora": [t.strftime("%d/%m/%Y %H:%M UTC") for t in ausentes],
             "duracao": "sem execução registrada",
             "duracao_dag_s": float("nan"),
@@ -558,7 +608,13 @@ def duracao_das_execucoes(runs: pd.DataFrame, ausentes: list[pd.Timestamp]) -> a
     d = pd.concat([d, vazias], ignore_index=True).sort_values("inicio")
     d = d[["rotulo", "hora", "duracao", "duracao_dag_s", "falhou", "marca", "marca_ausente"]]
     ordem = list(d["rotulo"])
-    x = alt.X("rotulo:N", sort=ordem, title=None, axis=alt.Axis(labelAngle=-40, labelLimit=170))
+    # labelOverlap desligado: toda barra tem rótulo (o Vega esconderia alguns em tela estreita)
+    x = alt.X(
+        "rotulo:N",
+        sort=ordem,
+        title=None,
+        axis=alt.Axis(labelAngle=-40, labelLimit=170, labelOverlap=False),
+    )
     barras = (
         alt.Chart(d.dropna(subset=["duracao_dag_s"]))
         .mark_bar()

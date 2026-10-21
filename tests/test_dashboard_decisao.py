@@ -287,6 +287,24 @@ def test_em_banda_zero_o_ponto_da_previsao_e_rotulado_como_efeito_do_volume(at):
     ]
 
 
+def test_a_legenda_da_banda_mostra_o_simbolo_vazado_da_serie_do_ganho_por_contratar(at):
+    """O ponto vazado do gráfico (preenchimento branco) também é vazado na LEGENDA: o preenchimento
+    um canal com escala própria (a legenda só enxerga escalas), com a mesma legenda do contorno."""
+    g = elementos(at)[indice(at, "vega_lite_chart", "banda")][1]
+    camadas = json.loads(g.proto.spec)["layer"]
+    pontos = next(c for c in camadas if c["mark"]["type"] == "point")
+    fill = pontos["encoding"]["fill"]
+    serie = gr.SERIE_F0
+    assert fill["field"] == "serie" and serie in fill["scale"]["domain"]
+    cor_por_serie = dict(zip(fill["scale"]["domain"], fill["scale"]["range"], strict=True))
+    assert cor_por_serie[serie] == "white"  # só ela é vazada
+    assert all(v != "white" for k, v in cor_por_serie.items() if k != serie)
+    # a legenda existe no preenchimento, igual à do contorno e à da linha (funde num símbolo só)
+    assert fill["legend"] == pontos["encoding"]["stroke"]["legend"]
+    assert fill["legend"] is not None and fill["legend"]["orient"] == "bottom"
+    assert serie in spec(g)
+
+
 def test_o_detalhe_por_ano_da_banda_usa_o_mesmo_eixo(at):
     e = expander(at, "Detalhe da banda")
     graficos = [no for t, no in achatar(e) if t == "vega_lite_chart"]

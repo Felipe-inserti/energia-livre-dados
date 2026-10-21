@@ -2,11 +2,13 @@
 publicados no `docs/metricas.md`, ressalva acima do número, orçamento de palavras, `$` escapado,
 jargão fora da auditoria, âmbar ausente, meses incompletos fora dos gráficos, nomes sem troca."""
 
+import json
 import re
 import shutil
 from pathlib import Path
 
 import pandas as pd
+import pyarrow as pa
 import pytest
 from apptest_util import (
     achatar,
@@ -345,16 +347,25 @@ def test_a_tabela_do_expander_mostra_os_mesmos_12_horizontes(at):
 # ---------------------------------------------------------------- legenda na faixa
 
 
-def test_a_faixa_de_80_e_a_de_95_dizem_quanto_cobriram_no_teste_final(at):
-    g = elementos(at)[indice(at, "vega_lite_chart", "p975_mwmed")][1]
-    textos = list(dados_do_grafico(g, "texto")["texto"])
-    assert textos == [
-        "faixa de 80%: cobre 70,2% no teste final, não 80%",
-        "faixa de 95%: cobre 87,8% no teste final, não 95%",
-    ]
-    assert '"mark": {"type": "text"' in spec(g) or '"type": "text"' in spec(g)
+def test_a_faixa_de_80_e_a_de_95_dizem_quanto_cobriram_no_teste_final_numa_legenda_abaixo(at):
+    """Os textos "cobre 70,2%, não 80%" e "cobre 87,8%, não 95%" ficam numa legenda logo ABAIXO do
+    gráfico dos próximos 12 meses; nada de texto desenhado dentro dele."""
+    i = indice(at, "vega_lite_chart", "p975_mwmed")
+    nos = elementos(at)
+    assert nos[i + 1][0] == "caption"
+    legenda = nos[i + 1][1].value
+    assert "Faixa de 80%: cobre 70,2% no teste final, não 80%." in legenda
+    assert "Faixa de 95%: cobre 87,8% no teste final, não 95%." in legenda
     # nem a cobertura que já viu o teste nem a nominal aparecem como se fossem observadas
-    assert "70,8" not in " ".join(textos) and "90,5" not in " ".join(textos)
+    assert "70,8" not in legenda and "90,5" not in legenda
+    g = nos[i][1]
+    camadas = json.loads(g.proto.spec)["layer"]
+    marcas = [c["mark"]["type"] if isinstance(c["mark"], dict) else c["mark"] for c in camadas]
+    assert "text" not in marcas  # o gráfico só tem linhas e faixas
+    colunas = {
+        c for d in g.proto.datasets for c in pa.ipc.open_stream(d.data.data).read_all().column_names
+    }
+    assert "texto" not in colunas and "cobre" not in texto(g)
 
 
 def test_o_modelo_do_lightgbm_e_a_mmgd_ficam_no_expander_com_ajuda(at):

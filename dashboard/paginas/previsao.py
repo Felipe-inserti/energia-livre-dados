@@ -145,8 +145,9 @@ def renderizar(diretorio: str | None = None) -> None:
     ate = pd.Timestamp(man["ultimo_mes_fechado"]) if man.get("ultimo_mes_fechado") else None
     carga = d["carga"] if ate is None else cal.ate_o_mes(d["carga"], ate)
     st.altair_chart(
-        gr.previsao_producao(d["producao"], cal.historia_recente(carga), cobertura), width="stretch"
+        gr.previsao_producao(d["producao"], cal.historia_recente(carga)), width="stretch"
     )
+    st.caption(tx.legenda_das_faixas(cobertura))
     st.caption(tx.legenda_da_producao(d["producao"]), help=tx.glossario.TERMOS["MWm"])
     st.caption(tx.erros_de_producao(d["erros"]))
 

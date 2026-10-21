@@ -231,7 +231,8 @@ def legenda_execucoes(runs: pd.DataFrame, ausentes: list[pd.Timestamp], proposit
     n, falhas = len(runs), int(runs["falhou"].sum())
     partes = [
         f"Uma barra por execução ({n}, de {data_curta(runs['inicio'].min())} a "
-        f"{data_curta(runs['inicio'].max())}); ✕ marca falha."
+        f"{data_curta(runs['inicio'].max())}; horas em UTC; ag. = agendada, man. = manual); "
+        "✕ marca falha."
     ]
     if falhas:
         if propositais == falhas:

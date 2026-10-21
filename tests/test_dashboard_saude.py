@@ -235,12 +235,29 @@ def test_o_grafico_mostra_as_11_execucoes_e_a_ausente_em_ordem_do_tempo(at):
     assert len(barras) == 11
     assert '"zero": true' in spec(g)  # barras a partir de zero
     faltas = [d for d in conjuntos(g) if "marca_ausente" in d and (d["marca_ausente"] != "").all()]
-    assert len(faltas) == 1 and list(faltas[0]["rotulo"]) == ["08/10 21:00 · agendada"]
+    assert len(faltas) == 1 and list(faltas[0]["rotulo"]) == ["08/10 21h00 · ag."]
     assert list(faltas[0]["marca_ausente"]) == [tx.CHAVES["sem_execucao"]]
     ordem = json.loads(g.proto.spec)["layer"][0]["encoding"]["x"]["sort"]
     assert len(ordem) == 12  # 11 execuções + o horário agendado sem execução
-    assert ordem.index("08/10 21:00 · agendada") == ordem.index("08/10 03:57 · manual") + 1
-    assert ordem[-1].endswith("agendada") and ordem[-1].startswith("10/10 16:38")
+    assert ordem.index("08/10 21h00 · ag.") == ordem.index("08/10 03h57 · man.") + 1
+    assert ordem[-1] == "10/10 16h38 · ag." and ordem[0] == "06/10 21h57 · ag."
+
+
+def test_os_rotulos_do_eixo_sao_curtos_unicos_e_nenhum_e_escondido(at):
+    g = grafico_das_execucoes(at)
+    camadas = json.loads(g.proto.spec)["layer"]
+    ordem = camadas[0]["encoding"]["x"]["sort"]
+    assert (
+        len(ordem) == 12 and len(set(ordem)) == 12
+    )  # nenhum rótulo repetido (nenhuma barra fundida)
+    assert all(re.fullmatch(r"\d\d/\d\d \d\dh\d\d · (ag\.|man\.)", r) for r in ordem), ordem
+    assert max(len(r) for r in ordem) <= 18
+    assert "06/10 21h57 · ag." in ordem and "08/10 21h00 · ag." in ordem
+    for camada in camadas:  # todas as camadas compartilham o mesmo eixo, sem esconder rótulo
+        eixo = camada["encoding"]["x"]["axis"]
+        assert eixo["labelOverlap"] is False
+    barras = next(d for d in conjuntos(g) if len(d) == 11)
+    assert set(barras["rotulo"]) <= set(ordem)  # as 11 barras têm rótulo no eixo
 
 
 def test_as_falhas_aparecem_por_simbolo_e_texto_e_sem_cor_nova(at):
@@ -278,7 +295,10 @@ def test_cada_falha_proposital_tem_fonte_no_metricas_md_e_consta_do_snapshot():
 
 def test_a_legenda_conta_as_falhas_e_mostra_a_execucao_ausente(at):
     legenda = next(c.value for c in at.caption if c.value.startswith("Uma barra por execução"))
-    assert "(11, de 06/10 a 10/10); ✕ marca falha." in legenda
+    assert (
+        "(11, de 06/10 a 10/10; horas em UTC; ag. = agendada, man. = manual); ✕ marca falha."
+        in legenda
+    )
     assert "3 falhas foram propositais (testes do alerta)." in legenda
     assert "Em 08/10, 21:00 UTC, a execução agendada está ausente do registro" in legenda
     assert "combina com máquina desligada" in legenda
