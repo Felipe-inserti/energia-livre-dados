@@ -168,8 +168,7 @@ Ao abrir uma conversa com o Claude, diga a sprint e a tarefa (ex.: "Sprint 1, ta
 - [x] 5.4 Gravar previsões mensais no BigQuery (`fct_previsao_carga`) com versão do modelo; adicionar a etapa na DAG. **Feito no código e nos testes:** `ml/previsao.py`, as tabelas `fct_previsao_carga` e `fct_erro_previsao_carga` (MERGE idempotente, proveniência em toda linha) e a task mensal com ShortCircuit na DAG. **Validado na nuvem em 08/10/2026** com `scripts/passo_sprint5_c.sh` (`local`, `dag` e `dag-gerar`): 15 conferências das tabelas sem falha, DAG em 1 min 54 s com a `previsao_mensal` em 22 s, execução normal sem mês novo (`previsao_mensal` `skipped`) e com falha proposital (`upstream_failed` e um único alerta no Discord).
 - [x] 5.5 Construir a curva de consumo do consumidor-exemplo: `k × carga média diária do SE/CO × perfil de loja` (conforme `docs/premissas.md`).
 - [x] 5.6 Gerador de cenários de consumo (a partir da distribuição do erro mensal do rolling origin, sem usar dados futuros). **Feito no código e nos testes** (`ml/cenarios_consumo.py`, `scripts/avaliar_cenarios_consumo.py`); as tabelas aguardam a escolha de N.
-- [ ] 5.7 Gerador de cenários de PLD (a partir do histórico, por reamostragem). **Feito no código e nos testes** (`ml/cenarios_pld.py`, `ml/cenarios.py`, `ml/piso_pld.py`, seed `pld_piso_excecoes`); as tabelas aguardam a execução (`python -m ml.cenarios gerar --n 2000`).
-- [ ] 5.8 (Extra opcional) Previsão horária D+1 com LightGBM.
+- [x] 5.7 Gerador de cenários de PLD (a partir do histórico, por reamostragem). **Feito** (`ml/cenarios_pld.py`, `ml/cenarios.py`, `ml/piso_pld.py`, seed `pld_piso_excecoes`); os cenários alimentaram o backtest e as sensibilidades da Sprint 6.
 
 **Medir**
 - MAPE mensal do modelo linear e do LightGBM vs. baseline, no mesmo rolling origin.
@@ -200,8 +199,7 @@ Ao abrir uma conversa com o Claude, diga a sprint e a tarefa (ex.: "Sprint 1, ta
 - [x] 6.4 Análise de sensibilidade, conforme a lista pré-declarada em `docs/planejamento/plano_sprint6a.md` (critério congelado 14; o que não está na lista está fora, nada é opcional). **Análise principal: banda de flexibilidade `f ∈ {0%, 5%, 10%, 15%}`** (o caso base é 10%), para responder "quanto valem a previsão e a otimização em função da flexibilidade contratada", com a expectativa H4 registrada antes de rodar. **Demais sensibilidades:** spread do preço 0 e 40 (caso base 20); λ 0 e 1 (caso base 0,5); α = 0,90 (caso base 0,95); `r` até 1,2 no lugar dos limites simétricos; PLD pelo método `simples` (o "antes" do método); dispersão dos erros de consumo ×1,25 e ×1,5 (regera os cenários; `docs/decisoes.md`, Sprint 5, Parte B); **clip simples** como variante da transformação do histórico de PLD (manter o PLD nominal e cortar nos limites do ano-alvo, `[piso, teto estrutural]`; regera os cenários de PLD e exige novo `execucao_id` na Parte B). Origem do clip: seção "Sprint 5, Parte B: preparação da 5.7, por que o IPCA não resolve e qual teto usar" do `docs/decisoes.md` (linha 516 da versão `02990fd`), declarada antes do pré-registro; ver "omissão de transcrição no item 14" em `docs/decisoes.md`. Cada uma roda depois do caso base, com a sua identidade, e nunca o substitui. **Feito:** `ml/sensibilidades.py` rodou as 13 sensibilidades (cada uma uma vez, travas de pré-registro `4c02987`), com o `plano_sprint6b.md`; os 3 conjuntos de cenários novos (`disp125`, `disp150`, `clip`) foram gerados só em disco (`ml/cenarios_sens.py`). Economia total de R$ 3.740,51 (`f00`) a R$ 18.129,53 (`rmax120`); o valor da previsão é ≈ 0 para f ≥ 10% e o da otimização cresce com f. Resultados em `docs/resultados/sens_*`, `docs/metricas.md` e `docs/decisoes.md` ("Sprint 6, Parte B").
 - [x] 6.5 Gravar resultados em `fct_recomendacao_contrato`. **Feito:** `ml/recomendacao.py` gravou 213 linhas (210 de backtest, caso base e 13 sensibilidades, e 3 de prévia da origem de produção 2026-09), idempotente (2 execuções, 213 linhas). **Limite conhecido (resolvido na C1):** a prévia estava fixa na origem 2026-09; agora segue a origem mais recente (ver backlog abaixo).
 - [x] 6.6 Dashboard (Streamlit): panorama do setor, previsão, decisão de contrato e saúde do pipeline. **Feito (Parte C2):** quatro páginas em `dashboard/` (Decisão de contrato, Previsão de carga, Saúde do pipeline e Panorama do setor, esta em versão mínima: carga do SE/CO e PLD mensal, **sem reservatórios**, que não foram ingeridos), no mesmo padrão (pirâmide invertida, ressalva acima do número, tabelas, glossário e auditoria em expanders fechados, orçamento de palavras testado). O app lê só o snapshot em `dashboard/dados/` (10/10/2026, 0,32 MiB): **0 bytes de BigQuery** por acesso. Cobertura dos intervalos só a fora da amostra (70,2% e 87,8%); nomes, medidas e decisões em `docs/decisoes.md` e `docs/metricas.md` ("Sprint 6, Parte C2"). A 6.8 segue pendente.
-- [x] 6.7 Publicar o dashboard (ex.: Streamlit Community Cloud). **Feito:** https://energia-livre-dados-67vvnk6maysztuftyb94sv.streamlit.app/ (Streamlit Community Cloud, sem secrets: o app só lê o snapshot versionado). Medição manual e aproximada, da página de Decisão: carga fria ~25 s (o despertar do contêiner no plano gratuito, que hiberna sem uso; o código da página leva ~0,6 s no `AppTest`) e carga quente de 1 a 2 s (`docs/metricas.md`). O snapshot só muda com um novo `python -m dashboard.snapshot` e um commit.
-- [ ] 6.8 Na página "Decisão de contrato": acompanhamento diário do contrato vigente (consumo acumulado contra a banda, exposição estimada em R$ até o fim do ano e alerta de mês saindo da banda).
+- [x] 6.7 Publicar o dashboard (ex.: Streamlit Community Cloud). **Feito:** https://energia-livre-dados-vrkyx3pgnfqvj7rcj4rj9k.streamlit.app/ (Streamlit Community Cloud, recriado a partir da `main`, sem secrets: o app só lê o snapshot versionado). Medição manual e aproximada, da página de Decisão: carga fria ~25 s (o despertar do contêiner no plano gratuito, que hiberna sem uso; o código da página leva ~0,6 s no `AppTest`) e carga quente de 1 a 2 s (`docs/metricas.md`). O snapshot só muda com um novo `python -m dashboard.snapshot` e um commit.
 
 **Medir (métrica principal)** — relatório definido antes de ver os resultados
 - Custo total ano a ano de cada estratégia, economia contra a ingênua em R$ e em %.
@@ -227,14 +225,13 @@ Ao abrir uma conversa com o Claude, diga a sprint e a tarefa (ex.: "Sprint 1, ta
 
 **Tarefas**
 - [ ] 7.1 `docker-compose up` sobe tudo; testar numa máquina ou ambiente limpo.
-- [ ] 7.2 GitHub Actions: lint, pytest e `dbt test` a cada push.
+- [x] 7.2 GitHub Actions: lint, pytest e `dbt parse` a cada push e pull request. **Feito:** `.github/workflows/ci.yml`, sem segredo. O `dbt test` não roda no CI (precisa do BigQuery); fica na DAG (`docs/decisoes.md`, "CI sem credencial"). Tempo a medir na primeira execução (`docs/metricas.md`).
 - [ ] 7.3 Diagrama de arquitetura (`docs/arquitetura.png`).
 - [ ] 7.4 README final com resultados no topo (estrutura da seção 11 do planejamento).
 - [ ] 7.5 Revisar `docs/decisoes.md` (mínimo de 4 decisões bem escritas).
 - [ ] 7.6 Gravar vídeo de 2 minutos: problema, arquitetura, resultado.
 - [ ] 7.7 Escrever as linhas do currículo com os números reais.
 - [ ] 7.8 Ensaiar 3 histórias de entrevista (problema → decisão → resultado) a partir das decisões registradas.
-- [ ] 7.9 (Opcional) Terraform para a infraestrutura.
 
 **Pronto quando:** todos os itens da "Definição de pronto" do planejamento estão marcados.
 
@@ -250,3 +247,13 @@ Ordem do que cortar primeiro, sem prejudicar o essencial:
 5. Análise de sensibilidade.
 
 **Nunca cortar:** medições do "antes", testes de qualidade, idempotência, backtest e README com resultados.
+
+---
+
+## Extras (fora da definição de pronto)
+
+Itens que saíram da lista de tarefas das sprints. Nenhum é requisito da "Definição de pronto"; os motivos estão também em `docs/decisoes.md` ("Sprint 7: cortes de escopo").
+
+- 5.8 (Extra opcional) Previsão horária D+1 com LightGBM. **Motivo:** o produto decide um contrato anual a partir da carga mensal; uma previsão horária não alimenta nenhuma decisão do projeto e exigiria dados e validação novos.
+- 6.8 Na página "Decisão de contrato": acompanhamento diário do contrato vigente (consumo acumulado contra a banda, exposição estimada em R$ até o fim do ano e alerta de mês saindo da banda). **Motivo:** exige consumo diário, e o consumidor-exemplo é sintético e mensal; além disso o app só lê um snapshot versionado, sem dado novo por dia.
+- 7.9 (Opcional) Terraform para a infraestrutura. **Motivo:** a infraestrutura foi criada e documentada à mão, não é requisito da definição de pronto, e o tempo restante da sprint vale mais no que o recrutador vê (README, diagrama, vídeo).

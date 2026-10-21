@@ -1,0 +1,70 @@
+# CI sem credencial: lint, testes e `dbt parse`. O `dbt test` não roda aqui (precisa do BigQuery);
+# ele roda na DAG do Airflow (ver docs/decisoes.md, "CI sem credencial"). Nenhum segredo.
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+# Um push novo na mesma branch cancela a execução anterior ainda em andamento.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  qualidade:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      UV_PYTHON: "3.12"
+      DBT_SEND_ANONYMOUS_USAGE_STATS: "false"
+    steps:
+      # Actions fixadas pelo SHA do commit da versão (a tag pode ser movida; o SHA não).
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1 # nenhum teste lê o histórico do git (checado com um clone raso)
+          persist-credentials: false
+
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Instalar as dependências do lock
+        run: uv sync --frozen
+
+      - name: Lint (ruff check)
+        run: uv run ruff check .
+
+      - name: Formatação (ruff format --check)
+        run: uv run ruff format --check .
+
+      # `dbt deps` antes do pytest: sem o dbt_packages, 11 testes do projeto dbt são pulados.
+      - name: Pacotes do dbt (dbt deps)
+        run: uv run dbt deps --project-dir dbt
+
+      - name: Testes (pytest)
+        run: uv run pytest -q -rs
+
+      # O profile é gerado aqui, sem credencial. O `dbt parse` lê só os arquivos do projeto e não abre
+      # conexão com o BigQuery; o project é um nome qualquer.
+      - name: dbt parse (sem conexão com o BigQuery)
+        run: |
+          perfil="$RUNNER_TEMP/dbt-perfil"
+          mkdir -p "$perfil"
+          cat > "$perfil/profiles.yml" <<'EOF'
+          energia_livre:
+            target: ci
+            outputs:
+              ci:
+                type: bigquery
+                method: oauth
+                project: projeto-ci
+                dataset: staging
+                location: us-central1
+                threads: 1
+          EOF
+          uv run dbt parse --project-dir dbt --profiles-dir "$perfil" --target-path "$RUNNER_TEMP/dbt-target"

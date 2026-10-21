@@ -1733,3 +1733,9 @@ Números exibidos, todos do snapshot e conferidos contra os CSVs lidos direto: c
 
 Os três ajustes visuais foram conferidos **no gráfico renderizado** (Chromium headless), além do spec: rótulos do eixo das execuções (11 barras, todas com rótulo; 12 posições com a execução agendada ausente de 08/10), legenda da banda com o símbolo vazado na série "Ganho por contratar acima ou abaixo da previsão" e a legenda das faixas da Previsão fora do gráfico.
 Não medido: tempo no Community Cloud do Panorama, da Previsão e da Saúde (a medição manual de 20/10 foi só da Decisão), e o teste dos 30 segundos.
+
+## Sprint 7: CI (7.2)
+
+**Tempo do CI: a medir na primeira execução** (a do GitHub Actions; ainda não houve nenhuma). Registrar então: duração total e por passo, e a diferença entre a primeira execução (cache do uv frio) e a segunda (quente).
+
+Medido antes, só como referência, num clone limpo local (sem `.env`, `data/` e `dbt/profiles.yml`; não é o tempo do CI): `uv sync --frozen` ok; `ruff check` e `ruff format --check` (166 arquivos) sem pendência; `pytest` 1.095 passaram e 12 foram pulados em 44 s (11 por falta do `dbt deps`, 1 por log local não versionado); com `dbt deps` feito, 1.106 passaram e 1 foi pulado em 90 s. `dbt parse` sem rede para o BigQuery e sem ADC: sucesso em ~4 s. A suíte também passa num clone raso (`--depth 1`).
