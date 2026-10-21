@@ -1,0 +1,14 @@
+sens_id,ingenua_custo_igual,ingenua_v_igual,ingenua_exposicao_igual,ingenua_ex_ante_igual,pontual_custo_igual,pontual_v_igual,pontual_exposicao_igual,pontual_ex_ante_igual,otimizada_anos_r_igual,otimizada_n_anos_r_igual,otimizada_custo_igual_onde_r_igual
+f00,False,True,False,False,False,True,False,False,,0,False
+f05,False,True,False,False,False,True,False,False,,0,False
+f15,False,True,False,False,False,True,False,False,,0,False
+spread00,False,True,True,False,False,True,True,False,2023 2024 2025,3,False
+spread40,False,True,True,False,False,True,True,False,2022 2023 2024 2025,4,False
+lam00,True,True,True,True,True,True,True,True,2022 2023 2024 2025,4,True
+lam10,True,True,True,True,True,True,True,True,2023 2024 2025,3,True
+alfa90,True,True,True,False,True,True,True,False,2022 2023 2024 2025,4,True
+rmax120,True,True,True,True,True,True,True,True,2021 2022,2,True
+pldsimples,True,True,True,False,True,True,True,False,2022 2023 2024 2025,4,True
+disp125,True,True,True,False,True,True,True,False,2022 2023 2024 2025,4,True
+disp150,True,True,True,False,True,True,True,False,2022 2023 2024 2025,4,True
+clip,True,True,True,False,True,True,True,False,2022 2023 2024 2025,4,True

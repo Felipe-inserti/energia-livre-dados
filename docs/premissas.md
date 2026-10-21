@@ -20,12 +20,19 @@ Pendências estão marcadas com **[pendente]**.
 O consumo médio é um parâmetro de escala: a economia **em %** do backtest não depende dele,
 só a economia em R$.
 
-**O backtest de 2021–2023 é contrafactual.** Com ~137 kW de carga média, o consumidor não
-atenderia o limite de carga exigido para migrar ao mercado livre nesses anos. Segundo a
-regulação, o limite caiu em etapas até 500 kW (2023) e só em jan/2024 qualquer consumidor do
-Grupo A passou a poder migrar. **[pendente]** confirmar os limites por ano na legislação (de
-memória: ~1,5 MW em 2021, 1 MW em 2022, 500 kW em 2023). Os resultados desses anos mostram
-o que o método teria feito, não o que um consumidor real poderia ter feito.
+**Elegibilidade ao mercado livre (fonte primária).** Portaria MME nº 465/2019 (DOU 16/12/2019,
+Seção 1, p. 156), que altera a Portaria MME 514/2018: podem optar por qualquer fornecedor os
+consumidores com carga ≥ 1.500 kW desde 1/1/2021, ≥ 1.000 kW desde 1/1/2022 e ≥ 500 kW desde
+1/1/2023. Portaria Normativa MME nº 50/GM/MME, de 27/09/2022 (DOU 28/09/2022, Seção 1; em vigor
+desde 1/11/2022): desde 1/1/2024, qualquer consumidor do Grupo A pode optar (art. 1º, § 1º); os de
+carga individual inferior a 500 kW serão representados por agente varejista perante a CCEE
+(art. 1º, § 2º).
+
+**Premissa do projeto.** O consumidor-exemplo (~137 kW) não podia migrar em 2021–2023 (limites
+acima), por isso esses anos são simulados: mostram o que o método teria feito, não o que um
+consumidor real poderia ter feito. Em 2024–2025 já podia, e a premissa é que o supermercado
+contrataria via comercializador varejista (consistente com a linha "Representação na CCEE" da
+tabela acima).
 
 ---
 
@@ -319,7 +326,8 @@ regime de preço de cada ano.
 - O preço do contrato é uma regra (PLD do ano anterior mais spread), não um dado de mercado.
 - A temperatura do submercado é uma média ponderada entre 7 estados. Ela suaviza ondas de calor
   locais e não representa a loja.
-- O backtest de 2021–2023 é contrafactual (elegibilidade para o mercado livre).
+- O backtest de 2021–2023 é simulado: nesses anos um consumidor desse porte ainda não podia migrar
+  ao mercado livre (Portaria MME 465/2019; seção 1).
 - A penalidade por insuficiência de lastro não está no custo. O limite inferior de `V` evita a
   cobertura sistemática abaixo de 100%, mas um consumo real acima do previsto ainda poderia
   gerar penalidade não capturada (seção 4).

@@ -149,7 +149,7 @@ Camada de dados lê `dashboard/dados/` (snapshot) e `docs/resultados/` (backtest
 |---|---|
 | 5 anos, sem teste de significância; 2021–2023 contrafactuais | faixa no topo da página de Decisão (`st.warning`), e hachurado/rótulo "contrafactual" nas barras de 2021–2023 |
 | A economia da otimizada é um **teto** (flexibilidade sem preço) e o valor da previsão é um **piso** (sem penalidade de lastro; regra a confirmar na CCEE) | faixa do topo, e na legenda de cada gráfico de economia |
-| Ganho concentrado em 2022 e 2025 | **anotação no gráfico de economia por ano**: "2022 e 2025 somam R$ 9.202,62, 102% do valor da otimização de R$ 9.020,19; 2023 e 2024 somam −R$ 182,42" |
+| Ganho concentrado em 2022 e 2025 | **anotação no gráfico de economia por ano**: "2022 e 2025 somam R$ 9.202,62, 102% do valor da otimização de R$ 9.020,19; 2023 e 2024 somam −R$ 182,43" |
 | Média de 5 anos nunca sozinha | o total só aparece ao lado da barra por ano; o seletor padrão é "por ano", não "total" |
 | Otimização = aposta de `E[PLD]` contra `P_t` | texto ao lado da decomposição (decisões ex-ante da 6.2): "r\* no limite em 4 de 5 anos; o sinal vem de `E[PLD] − P_t`" e o r\* de cada ano marcado no gráfico |
 | Sensibilidades: nada é "o melhor" | tabela na ordem do plano, sem ordenação por economia, sem destaque; `rmax120` rotulado "especulação excluída" |

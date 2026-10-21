@@ -1,0 +1,9 @@
+tipo,testes,pass,warn,error,registros
+accepted_range,1,1,0,0,0
+accepted_values,24,24,0,0,0
+equal_rowcount,9,9,0,0,0
+not_null,123,123,0,0,0
+relationships,25,25,0,0,0
+singular,43,42,1,0,10
+unique,8,8,0,0,0
+unique_combination_of_columns,17,17,0,0,0

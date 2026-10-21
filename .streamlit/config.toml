@@ -1,0 +1,21 @@
+# Tema e opções do dashboard (lido do diretório de trabalho de `streamlit run`: a raiz do repositório).
+# Paleta única do redesenho (dashboard/visual.py): petróleo = Otimizada, cinza = comparações,
+# âmbar = só alerta (prévia, especulação).
+[theme]
+base = "light"
+primaryColor = "#0f6e8c"
+backgroundColor = "#ffffff"
+secondaryBackgroundColor = "#f5f7fa"
+textColor = "#1f2933"
+font = "sans serif"
+blueColor = "#0f6e8c"
+orangeColor = "#c9731b"
+yellowColor = "#c9731b"  # o st.warning usa o amarelo do tema: aqui, o âmbar do alerta
+grayColor = "#8a94a6"
+chartCategoricalColors = ["#0f6e8c", "#8a94a6", "#4b5563", "#cfd5df", "#c9731b"]
+
+[browser]
+gatherUsageStats = false
+
+[client]
+toolbarMode = "viewer"

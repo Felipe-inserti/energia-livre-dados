@@ -1,0 +1,56 @@
+"""Glossário único do dashboard: cada página escolhe os termos que usa (`selecionar`).
+
+Dois nomes parecidos NÃO são a mesma coisa e ficam definidos juntos em toda página:
+- "Ano anterior": estratégia de CONTRATO (página Decisão), contrata o consumo médio do ano passado;
+- "Mesmo mês do ano anterior": modelo de COMPARAÇÃO da previsão (página Previsão), repete o valor do
+  mesmo mês do ano passado.
+`visual.ANO_ANTERIOR` e `visual.MESMO_MES` guardam os nomes; um teste impede trocá-los.
+"""
+
+TERMOS = {
+    "PLD": "Preço de Liquidação das Diferenças: o preço da energia no mercado de curto prazo "
+    "(R\\$/MWh).",
+    "MWm": "megawatt médio: a energia média por hora; 100 MWh/mês ≈ 0,137 MWm.",
+    "MAPE": "erro percentual médio absoluto: a média dos erros em %, sem sinal (previsto menos "
+    "real, dividido pelo real).",
+    "MMGD": "micro e minigeração distribuída (painéis solares em telhados, por exemplo): a carga "
+    "deixa de aparecer na rede e muda a definição da série em 2023.",
+    "CVaR": "média do custo nos 5% piores cenários.",
+    "Viés": "erro médio com sinal: negativo quer dizer previsto abaixo do real.",
+    "Cobertura": "parte dos meses em que o valor real caiu dentro do intervalo previsto; um "
+    "intervalo de 80% deveria cobrir 80%.",
+    "Modelo": "a média de três modelos estatísticos (ETS, SARIMA e regressão), escolhida no "
+    "desenvolvimento e usada uma única vez no teste final.",
+    "Mesmo mês do ano anterior": "modelo de comparação da página Previsão: repete o valor do "
+    "mesmo mês do ano passado. Não é a estratégia de contrato 'Ano anterior'.",
+    "Ano anterior": "estratégia de contrato da página Decisão: contrata o consumo médio do ano "
+    "passado. Não é o modelo de comparação 'Mesmo mês do ano anterior'.",
+    "Previsão · Otimizada": "estratégias de contrato: o volume previsto · o volume que a regra "
+    "escolhe dentro da banda.",
+    "Banda": "folga (±) que o contrato permite em torno do volume contratado.",
+    "Valor da previsão": "custo do Ano anterior − custo da Previsão.",
+    "Valor da otimização": "custo da Previsão − custo da Otimizada.",
+    "DAG": "a sequência de etapas que o Airflow roda todo dia às 21:00 UTC (18:00 em Brasília): "
+    "busca os dados novos, transforma com o dbt e testa.",
+    "dbt": "a ferramenta que transforma os dados no BigQuery e roda os testes de qualidade sobre "
+    "eles.",
+    "Aviso": "teste que não passou limpo mas não bloqueia nada: aparece como alerta, não como "
+    "erro.",
+    "Fonte manual": "dado baixado à mão (CCEE e INMET), sem coleta automática; o pipeline só avisa "
+    "quando ele fica velho.",
+    "SE/CO": "Sudeste/Centro-Oeste, o subsistema do sistema elétrico do ONS cuja carga a página "
+    "mostra.",
+    "Tipo III": "usinas que o ONS não despacha; a carga que a API do ONS publica passou a "
+    "incluí-las em mar/2021, o que cria um degrau na série.",
+    "Carga reconstruída": "a carga do ONS refeita com a mesma definição em todo o período: soma "
+    "aos anos anteriores o que o ONS só passou a medir depois (tipo III e MMGD).",
+    "PLD ponderado": "o PLD do mês ponderado pelo consumo (hora a hora) do consumidor-exemplo; até "
+    "2020 a série é o PLD semanal agregado por mês, sem esse peso.",
+    "Contrafactual": "o que teria acontecido numa condição que não existiu; aqui, contratar no "
+    "mercado livre antes de poder migrar.",
+}
+
+
+def selecionar(*chaves: str) -> dict[str, str]:
+    """Os termos pedidos, na ordem pedida; chave desconhecida é erro (não some em silêncio)."""
+    return {c: TERMOS[c] for c in chaves}

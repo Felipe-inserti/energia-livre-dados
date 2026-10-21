@@ -7,7 +7,7 @@ Nunca otimizar antes de medir a versão simples. Preencher "Antes" na versão in
 | Negócio | Custo de energia do consumidor-exemplo no backtest (soma 2021–2025; caso base, f = 10%) | estratégia ingênua: **R$ 979.285,67** (sem 2021: R$ 751.593,15) | estratégia otimizada: **R$ 970.595,57** (sem 2021: R$ 742.883,46); pontual R$ 979.615,76. Por ano na seção "Sprint 6, Parte A" | 6 |
 | Negócio | Economia contra a ingênua | — | **R$ 8.690,10 / 0,89%** em 5 anos (sem 2021: R$ 8.709,69 / 1,16%): previsão −R$ 330,10 (−0,03%), otimização +R$ 9.020,19 (+0,92%). Concentrada em 2022 (+1,60%) e 2025 (+1,78%); 2023 e 2024 negativos. 5 anos, sem teste de significância | 6 |
 | Negócio | Exposição ao PLD (MWh descobertos ou sobrando, soma 2021–2025) | ingênua: 17,10 descobertos e 0 sobrando | otimizada: 25,90 descobertos e 85,32 sobrando (pontual: 13,01 e 0). A otimizada troca compra por venda de sobra | 6 |
-| Ciência | MAPE mensal da previsão de carga (12 meses à frente, rolling origin) | baseline (sazonal ingênuo): **2,92%** no desenvolvimento (2012–2019, original); 4,30% no teste final (2021–2025, ajustada) | desenvolvimento: **2,66%** (média ETS+SARIMA+regressão), vitória marginal sobre o ingênuo (+0,26 pp, EP 0,27 pp); teste final (ajustada): **3,11%** contra 4,17% do ingênuo nos mesmos pares (4,30% em todos os pares); origem de dezembro 2,53% contra 4,30% | 5 |
+| Ciência | MAPE mensal da previsão de carga (12 meses à frente, rolling origin) | baseline (sazonal ingênuo): **2,92%** no desenvolvimento (2012–2019, original); 4,30% no teste final (2021–2025, ajustada) | desenvolvimento: **2,66%** (média ETS+SARIMA+regressão), vitória marginal sobre o ingênuo (+0,255 pp, EP 0,27 pp); teste final (ajustada): **3,11%** contra 4,17% do ingênuo nos mesmos pares (4,30% em todos os pares); origem de dezembro 2,53% contra 4,30% | 5 |
 | Engenharia | Dados lidos por consulta típica (**bytes processados**) | 0,037 GB (ONS, raw STRING sem partição: 37,3 MB processados; 37,7 MB faturados) | tipado sem partição: 0,018 GB (18,3 MB); **fato particionado por mês e clusterizado: 0,0007 GB (0,74 MB processados, −98,0% contra o raw)**. O faturado cai para 10,5 MB, o piso de 10 MiB do BigQuery, então a métrica de comparação são os bytes processados | 1 → 2 |
 | Engenharia | Tempo de carga diária | full: **9,3 min** (ONS 4,9 + CCEE 1,2 + INMET 3,1 + feriados 0,2; sem o tempo do download manual) | incremental (DAG diária, ONS): **1,6 min** (1 min 33 s; só a ingestão do ONS leva 20 s, contra 4,9 min da carga full do ONS). Seção "Sprint 4, Parte A" | 1 → 4 |
 | Engenharia | Tempo do backfill completo (2021–hoje) | — | **~125 s (2,1 min)**: ingestão 74 s + dbt 51 s, de 2021-01 a 2026-10 (70 partições). A carga full de 2000 a hoje leva 94 s | 4 |
@@ -1069,7 +1069,7 @@ Checkpoint C: tempo da task mensal na DAG, bytes lidos e gravados, e o MAPE das 
 
 ### RESSALVAS do teste final (leia junto com o resultado)
 Resultado: **3,11% contra 4,17% do ingênuo nos mesmos pares** (−1,06 pp, 2,4 EP), viés −0,76% contra −2,17%, erro anual de dezembro 1,33% contra 2,72%.
-1. **Parte da vantagem vem do ingênuo piorar em 2021–2025** (2,92% → 4,30%): a vantagem foi de 0,26 pp no desenvolvimento e de 1,06 pp aqui.
+1. **Parte da vantagem vem do ingênuo piorar em 2021–2025** (2,92% → 4,30%): a vantagem foi de 0,255 pp no desenvolvimento (0,2548 no CSV) e de 1,06 pp aqui.
 2. **2023 continua com −3,8%** de erro anual em dezembro (e 2024 com −2,5% de viés com todas as origens).
 3. **O modelo perde em 2025** (3,72% contra 3,52%).
 4. **Os intervalos ficaram estreitos**: 70% de cobertura para 80% nominal e 88% para 95%.
@@ -1540,7 +1540,7 @@ Gravada por `python -m ml.recomendacao gravar` (logs `data/logs/recomendacao_gra
 | Leitura do BigQuery (previsão de produção e consumo dos 12 meses) | **0 faturados**: as 2 consultas vieram do cache (`cache_hit`) | **0 faturados**: cache |
 Fonte dos bytes: `INFORMATION_SCHEMA.JOBS_BY_PROJECT` (`total_bytes_processed`, `total_bytes_billed`, `cache_hit`), não o cálculo do script. Leitura do `--dry-run` (que executou as 2 consultas, sem cache): 949.632 processados (768 em `fct_previsao_carga`, 948.864 em `fct_consumo_horario`) e **20.971.520 faturados** (2 jobs × 10.485.760). A idempotência vale pelo mesmo motivo do MERGE dos cenários (chave natural `sens_id, origem, estrategia`).
 
-**Prévia da origem de produção 2026-09** (`tipo = previa`, caso base, f = 10%, λ = 0,5, α = 0,95, `execucao_id` `51cf99b073fe`, janela **out/2026 a set/2027**, `ano_contrato` nulo, `limites_assumidos = true`: os limites de 2027 repetem os de 2026). `P` = PLD médio simples dos 12 meses fechados até a origem + R$ 20 = **R$ 246,89/MWh** (acima do PLD médio dos cenários, R$ 188,53).
+**Prévia da origem de produção 2026-09** (`tipo = previa`, caso base, f = 10%, λ = 0,5, α = 0,95, `execucao_id` `51cf99b073fe`, janela **out/2026 a set/2027**, `ano_contrato` nulo, `limites_assumidos = true`: os limites de 2027 repetem os de 2026). `P` = PLD médio simples dos 12 meses fechados até a origem + R$ 20 = **R$ 246,89/MWh** (acima do PLD esperado dos cenários, **R$ 188,58**/MWh, média dos 2.000 cenários em blocos **ponderada pelas horas do mês**, como o `P`; os R$ 188,53 que constavam antes eram a **média simples**, sem ponderar as horas, e foram corrigidos; fonte: `pld_esperado_cenarios.csv` do snapshot).
 | Estratégia | V (MWm) | r (contra a pontual) | E[custo] ex-ante (R$) | CVaR95 ex-ante (R$) |
 |---|---|---|---|---|
 | ingênua | 0,144833 | 0,9847 | 318.358,69 | 339.145,80 |
@@ -1580,3 +1580,156 @@ Tempo do `producao`: 14,8 s (dry-run) e 16,9 s (real) para montar e validar.
 | **Cadeia (passos 2 e 3)** | ~138 MiB | ~83 MiB | **~221 MiB por mês, ~0,02% de 1 TiB** |
 Contra o plano (`plano_sprint6c.md`, **~170 MiB** para a cadeia): a **cadeia completa** ficou acima da estimativa (**~221 MiB calculados contra ~170**), e a leitura do `producao` (**88 MiB medidos**) é a maior parte dela (~40% do total). O destino dos `MERGE` dos cenários cresce ~5 MB por mês de origem nova (depois de 12 meses, +60 MB e ~+60 MiB no `MERGE` do PLD); o particionamento por origem, que só passa a fazer sentido agora, fica no backlog até o `MERGE` passar de ~100 MiB por mês. Com cache quente (repetir o mesmo dia), a leitura cai a 0 e só o `MERGE` fatura (20 MiB por tabela referenciada).
 **Engenharia:** a leitura vem toda do BigQuery (nenhum parquet local); o app da C2 não a usa. Suíte: **883 testes** passam (testes novos: nenhuma linha de backtest é tocada, id do caso base intacto, idempotência, seleção da origem mais recente, aviso de defasagem, mensagem de escopo).
+
+## Sprint 6, Parte C2: saúde do pipeline e snapshot do dashboard (11/10/2026)
+
+### `dbt test` da suíte inteira (feito no host antes do snapshot, para a página de saúde)
+Comando: `dbt test --project-dir dbt --profiles-dir dbt`, sem `--select`; logs `data/logs/dbt_test_completo_6c2.log` e `dbt_test_completo_6c2_bytes.log` (fora do git). Resultado gravado em `dbt/target/run_results.json`, que o snapshot lê.
+| Medida | Valor |
+|---|---|
+| Testes | **250**: **249 PASS, 1 WARN**, 0 ERROR (os 62 testes que a DAG diária não seleciona entram) |
+| Aviso | `fct_clima_horario_completude_estacao_por_ano`: **10 casos** (configurado para avisar se for diferente de 0) |
+| Tempo | **80 s** |
+| Jobs do dbt | **335** (0 com erro): 747,0 MB processados, **3.086,0 MB faturados** |
+| Jobs fora do dbt no intervalo | 2 jobs, 0,0 MB processados, **21,0 MB faturados**, de origem **não identificada** (a consulta da medição em si leu 0 MB de metadados); sem causa atribuída |
+| **Total faturado no intervalo, medido pelos jobs** | **3.106,9 MB** (3.086,0 dos jobs do dbt + 21,0 dos 2 jobs fora do dbt) |
+Bytes **medidos pelos jobs** (`scripts.medir_bytes_bigquery`, intervalo 16:39:13Z a 16:43:00Z), **contra a estimativa** do cálculo (~200 a 230 testes × 10,5 a 13 MB = 2,1 a 3,0 GB): os jobs do dbt ficaram em 3,09 GB, **~3% acima do teto da estimativa** (o número de testes foi 250, acima dos ~230 que supus). Custo: ~0,3% de 1 TiB de uma vez. Cada teste vira um ou mais jobs (335 jobs para 250 testes); a causa dos jobs extras não foi investigada aqui.
+
+### Snapshot do dashboard: `--dry-run` e `gerar` real
+Logs `data/logs/snapshot_dry_run.log` e `snapshot_gerar.log` (fora do git); saída em `dashboard/dados/` (21 CSV + `manifest.json`). O `--dry-run` executa as 7 consultas e não grava; o `gerar` roda em seguida.
+| Medida | Valor |
+|---|---|
+| Arquivos | 21 CSV + `manifest.json` em `dashboard/dados/` |
+| **Tamanho** | **337.088 bytes (0,32 MiB)**, contra o limite de 5 MiB |
+| **Bytes faturados nas consultas (job)** | **62.914.560 (60,0 MiB)**: 6 consultas × 10 MiB; a consulta do PLD semanal veio do cache (0 faturado) |
+| Linhas | carga mensal 322, PLD mensal 297, consumo do exemplo 82, previsão de produção 12, erros de produção 0, recomendação 213, `previsoes_teste_final` 1.308, execuções da DAG (saúde) 160 |
+| Estado | origem de produção 2026-09 e prévia 2026-09, último mês fechado 2026-09, sem aviso de defasagem; saúde das execuções e dos testes disponível |
+**`gerar` real (gravou `dashboard/dados/`):**
+| Medida | `--dry-run` | `gerar` |
+|---|---|---|
+| Arquivos | 21 CSV | **21 CSV + `manifest.json`** |
+| Tamanho | 337.088 bytes (0,32 MiB) | **337.513 bytes (0,32 MiB)**, contra o limite de 5 MiB (+425 bytes sobre o dry-run: +424 do `consumo_exemplo_mensal.csv`, que ganhou a coluna `mes_completo` (2.746 → 3.170 bytes), e +1 do `frescor_fontes.csv` (246 → 247); o total não conta o `manifest.json`) |
+| **Bytes faturados nas consultas (job)** | 62.914.560 (60,0 MiB), 6 consultas de 10 MiB | **0**: as **7 consultas vieram do cache** do dry-run (`cache_hit` nas 7) |
+| Linhas | carga mensal 322, PLD mensal 297, consumo 82, previsão 12, erros 0, recomendação 213, `previsoes_teste_final` 1.308, execuções da DAG 160, testes do dbt 8 | as mesmas |
+**Custo do ciclo dry-run + gerar = 60,0 MiB** (o dry-run paga, o gerar sai do cache); o cache dura enquanto as tabelas não mudam (em geral, até ~24 h). Estado gravado no manifesto: origem de produção e da prévia 2026-09, último mês fechado 2026-09, sem aviso de defasagem; `meses_incompletos`: 2026-10 na carga e no consumo; saúde: 11 execuções da DAG (a última em 10/10 às 16:38Z) e **250 testes do dbt** (`dbt test` completo, sem seleção, 80,2 s, gerado em 10/10 às 16:40Z); cobertura exibida 70,2% e 87,8%.
+
+O mês corrente (outubro de 2026) está nos dois arquivos mensais **e marcado**: `carga_mensal_se.csv` o traz com `mes_utilizavel = False` (cobertura de 26%) e `consumo_exemplo_mensal.csv` (82 linhas, jan/2020 a out/2026) ganhou a coluna `mes_completo` (horas da curva iguais às esperadas do mês): outubro tem 192 horas e fica `False`. O manifesto lista esses meses em `meses_incompletos`, e o "último dado" do consumo é o último mês **completo**. A página usa só os meses completos.
+
+### Snapshot regerado com o PLD esperado dos cenários e a página "Decisão de contrato" (10/10/2026)
+- **Snapshot** (logs `data/logs/snapshot_dry_run_2.log` e `snapshot_gerar_2.log`): ganhou `pld_esperado_cenarios.csv` (**12 linhas**: 6 origens, as 5 de backtest e a prévia, × 2 métodos), de **uma consulta a mais** em `marts.fct_cenario_pld` (agregada no SQL, média **ponderada pelas horas do mês**, como o `P_t`); 8 consultas no total. **Bytes faturados pelo job: 15 MiB no `--dry-run` e 0 no `gerar`** (cache). O `dry_run` do BigQuery tinha estimado 15.696.000 bytes processados. O PLD esperado da prévia de 2026-09 é **R$ 188,58/MWh** (ponderado pelas horas); a média simples, R$ 188,53, é a que constava antes. Os valores de 2020-12 a 2024-12 (179,14; 195,28; 208,03; 190,76; 182,55) batem com `docs/decisoes.md`.
+- **Página de Decisão** (`dashboard/paginas/decisao.py`, testada com `AppTest.from_function`): 0 exceções; 3 métricas, 4 gráficos, 7 tabelas, 5 avisos e 5 caixas de informação na tela. **Tempo de carga no `AppTest` (local, não é tempo no navegador nem no Community Cloud):** **0,9 s** na primeira execução (cache frio, com os imports) e **mediana de 0,31 s** com o cache quente (4 execuções seguintes). **0 bytes do BigQuery** (a página lê só `dashboard/dados/`).
+- **Suíte:** 991 testes passam.
+
+## Sprint 6, Parte C2: redesenho da página de Decisão (10/10/2026)
+
+Medido com `AppTest` sobre o snapshot de 10/10/2026 (prosa visível = título, subtítulos, legendas, Markdown, caixas e métricas, **sem** tabelas, tooltips e o que está dentro de expanders; mesmo método do "antes").
+
+| Medida | Antes | Depois |
+|---|---|---|
+| Palavras visíveis | 1.747 | **543** (−69%; a estimativa do relatório era ~505) |
+| Caixas coloridas | 10 (5 `warning`, 5 `info`) | 3 (1 âmbar: a prévia; 2 neutras) |
+| Subtítulos | 7 | 6 |
+| Tabelas à vista | 7 (553 células) | 0 (as 7, 431 células, em expanders fechados) |
+| Gráficos à vista | 4 | 4 (+1 no expander "detalhe da banda") |
+| Controles | 2 (toggle e rádio) | 0 |
+| Tempo de execução da página (AppTest, mediana, cache quente) | 0,5 s | 0,52 s (1ª execução 0,83 s) |
+
+- Limitações sempre visíveis: 5 itens, 114 palavras (estimativa: ~80; o orçamento do teste é 120).
+- A medição vale para o `AppTest`, não para o navegador. O Community Cloud foi medido depois, à mão e de forma aproximada (20/10/2026): fria (despertar do contêiner) ~25 s, quente 1 a 2 s; ver "Sprint 6, Parte C2: tempo e bytes por página".
+- Verificado no navegador (Chromium headless, 1280 px e 390 px): `R\$` aparece como "R$" literal; eixos com ponto de milhar; cartões empilhados no celular.
+
+**Sobre o teste dos 30 segundos.** O "antes" se perdeu: a versão antiga da página nunca foi commitada. O teste será feito **só na versão nova**, como medida **absoluta** (não há comparação). O antes/depois **quantitativo** deste redesenho é o de **palavras visíveis, caixas coloridas e tabelas à vista** (tabela acima).
+
+## Sprint 6, Parte C2: página de Previsão (10/10/2026)
+
+Medido com `AppTest` sobre o snapshot de 10/10/2026 (prosa visível = título, subtítulos, legendas, Markdown, caixas e métricas; sem tabelas, tooltips e expanders; mesmo método da Decisão).
+
+| Medida | Valor |
+|---|---|
+| Palavras visíveis | **284** (orçamento: 450) |
+| Caixas | 2 neutras, 0 âmbar (a página não tem prévia nem especulação) |
+| Gráficos à vista / no expander | 3 / 1 (cobertura por horizonte) |
+| Tabelas à vista | 0 (6 em expanders: 4 em "Ver valores", 2 na auditoria) |
+| Tempo da página no `AppTest` (mediana, cache quente) | 0,28 s (1ª execução 0,58 s) |
+| Testes novos | 24 (previsão) + 5 (nomes) + 1 (anexar do snapshot); suíte: 1.036 |
+
+Números exibidos, todos do snapshot e conferidos contra este arquivo: teste final 3,11% × 4,17% (mesmos 654 pares), viés −0,76% × −2,17%, cobertura 70,2% e 87,8%, desenvolvimento 2,66% × 2,92% (diferença 0,255 pp < EP 0,27 pp), modelo perde em 2025 (3,72% × 3,52%), erro do ano de 2023 previsto em dezembro −3,80% (ingênuo −4,18%), calculado de `previsoes_teste_final.csv` (confere com a tabela "Erro do ano inteiro na origem de dezembro").
+Novo arquivo no snapshot: `desenvolvimento_resumo.csv` (cópia local de `candidatos_desenvolvimento_original_resumo.csv`, 948 bytes; snapshot 0,32 MiB).
+Tempo no Community Cloud: ver "Tempo e bytes por página" abaixo.
+
+## Sprint 6, Parte C2: tempo e bytes por página (20/10/2026)
+
+Medido com `AppTest.from_function` sobre o snapshot de 10/10/2026, 7 repetições por página. **Frio** = `st.cache_data.clear()` antes do `run()` (a primeira repetição de cada página inclui também a importação dos módulos; a Decisão rodou primeiro e paga a importação do Streamlit e do Altair, por isso o pior frio dela é 1,21 s); **quente** = segundo `run()` da mesma instância, com o cache preenchido. Bytes = soma do tamanho dos arquivos de `dashboard/dados/` que a página abriu (interceptando `open`), medida, não estimada.
+
+| Página | Frio (mediana / pior) | Quente (mediana / pior) | CSV/JSON lidos | Bytes lidos |
+|---|---|---|---|---|
+| Decisão de contrato | 0,63 s / 1,21 s | 0,36 s / 0,38 s | 11 arquivos | 184.961 B (180,6 KiB) |
+| Previsão de carga | 0,38 s / 0,40 s | 0,13 s / 0,14 s | 9 arquivos | 152.801 B (149,2 KiB) |
+
+- Snapshot inteiro: 355.578 B (347 KiB, com o `manifest.json`). Cada página lê o `manifest.json` e só os arquivos dela.
+- **0 bytes de BigQuery no app:** o app não importa `google.*` (só `dashboard/snapshot.py` fala com o BigQuery e o Postgres; teste de higiene) e não lê credencial. O custo de BigQuery por acesso é R$ 0 para qualquer número de acessos.
+- O 0,28 s (quente) e 0,58 s (1ª execução) da Previsão registrados em 10/10/2026 vêm de outra amostra (mediana de poucas execuções); esta é a medida de referência (7 repetições, frio com cache limpo).
+
+- Testes: 1.042 na suíte (4 novos na Previsão: 12 horizontes contra o `metricas.md`, tabela do expander, legenda nas faixas, frase da limitação; 2 na Decisão: eixo com ≤ 6 marcas e cartão da concentração).
+
+**Community Cloud** (medição manual e aproximada, no navegador; não é a mesma coisa que o `AppTest`, que não inclui rede nem a subida do app):
+
+| Carga | Tempo | Amostras |
+|---|---|---|
+| Fria (reboot do app) | ~25 s | 1 |
+| Quente (F5 com o app acordado) | 1 a 2 s | 3 |
+
+- Cronômetro manual. Com 1 amostra fria não há mediana nem pior caso, e as 3 quentes são um intervalo (1 a 2 s), não uma mediana; o plano (seção 7) previa 3 cargas frias e 3 quentes por página. O ~25 s vale como ordem de grandeza, não como medida estável. A página cronometrada foi a **Decisão**, a única no ar na hora (a Previsão ainda não estava publicada); a Previsão não tem medida no Cloud.
+- **Leitura:** a carga fria de ~25 s é o **despertar do contêiner no plano gratuito** (o app hiberna sem uso), não o código da página: no `AppTest`, com o cache frio, a Decisão (a página cronometrada no Cloud) leva ~0,6 s (0,63 s de mediana); a Previsão leva ~0,4 s, mas ainda não foi medida no Cloud. Com o app acordado, o F5 leva 1 a 2 s, que já inclui rede e renderização no navegador. Ou seja, o custo percebido pelo primeiro visitante depois de um período sem uso é o do contêiner; o do código é uma fração pequena dele.
+
+## Sprint 6, Parte C2: página Saúde do pipeline (20/10/2026)
+
+**Registro das execuções que falharam de propósito** (a página só rotula uma falha como proposital se o `run_id` está aqui ou na Sprint 3, 3.7; as outras aparecem como "falha"). Conferido nos logs locais (fora do repositório) em 20/10/2026:
+
+| `run_id` | Disparo com `{"falha_proposital": true}` | Onde está registrado |
+|---|---|---|
+| `manual__2026-10-06T22:12:05.158514+00:00` | sim | Sprint 3, 3.7 (acima), `airflow_falha_proposital.txt` |
+| `manual__passo8_falha_20261007T045457` | sim (`conf` do `dags trigger`) | `data/logs/passo8_falha_trigger.log` |
+| `manual__falha_20261008T032754` | sim (`disparando ... {"falha_proposital": true}`) | `data/logs/sprint5c_dag_falha.log` |
+
+Nas três, a task que falhou é o `dbt_test` e as seguintes ficam `upstream_failed`, como descreve o `docs/runbook_airflow.md` para `{"falha_proposital": true}`.
+
+Medido com `AppTest.from_function` sobre o snapshot de 10/10/2026, 7 repetições (frio = `st.cache_data.clear()` antes; quente = segundo `run()` da mesma instância; a Saúde rodou primeiro, então o pior frio dela, 0,86 s, inclui a importação das bibliotecas). Prosa visível = título, subtítulos, legendas, Markdown, caixas e métricas; sem tabelas, tooltips e expanders (mesmo método da Decisão e da Previsão).
+
+| Medida | Valor |
+|---|---|
+| Palavras visíveis | **328** (orçamento: 400) |
+| Caixas | 2 neutras, 0 âmbar |
+| Gráficos à vista / no expander | 1 / 1 (duração por etapa) |
+| Tabelas à vista | 0 (4 em "Ver valores", 1 na auditoria) |
+| Tempo da página no `AppTest`, frio (mediana / pior) | 0,31 s / 0,86 s |
+| Tempo da página no `AppTest`, quente (mediana / pior) | 0,07 s / 0,08 s |
+| Arquivos lidos / bytes | 4 (`saude_execucoes.csv` 17.294 B, `saude_testes_dbt.csv` 246 B, `frescor_fontes.csv` 247 B, `manifest.json` 16.399 B) / **34.186 B (33,4 KiB)** |
+| BigQuery | **0 bytes** (a página não importa `google.*`) |
+| Testes novos | 37 (Saúde); suíte: 1.079 |
+
+Números exibidos, todos do snapshot e conferidos contra os CSVs: 11 execuções (8 com sucesso, 3 com falha, todas no `dbt_test` e todas com fonte de falha proposital acima); última execução 114,4 s (1 min 54 s), agendada, início 10/10/2026 16:38 UTC; 250 testes (249 passaram, 1 aviso, 0 erros) em 8 tipos; 5 fontes com último dado em set/2026, mês encerrado há 10 dias na data do snapshot (39 dias desde o primeiro dia do mês, no CSV); execução agendada ausente: 08/10, 21:00 UTC; `run_results.json` gerado em 10/10/2026 16:40:53Z (80,2 s), coincidindo em horário e contagem com `data/logs/dbt_test_completo_6c2.log` (inferência, ver `decisoes.md`). Linha da Sprint 4 (6 min 40 s → 1 min 54 s, −71%; bytes faturados −69%) conferida contra a tabela "A DAG com a previsão mensal, medida" deste arquivo; a agendada de 06/10 mede 401,4 s no registro do Airflow (6 min 41 s).
+Não medido: tempo no Community Cloud (a página ainda não foi publicada) e o teste dos 30 segundos.
+
+## Sprint 6, Parte C2: página Panorama do setor e ajustes visuais (21/10/2026)
+
+Medido com `AppTest.from_string` sobre o snapshot de 10/10/2026, 7 repetições por página (frio = `st.cache_data.clear()` antes; quente = segundo `run()` da mesma instância; o pior frio inclui, na primeira página medida, a importação das bibliotecas). Prosa visível = título, subtítulos, legendas, Markdown, caixas e métricas; sem tabelas, tooltips e expanders (mesmo método das outras páginas).
+
+| Medida | Panorama do setor |
+|---|---|
+| Palavras visíveis | **232** (orçamento: 300) |
+| Caixas | 1 neutra (a frase), 0 âmbar |
+| Gráficos à vista / no expander | 2 / 0 |
+| Tabelas à vista | 0 (2 em "Ver valores") |
+| Tempo da página no `AppTest`, frio (mediana / pior) | 0,29 s / 0,56 s |
+| Tempo da página no `AppTest`, quente (mediana / pior) | 0,05 s / 0,05 s |
+| Arquivos lidos / bytes | 3 (`carga_mensal_se.csv`, `pld_mensal_se.csv`, `manifest.json`) / **41.009 B (40,0 KiB)** |
+| BigQuery | **0 bytes** (a página não importa `google.*`) |
+| Testes novos | 28: 26 do Panorama, 1 da legenda da banda (Decisão) e 1 dos rótulos do eixo (Saúde); o teste da legenda das faixas (Previsão) foi reescrito; suíte: 1.107 |
+
+Números exibidos, todos do snapshot e conferidos contra os CSVs lidos direto: carga do SE/CO em set/2026 (último mês fechado; out/2026 incompleto fica de fora) = 44.517 MWm, +3,9% contra set/2025 (42.854 MWm); PLD de set/2026 = R$ 131,91/MWh (ponderado), com piso de R$ 57,31 e teto estrutural de R$ 785,27 do ano; 321 meses de carga fechados (322 no arquivo), 297 de PLD (228 semanais até dez/2020 e 69 ponderados de 2021 em diante). A reconstruída só difere da original até abr/2023. **Quebra do tipo III em mar/2021**: comparando cada mês de 2021 com o mesmo mês de 2020, a razão reconstruída/original não muda em jan e fev (±0,002) e cai de 0,03 a 0,09 de março em diante (data de `docs/metricas.md`, "Usinas não despachadas (tipo III), 01/03/2021").
+
+**Medidas das outras páginas depois dos ajustes visuais** (mesma rodada): palavras visíveis Previsão **354** (orçamento 450; subiu porque a legenda "Faixa de 80%/95%: cobre ..." saiu de dentro do gráfico e virou uma linha abaixo dele, e porque os limites ganharam um item), Saúde **337** (orçamento 400; a legenda explica "ag. = agendada, man. = manual") e Decisão **547** (orçamento 600). Tempo no `AppTest` (frio / quente, mediana): Previsão 0,38 / 0,12 s, Saúde 0,31 / 0,07 s, Decisão 0,64 / 0,36 s. As medidas registradas antes (284 palavras da Previsão em 10/10; 328 da Saúde em 20/10) são anteriores a essas mudanças.
+
+Os três ajustes visuais foram conferidos **no gráfico renderizado** (Chromium headless), além do spec: rótulos do eixo das execuções (11 barras, todas com rótulo; 12 posições com a execução agendada ausente de 08/10), legenda da banda com o símbolo vazado na série "Ganho por contratar acima ou abaixo da previsão" e a legenda das faixas da Previsão fora do gráfico.
+Não medido: tempo no Community Cloud do Panorama, da Previsão e da Saúde (a medição manual de 20/10 foi só da Decisão), e o teste dos 30 segundos.
