@@ -516,3 +516,52 @@ def historia_recente(carga: pd.DataFrame, meses: int = 36) -> pd.DataFrame:
         subset=["carga_ajustada_reconstruida_mwmed"]
     )
     return d.sort_values("mes").tail(meses).reset_index(drop=True)
+
+
+# ---------------------------------------------------------------- panorama
+
+# 01/03/2021: a carga da API do ONS passa a incluir as usinas não despachadas (tipo III) e a série
+# dá um degrau (docs/metricas.md, "Usinas não despachadas (tipo III), 01/03/2021"); a reconstrução
+# corrige os anos anteriores. Um teste confere esta data contra os dados.
+QUEBRA_TIPO_III = pd.Timestamp("2021-03-01")
+
+
+def ultima_carga(carga: pd.DataFrame) -> dict:
+    """O último mês FECHADO da carga reconstruída e o mesmo mês do ano anterior (MWm)."""
+    c = carga.dropna(subset=["carga_ajustada_reconstruida_mwmed"]).sort_values("mes")
+    ultimo = c.iloc[-1]
+    antes = c[c["mes"] == ultimo["mes"] - pd.DateOffset(years=1)]
+    valor = float(ultimo["carga_ajustada_reconstruida_mwmed"])
+    anterior = float(antes.iloc[0]["carga_ajustada_reconstruida_mwmed"]) if len(antes) else None
+    return {
+        "mes": ultimo["mes"],
+        "mwm": valor,
+        "mes_anterior": ultimo["mes"] - pd.DateOffset(years=1),
+        "mwm_anterior": anterior,
+        "variacao_pct": None if anterior is None else 100.0 * (valor / anterior - 1.0),
+    }
+
+
+def ultimo_pld(pld: pd.DataFrame) -> dict:
+    """O último PLD mensal, com o piso e o teto estrutural do ano e de onde vem a conta."""
+    u = pld.sort_values("mes").iloc[-1]
+    return {
+        "mes": u["mes"],
+        "rs_mwh": float(u["pld_rs_mwh"]),
+        "piso": None if pd.isna(u["piso_rs_mwh"]) else float(u["piso_rs_mwh"]),
+        "teto": None
+        if pd.isna(u["teto_estrutural_rs_mwh"])
+        else float(u["teto_estrutural_rs_mwh"]),
+        "fonte": u["fonte"],
+    }
+
+
+def ultimo_mes_com_ajuste(carga: pd.DataFrame) -> pd.Timestamp:
+    """Último mês em que a série reconstruída ainda difere da original; depois dele coincidem."""
+    d = carga.dropna(subset=["carga_ajustada_reconstruida_mwmed"])
+    diferem = d[(d["carga_ajustada_reconstruida_mwmed"] - d["carga_original_mwmed"]).abs() > 1e-6]
+    return diferem["mes"].max()
+
+
+def ultimo_mes_do_pld_semanal(pld: pd.DataFrame) -> pd.Timestamp:
+    return pld[pld["fonte"] == "semanal"]["mes"].max()

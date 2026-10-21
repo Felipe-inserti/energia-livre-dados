@@ -1710,3 +1710,26 @@ Medido com `AppTest.from_function` sobre o snapshot de 10/10/2026, 7 repetiçõe
 
 Números exibidos, todos do snapshot e conferidos contra os CSVs: 11 execuções (8 com sucesso, 3 com falha, todas no `dbt_test` e todas com fonte de falha proposital acima); última execução 114,4 s (1 min 54 s), agendada, início 10/10/2026 16:38 UTC; 250 testes (249 passaram, 1 aviso, 0 erros) em 8 tipos; 5 fontes com último dado em set/2026, mês encerrado há 10 dias na data do snapshot (39 dias desde o primeiro dia do mês, no CSV); execução agendada ausente: 08/10, 21:00 UTC; `run_results.json` gerado em 10/10/2026 16:40:53Z (80,2 s), coincidindo em horário e contagem com `data/logs/dbt_test_completo_6c2.log` (inferência, ver `decisoes.md`). Linha da Sprint 4 (6 min 40 s → 1 min 54 s, −71%; bytes faturados −69%) conferida contra a tabela "A DAG com a previsão mensal, medida" deste arquivo; a agendada de 06/10 mede 401,4 s no registro do Airflow (6 min 41 s).
 Não medido: tempo no Community Cloud (a página ainda não foi publicada) e o teste dos 30 segundos.
+
+## Sprint 6, Parte C2: página Panorama do setor e ajustes visuais (21/10/2026)
+
+Medido com `AppTest.from_string` sobre o snapshot de 10/10/2026, 7 repetições por página (frio = `st.cache_data.clear()` antes; quente = segundo `run()` da mesma instância; o pior frio inclui, na primeira página medida, a importação das bibliotecas). Prosa visível = título, subtítulos, legendas, Markdown, caixas e métricas; sem tabelas, tooltips e expanders (mesmo método das outras páginas).
+
+| Medida | Panorama do setor |
+|---|---|
+| Palavras visíveis | **232** (orçamento: 300) |
+| Caixas | 1 neutra (a frase), 0 âmbar |
+| Gráficos à vista / no expander | 2 / 0 |
+| Tabelas à vista | 0 (2 em "Ver valores") |
+| Tempo da página no `AppTest`, frio (mediana / pior) | 0,29 s / 0,56 s |
+| Tempo da página no `AppTest`, quente (mediana / pior) | 0,05 s / 0,05 s |
+| Arquivos lidos / bytes | 3 (`carga_mensal_se.csv`, `pld_mensal_se.csv`, `manifest.json`) / **41.009 B (40,0 KiB)** |
+| BigQuery | **0 bytes** (a página não importa `google.*`) |
+| Testes novos | 28: 26 do Panorama, 1 da legenda da banda (Decisão) e 1 dos rótulos do eixo (Saúde); o teste da legenda das faixas (Previsão) foi reescrito; suíte: 1.107 |
+
+Números exibidos, todos do snapshot e conferidos contra os CSVs lidos direto: carga do SE/CO em set/2026 (último mês fechado; out/2026 incompleto fica de fora) = 44.517 MWm, +3,9% contra set/2025 (42.854 MWm); PLD de set/2026 = R$ 131,91/MWh (ponderado), com piso de R$ 57,31 e teto estrutural de R$ 785,27 do ano; 321 meses de carga fechados (322 no arquivo), 297 de PLD (228 semanais até dez/2020 e 69 ponderados de 2021 em diante). A reconstruída só difere da original até abr/2023. **Quebra do tipo III em mar/2021**: comparando cada mês de 2021 com o mesmo mês de 2020, a razão reconstruída/original não muda em jan e fev (±0,002) e cai de 0,03 a 0,09 de março em diante (data de `docs/metricas.md`, "Usinas não despachadas (tipo III), 01/03/2021").
+
+**Medidas das outras páginas depois dos ajustes visuais** (mesma rodada): palavras visíveis Previsão **354** (orçamento 450; subiu porque a legenda "Faixa de 80%/95%: cobre ..." saiu de dentro do gráfico e virou uma linha abaixo dele, e porque os limites ganharam um item), Saúde **337** (orçamento 400; a legenda explica "ag. = agendada, man. = manual") e Decisão **547** (orçamento 600). Tempo no `AppTest` (frio / quente, mediana): Previsão 0,38 / 0,12 s, Saúde 0,31 / 0,07 s, Decisão 0,64 / 0,36 s. As medidas registradas antes (284 palavras da Previsão em 10/10; 328 da Saúde em 20/10) são anteriores a essas mudanças.
+
+Os três ajustes visuais foram conferidos **no gráfico renderizado** (Chromium headless), além do spec: rótulos do eixo das execuções (11 barras, todas com rótulo; 12 posições com a execução agendada ausente de 08/10), legenda da banda com o símbolo vazado na série "Ganho por contratar acima ou abaixo da previsão" e a legenda das faixas da Previsão fora do gráfico.
+Não medido: tempo no Community Cloud do Panorama, da Previsão e da Saúde (a medição manual de 20/10 foi só da Decisão), e o teste dos 30 segundos.

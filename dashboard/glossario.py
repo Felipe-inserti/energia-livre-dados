@@ -38,6 +38,14 @@ TERMOS = {
     "erro.",
     "Fonte manual": "dado baixado à mão (CCEE e INMET), sem coleta automática; o pipeline só avisa "
     "quando ele fica velho.",
+    "SE/CO": "Sudeste/Centro-Oeste, o subsistema do sistema elétrico do ONS cuja carga a página "
+    "mostra.",
+    "Tipo III": "usinas que o ONS não despacha; a carga que a API do ONS publica passou a "
+    "incluí-las em mar/2021, o que cria um degrau na série.",
+    "Carga reconstruída": "a carga do ONS refeita com a mesma definição em todo o período: soma "
+    "aos anos anteriores o que o ONS só passou a medir depois (tipo III e MMGD).",
+    "PLD ponderado": "o PLD do mês ponderado pelo consumo (hora a hora) do consumidor-exemplo; até "
+    "2020 a série é o PLD semanal agregado por mês, sem esse peso.",
     "Contrafactual": "o que teria acontecido numa condição que não existiu; aqui, contratar no "
     "mercado livre antes de poder migrar.",
 }
