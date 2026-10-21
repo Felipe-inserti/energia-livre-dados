@@ -239,7 +239,6 @@ energia-livre-dados/
 ├── CLAUDE.md
 ├── docker-compose.yml
 ├── .github/workflows/ci.yml
-├── infra/                  # Terraform (opcional)
 ├── ingestion/              # extratores por fonte
 │   ├── ons.py
 │   ├── ccee.py
@@ -257,10 +256,6 @@ energia-livre-dados/
 │   ├── baseline.py
 │   ├── train.py
 │   └── predict.py
-├── optimization/
-│   ├── cenarios.py
-│   ├── contrato.py
-│   └── backtest.py
 ├── dashboard/app.py
 ├── tests/                  # testes Python
 └── docs/
